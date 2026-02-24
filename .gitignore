@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+credentials.json
+state.json
+logs/
+*.log
+*.bak
+*.txt
+temp_scripts/
+.claude/

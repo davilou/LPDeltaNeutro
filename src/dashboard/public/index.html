@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ΔNEUTRAL // HEDGE MONITOR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      /* Backgrounds */
+      --bg: #080b0d;
+      --surface: #0d1117;
+      --surface2: #111820;
+
+      /* Borders */
+      --bd: #1a2230;
+      --bd-md: #243040;
+      --bd-hi: #2e4060;
+
+      /* Text — clear hierarchy */
+      --tx: #c9d9e8;
+      /* primary: cool white  */
+      --tx-dim: #6b8099;
+      /* labels / secondary   */
+      --tx-muted: #2a3d50;
+      /* very dim / disabled  */
+
+      /* Semantic colours — used ONLY on values */
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --blue: #60a5fa;
+
+      /* Brand accent — amber, used sparingly */
+      --accent: #f59e0b;
+      --accent-dim: #92600a;
+
+      /* Fonts */
+      --mono: 'Share Tech Mono', 'Courier New', monospace;
+      --disp: 'Orbitron', sans-serif;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scrollbar-width: thin;
+      scrollbar-color: var(--bd-md) var(--surface);
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--surface);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--bd-md);
+      border-radius: 2px;
+    }
+
+    body {
+      font-family: var(--mono);
+      background: var(--bg);
+      color: var(--tx);
+      min-height: 100vh;
+      padding: 16px 20px 32px;
+    }
+
+    /* ══════════════════════════════════════
+   HEADER
+══════════════════════════════════════ */
+    .hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0 13px;
+      border-bottom: 1px solid var(--bd-md);
+      margin-bottom: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .brand-name {
+      font-family: var(--disp);
+      font-size: 1rem;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: var(--accent);
+    }
+
+    .brand-sep {
+      color: var(--tx-muted);
+    }
+
+    .brand-sub {
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      color: var(--tx-dim);
+    }
+
+    .hdr-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 0.75rem;
+      letter-spacing: 0.5px;
+      color: var(--tx-dim);
+    }
+
+    .conn-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+    }
+
+    .dot.connected {
+      background: var(--green);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    /* ══════════════════════════════════════
+   SETUP GRID
+══════════════════════════════════════ */
+    .setup-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width:720px) {
+      .setup-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ══════════════════════════════════════
+   PANEL
+══════════════════════════════════════ */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--bd);
+      padding: 14px 16px;
+    }
+
+    .panel-title {
+      font-family: var(--disp);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--tx-dim);
+      text-transform: uppercase;
+      margin-bottom: 11px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--bd);
+    }
+
+    /* ══════════════════════════════════════
+   INPUTS & BUTTONS
+══════════════════════════════════════ */
+    .irow {
+      display: flex;
+      gap: 7px;
+      margin-bottom: 6px;
+    }
+
+    .irow:last-child {
+      margin-bottom: 0;
+    }
+
+    .t-in {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--bd-md);
+      color: var(--tx);
+      padding: 7px 10px;
+      font-size: 0.84rem;
+      font-family: var(--mono);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .t-in:focus {
+      border-color: var(--accent-dim);
+    }
+
+    .t-in::placeholder {
+      color: var(--tx-muted);
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--bd-hi);
+      color: var(--tx-dim);
+      padding: 7px 14px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      border-color: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    .btn:disabled {
+      border-color: var(--bd);
+      color: var(--tx-muted);
+      cursor: not-allowed;
+    }
+
+    .btn-blue:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
+    /* ══════════════════════════════════════
+   STATUS LINE
+══════════════════════════════════════ */
+    .status-line {
+      font-size: 0.78rem;
+      color: var(--tx-dim);
+      margin-top: 6px;
+      min-height: 16px;
+    }
+
+    /* ══════════════════════════════════════
+   POSITION LIST
+══════════════════════════════════════ */
+    .position-list {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ver-pill {
+      background: var(--bd-hi);
+      color: var(--blue);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: bold;
+      margin-right: 6px;
+      vertical-align: middle;
+      border: 1px solid var(--bd-hi);
+    }
+
+    .position-item {
+      background: var(--bg);
+      border: 1px solid var(--bd);
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      transition: border-color 0.15s;
+    }
+
+    .position-item:hover {
+      border-color: var(--bd-md);
+    }
+
+    .position-item.active-position {
+      border-color: var(--green);
+    }
+
+    .t-in-small {
+      width: 54px;
+      background: var(--bg);
+      border: 1px solid var(--bd-md);
+      color: var(--tx);
+      padding: 2px 5px;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      outline: none;
+      text-align: right;
+      transition: border-color 0.15s;
+    }
+
+    .t-in-small:focus {
+      border-color: var(--blue);
+    }
+
+    .pos-info {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .pos-title {
+      font-size: 0.86rem;
+      color: var(--tx);
+      margin-bottom: 3px;
+    }
+
+    .pos-detail {
+      font-size: 0.76rem;
+      color: var(--tx-dim);
+    }
+
+    .pos-usd {
+      font-size: 0.82rem;
+      color: var(--tx-dim);
+    }
+
+    .active-badge {
+      color: var(--green);
+      font-size: 0.76rem;
+      letter-spacing: 0.5px;
+    }
+
+    .range-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      font-size: 0.72rem;
+      letter-spacing: 0.3px;
+      border: 1px solid;
+    }
+
+    .range-badge.in-range {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .range-badge.above-range,
+    .range-badge.below-range {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    /* ══════════════════════════════════════
+   ACTIVE BANNER
+══════════════════════════════════════ */
+    .active-banner {
+      background: rgba(52, 211, 153, 0.06);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      border-left: 2px solid var(--green);
+      padding: 8px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      letter-spacing: 0.5px;
+      color: var(--green);
+    }
+
+    .banner-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2.5s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    /* ══════════════════════════════════════
+   TABS & CONFIG
+══════════════════════════════════════ */
+    .tabs-container {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .tab-btn {
+      background: var(--surface2);
+      border: 1px solid var(--bd-md);
+      padding: 8px 14px;
+      color: var(--tx-dim);
+      cursor: pointer;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .tab-btn.active {
+      border-color: var(--green);
+      color: var(--green);
+      background: rgba(52, 211, 153, 0.06);
+    }
+
+    .config-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--bd-md);
+      font-size: 0.8rem;
+    }
+
+    .config-panel .irow {
+      align-items: center;
+    }
+
+    .config-panel label {
+      width: 140px;
+      color: var(--tx-dim);
+    }
+
+    /* ══════════════════════════════════════
+   METRICS GRID
+══════════════════════════════════════ */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    @media (max-width:1080px) {
+      .metrics {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width:660px) {
+      .metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    /* ══════════════════════════════════════
+   METRIC CARD
+══════════════════════════════════════ */
+    .mc {
+      background: var(--surface);
+      border: 1px solid var(--bd);
+      padding: 13px 14px;
+    }
+
+    .mc-label {
+      font-family: var(--disp);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--tx-dim);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    /* Large metric value */
+    .mc-val {
+      font-size: 1.6rem;
+      letter-spacing: -0.5px;
+      font-variant-numeric: tabular-nums;
+      color: var(--tx);
+      line-height: 1;
+      margin-bottom: 5px;
+    }
+
+    /* Semantic state colours — ONLY for status */
+    .mc-val.safe {
+      color: var(--green);
+    }
+
+    .mc-val.warn {
+      color: var(--amber);
+    }
+
+    .mc-val.danger {
+      color: var(--red);
+    }
+
+    .mc-val.positive {
+      color: var(--green);
+    }
+
+    .mc-val.negative {
+      color: var(--red);
+    }
+
+    .mc-val.zero {
+      color: var(--tx-dim);
+    }
+
+    .mc-sub {
+      font-size: 0.75rem;
+      color: var(--tx-dim);
+    }
+
+    .pnl-pct {
+      font-size: 0.82rem;
+      margin-left: 6px;
+    }
+
+    .pnl-pct.positive {
+      color: var(--green);
+    }
+
+    .pnl-pct.negative {
+      color: var(--red);
+    }
+
+    /* Data rows */
+    .drows {
+      margin-top: 8px;
+    }
+
+    .dr {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--bd);
+      font-size: 0.79rem;
+    }
+
+    .dr:last-child {
+      border-bottom: none;
+    }
+
+    .dr-lbl {
+      color: var(--tx-dim);
+    }
+
+    .dr-val {
+      font-variant-numeric: tabular-nums;
+      color: var(--tx);
+    }
+
+    /* ══════════════════════════════════════
+   CHART PANEL
+══════════════════════════════════════ */
+    .chart-panel {
+      background: var(--surface);
+      border: 1px solid var(--bd);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    .chart-title {
+      font-family: var(--disp);
+      font-size: 0.62rem;
+      letter-spacing: 1.5px;
+      color: var(--tx-dim);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 180px;
+      display: block;
+    }
+
+    /* ══════════════════════════════════════
+   TABLE PANEL
+══════════════════════════════════════ */
+    .tbl-panel {
+      background: var(--surface);
+      border: 1px solid var(--bd);
+      padding: 14px 16px;
+      overflow-x: auto;
+    }
+
+    .tbl-title {
+      font-family: var(--disp);
+      font-size: 0.62rem;
+      letter-spacing: 1.5px;
+      color: var(--tx-dim);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.79rem;
+    }
+
+    thead th {
+      text-align: left;
+      color: var(--tx-dim);
+      border-bottom: 1px solid var(--bd-md);
+      padding: 6px 8px;
+      font-weight: 400;
+      letter-spacing: 0.2px;
+    }
+
+    tbody td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--bd);
+      font-variant-numeric: tabular-nums;
+      color: var(--tx);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .empty-msg {
+      color: var(--tx-muted);
+      text-align: center;
+      padding: 18px;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="brand">
+      <span class="brand-name">ΔNEUTRAL</span>
+      <span class="brand-sep">//</span>
+      <span class="brand-sub">HEDGE MONITOR</span>
+    </div>
+    <div class="hdr-right">
+      <span>UPTIME <span id="uptime">--</span></span>
+      <div class="conn-row">
+        <span class="dot" id="connDot"></span>
+        <span id="connStatus">CONNECTING</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- SETUP GRID -->
+  <div class="setup-grid">
+
+    <div class="panel" id="credentialsPanel">
+      <div class="panel-title">Hyperliquid Auth</div>
+      <div id="credStatus" class="status-line"></div>
+      <div id="credForm">
+        <div class="irow">
+          <input id="hlWalletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
+            spellcheck="false" />
+        </div>
+        <div class="irow">
+          <input id="hlKeyInput" type="password" class="t-in" placeholder="private key" autocomplete="new-password" />
+          <button id="saveCredBtn" class="btn">GO LIVE</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Position Discovery</div>
+      <div class="irow">
+        <input id="walletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
+          spellcheck="false" />
+        <button id="scanBtn" class="btn">SCAN</button>
+      </div>
+      <div id="scanStatus" class="status-line"></div>
+      <div id="positionList" class="position-list" style="display:none;"></div>
+    </div>
+
+  </div>
+
+  <!-- TABS CONTAINER -->
+  <div id="tabsContainer" class="tabs-container" style="display:none;"></div>
+
+  <!-- ACTIVE BANNER -->
+  <div id="activeBanner" class="active-banner" style="display:none;">
+    <span class="banner-dot"></span>
+    <span id="activeBannerText">MONITORING: NFT #—</span>
+  </div>
+
+  <!-- METRICS -->
+  <div class="metrics">
+
+    <div class="mc">
+      <div class="mc-label">Net Delta</div>
+      <div class="mc-val" id="netDelta">--</div>
+      <div class="mc-sub" id="netDeltaSub"></div>
+    </div>
+
+    <div class="mc">
+      <div class="mc-label" style="display:flex;justify-content:space-between;">
+        <span>P &amp; L ISOLADO (NFT)</span>
+        <span style="font-size:0.55rem;opacity:0.6;">VIRTUAL</span>
+      </div>
+      <div style="display:flex;align-items:baseline;margin-bottom:6px;">
+        <span class="mc-val" id="pnlTotal" style="font-size:1.25rem;">--</span>
+        <span class="pnl-pct" id="pnlPct"></span>
+      </div>
+      <div class="drows">
+        <div class="dr"><span class="dr-lbl">Unrealized</span><span class="dr-val" id="pnlUnreal">--</span></div>
+        <div class="dr"><span class="dr-lbl">Realized</span><span class="dr-val" id="pnlReal">--</span></div>
+        <div class="dr"><span class="dr-lbl">LP Fees (Net)</span><span class="dr-val" id="lpFees">--</span></div>
+        <div class="dr"><span class="dr-lbl">Funding</span><span class="dr-val" id="cumFunding">--</span></div>
+      </div>
+    </div>
+
+    <div class="mc">
+      <div class="mc-label">P &amp; L GLOBAL (CONTA)</div>
+      <div style="display:flex;align-items:baseline;margin-bottom:6px;">
+        <span class="mc-val" id="pnlGlobalVal" style="font-size:1.25rem;">--</span>
+        <span class="pnl-pct" id="pnlGlobalPct"></span>
+      </div>
+      <div class="drows">
+        <div class="dr"><span class="dr-lbl">initial hl+lp</span><span class="dr-val" id="initialTotal">--</span></div>
+        <div class="dr"><span class="dr-lbl">current hl+lp</span><span class="dr-val" id="currentTotal">--</span></div>
+        <div class="dr"><span class="dr-lbl">hl equity</span><span class="dr-val" id="hlEquity">--</span></div>
+        <div class="dr"><span class="dr-lbl">hl total fees</span><span class="dr-val" id="hlFees">--</span></div>
+      </div>
+    </div>
+
+    <div class="mc">
+      <div class="mc-label">LP Position</div>
+      <div class="drows">
+        <div class="dr"><span class="dr-lbl" id="t0Label">token0</span><span class="dr-val" id="t0Val">--</span></div>
+        <div class="dr"><span class="dr-lbl" id="t1Label">token1</span><span class="dr-val" id="t1Val">--</span></div>
+        <div class="dr"><span class="dr-lbl">total usd</span><span class="dr-val" id="totalUsd">--</span></div>
+        <div class="dr"><span class="dr-lbl">range</span><span class="dr-val" id="rangeStatus">--</span></div>
+      </div>
+    </div>
+
+    <div class="mc">
+      <div class="mc-label">Hedge · HL Perp</div>
+      <div class="drows">
+        <div class="dr"><span class="dr-lbl">size</span><span class="dr-val" id="hedgeSize">--</span></div>
+        <div class="dr"><span class="dr-lbl">notional</span><span class="dr-val" id="hedgeNotional">--</span></div>
+        <div class="dr"><span class="dr-lbl">side</span><span class="dr-val" id="hedgeSide">--</span></div>
+        <div class="dr"><span class="dr-lbl">funding</span><span class="dr-val" id="fundingRate">--</span></div>
+      </div>
+    </div>
+
+    <div class="mc">
+      <div class="mc-label">Bot Status</div>
+      <div class="drows">
+        <div class="dr"><span class="dr-lbl">rebal / day</span><span class="dr-val" id="dailyCount">--</span></div>
+        <div class="dr"><span class="dr-lbl">last rebal</span><span class="dr-val" id="lastRebalance">--</span></div>
+        <div class="dr"><span class="dr-lbl">price</span><span class="dr-val" id="price">--</span></div>
+      </div>
+    </div>
+
+    <!-- NEW STRATEGY CONFIG CARD -->
+    <div class="mc">
+      <div class="mc-label">Strategy Config</div>
+      <div class="drows">
+        <div class="dr" style="border:none;flex-direction:column;gap:5px;">
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <span class="dr-lbl">Hedge Ratio</span>
+            <input type="number" step="0.05" id="act-hedgeRatio" class="t-in-small">
+          </div>
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <span class="dr-lbl">Cooldown (m)</span>
+            <input type="number" id="act-rebalInt" class="t-in-small">
+          </div>
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <span class="dr-lbl">Delta Thresh</span>
+            <input type="number" step="0.01" id="act-deltaThresh" class="t-in-small">
+          </div>
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <span class="dr-lbl">Emerg Thresh</span>
+            <input type="number" step="0.01" id="act-emergThresh" class="t-in-small">
+          </div>
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <span class="dr-lbl">Emerg Ratio</span>
+            <input type="number" step="0.05" id="act-emergRatio" class="t-in-small">
+          </div>
+          <button class="btn btn-blue" id="updateConfigBtn"
+            style="width:100%;margin-top:5px;font-size:0.7rem;padding:4px;">UPDATE STRATEGY</button>
+
+          <div style="border-top:1px solid #2a2a2a;margin-top:10px;padding-top:8px;">
+            <div style="font-size:0.65rem;color:#888;margin-bottom:4px;">RESET P&amp;L BASE</div>
+            <div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:3px;">
+              <span class="dr-lbl">LP USD</span>
+              <input type="number" step="0.01" id="act-initLp" class="t-in-small" placeholder="0.00">
+            </div>
+            <div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:5px;">
+              <span class="dr-lbl">HL USD</span>
+              <input type="number" step="0.01" id="act-initHl" class="t-in-small" placeholder="0.00">
+            </div>
+            <button class="btn" id="resetPnlBtn"
+              style="width:100%;font-size:0.7rem;padding:4px;background-color:#1a2a3a;color:#88ccff;border:1px solid #254060;">RESET P&amp;L BASE</button>
+          </div>
+
+          <button class="btn" id="deactivateBtn" onclick="deactivateActivePosition()"
+            style="width:100%;margin-top:8px;font-size:0.7rem;padding:4px;background-color:#4a1a1a;color:#ff9999;border:1px solid #632525;">DEACTIVATE
+            PROTECTION</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CHART -->
+  <div class="chart-panel">
+    <div class="chart-title">Net Delta · Time Series</div>
+    <canvas id="deltaChart" height="180"></canvas>
+  </div>
+
+  <!-- TABLE -->
+  <div class="tbl-panel">
+    <div class="tbl-title">Recent Rebalances</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>From Size</th>
+          <th>To Size</th>
+          <th>From Notional</th>
+          <th>To Notional</th>
+          <th>Price</th>
+        </tr>
+      </thead>
+      <tbody id="rebalanceBody">
+        <tr>
+          <td colspan="6" class="empty-msg">No rebalances yet</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    (function () {
+      const $ = id => document.getElementById(id);
+
+      let dataMap = {};
+      let historyMap = {};
+      let rebalanceMap = {};
+      let activePositionsConfig = {};
+      let activeTokenId = null;
+
+      function fmt(n, d) { return n == null ? '--' : n.toFixed(d); }
+      function fmtUsd(n) { return n == null ? '--' : '$' + n.toFixed(2); }
+      function fmtTime(ts) { return new Date(ts).toLocaleTimeString(); }
+      function timeAgo(ts) {
+        if (!ts) return 'never';
+        const sec = Math.floor((Date.now() - ts) / 1000);
+        if (sec < 60) return sec + 's ago';
+        if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+        return Math.floor(sec / 3600) + 'h ago';
+      }
+      function fmtUptime(ms) {
+        const s = Math.floor(ms / 1000);
+        return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+      }
+
+      function updateCards(d) {
+        if (activeTokenId === null || d.tokenId !== activeTokenId) return;
+
+        const nd = $('netDelta');
+        nd.textContent = fmt(d.netDelta, 4);
+        const ratio = d.hedgeSize > 0 ? Math.abs(d.netDelta) / Math.abs(d.hedgeSize) : Math.abs(d.netDelta);
+        nd.className = 'mc-val ' + (ratio < 0.05 ? 'safe' : ratio < 0.15 ? 'warn' : 'danger');
+        $('netDeltaSub').textContent = 'hedge: ' + fmt(d.hedgeSize, 4);
+
+        $('t0Label').textContent = d.token0Symbol || 'token0';
+        $('t0Val').textContent = fmt(d.token0Amount, 4);
+        $('t1Label').textContent = d.token1Symbol || 'token1';
+        $('t1Val').textContent = fmt(d.token1Amount, 4);
+        $('totalUsd').textContent = fmtUsd(d.totalPositionUsd);
+
+        $('rangeStatus').innerHTML =
+          '<span class="range-badge ' + d.rangeStatus + '">' + d.rangeStatus + '</span>';
+
+        $('hedgeSize').textContent = fmt(d.hedgeSize, 4);
+        $('hedgeNotional').textContent = fmtUsd(d.hedgeNotionalUsd);
+        $('hedgeSide').textContent = d.hedgeSide || '--';
+        $('fundingRate').textContent =
+          d.fundingRate != null ? (d.fundingRate * 100).toFixed(4) + '%' : '--';
+
+        $('dailyCount').textContent = d.dailyRebalanceCount != null ? d.dailyRebalanceCount : '--';
+        $('lastRebalance').textContent = timeAgo(d.lastRebalanceTimestamp);
+        $('price').textContent = d.price != null ? d.price.toFixed(6) : '--';
+
+        var pv = $('pnlTotal');
+        if (d.pnlTotalUsd != null) {
+          var sign = d.pnlTotalUsd >= 0 ? '+' : '';
+          pv.textContent = sign + fmtUsd(d.pnlTotalUsd);
+          pv.className = 'mc-val ' + (d.pnlTotalUsd > 0.01 ? 'positive' : d.pnlTotalUsd < -0.01 ? 'negative' : 'zero');
+          pv.style.fontSize = '1.25rem';
+          var pp = $('pnlPct');
+          pp.textContent = '(' + sign + fmt(d.pnlTotalPercent, 2) + '%)';
+          pp.className = 'pnl-pct ' + (d.pnlTotalPercent > 0 ? 'positive' : d.pnlTotalPercent < 0 ? 'negative' : '');
+        }
+
+        var pgv = $('pnlGlobalVal');
+        var pgp = $('pnlGlobalPct');
+        if (d.accountPnlUsd != null) {
+          var s = d.accountPnlUsd >= 0 ? '+' : '';
+          pgv.textContent = s + fmtUsd(d.accountPnlUsd);
+          pgv.className = 'mc-val ' + (d.accountPnlUsd > 0.01 ? 'positive' : d.accountPnlUsd < -0.01 ? 'negative' : 'zero');
+          pgp.textContent = '(' + s + fmt(d.accountPnlPercent, 2) + '%)';
+          pgp.className = 'pnl-pct ' + (d.accountPnlPercent > 0 ? 'positive' : d.accountPnlPercent < 0 ? 'negative' : '');
+        }
+
+        if (d.unrealizedPnlUsd != null) {
+          var s = d.unrealizedPnlUsd >= 0 ? '+' : '';
+          $('pnlUnreal').innerHTML = `<span class="${d.unrealizedPnlUsd >= 0 ? 'positive' : 'negative'}">${s}${fmtUsd(d.unrealizedPnlUsd)}</span>`;
+        }
+
+        if (d.realizedPnlUsd != null) {
+          var s = d.realizedPnlUsd >= 0 ? '+' : '';
+          $('pnlReal').innerHTML = `<span class="${d.realizedPnlUsd >= 0 ? 'positive' : 'negative'}">${s}${fmtUsd(d.realizedPnlUsd)}</span>`;
+        }
+
+        $('lpFees').textContent = d.lpFeesUsd != null ? '+' + fmtUsd(d.lpFeesUsd) : '--';
+        $('cumFunding').textContent = d.cumulativeFundingUsd != null
+          ? (d.cumulativeFundingUsd >= 0 ? '+' : '') + fmtUsd(d.cumulativeFundingUsd) : '--';
+        $('hlFees').textContent = d.cumulativeHlFeesUsd != null ? '-' + fmtUsd(d.cumulativeHlFeesUsd) : '--';
+
+        $('initialTotal').textContent = fmtUsd(d.initialTotalUsd);
+        $('currentTotal').textContent = fmtUsd(d.currentTotalUsd);
+        $('hlEquity').textContent = fmtUsd(d.hlEquity);
+
+        // Update active config inputs if they haven't been touched yet or on tab switch
+        updateStrategyInputs();
+      }
+
+      function updateStrategyInputs() {
+        if (!activeTokenId || !activePositionsConfig[activeTokenId]) return;
+        var cfg = activePositionsConfig[activeTokenId];
+
+        // Only update if inputs are not focused to avoid interrupting user typing
+        if (document.activeElement.className !== 't-in-small') {
+          $('act-hedgeRatio').value = cfg.hedgeRatio ?? 0;
+          $('act-rebalInt').value = Math.round((cfg.cooldownSeconds ?? 0) / 60);
+          $('act-deltaThresh').value = cfg.deltaMismatchThreshold ?? 0;
+          $('act-emergThresh').value = cfg.emergencyMismatchThreshold ?? 0;
+          $('act-emergRatio').value = cfg.emergencyHedgeRatio ?? 0;
+        }
+      }
+
+      window.updateActiveConfig = function () {
+        if (!activeTokenId) return;
+        var btn = $('updateConfigBtn');
+        var originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'UPDATING...';
+
+        var body = {
+          tokenId: activeTokenId,
+          hedgeRatio: parseFloat($('act-hedgeRatio').value),
+          cooldownSeconds: Math.round(parseFloat($('act-rebalInt').value) * 60),
+          deltaMismatchThreshold: parseFloat($('act-deltaThresh').value),
+          emergencyMismatchThreshold: parseFloat($('act-emergThresh').value),
+          emergencyHedgeRatio: parseFloat($('act-emergRatio').value)
+        };
+
+        fetch('/api/update-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        }).then(r => r.json()).then(d => {
+          btn.disabled = false;
+          btn.textContent = d.success ? 'UPDATED!' : 'ERROR';
+          setTimeout(() => { btn.textContent = originalText; }, 2000);
+        }).catch(() => {
+          btn.disabled = false;
+          btn.textContent = 'FAILED';
+          setTimeout(() => { btn.textContent = originalText; }, 2000);
+        });
+      };
+
+      window.deactivateActivePosition = function () {
+        if (!activeTokenId) return;
+
+        var conf = prompt('To STOP protecting NFT #' + activeTokenId + ' and CLOSE its hedge on Hyperliquid, type CONFIRM below:');
+        if (conf !== 'CONFIRM') return;
+
+        var btn = $('deactivateBtn');
+        btn.disabled = true;
+        btn.textContent = 'DEACTIVATING...';
+
+        fetch('/api/deactivate-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: activeTokenId })
+        }).then(r => r.json()).then(d => {
+          btn.disabled = false;
+          btn.textContent = 'DEACTIVATED';
+          // Reload page or refresh UI
+          setTimeout(() => { location.reload(); }, 1500);
+        }).catch(() => {
+          btn.disabled = false;
+          btn.textContent = 'FAILED';
+        });
+      };
+
+      $('updateConfigBtn').addEventListener('click', window.updateActiveConfig);
+
+      $('resetPnlBtn').addEventListener('click', function () {
+        if (!activeTokenId) return;
+        var lp = parseFloat($('act-initLp').value);
+        var hl = parseFloat($('act-initHl').value);
+        if (isNaN(lp) || isNaN(hl) || lp <= 0 || hl < 0) {
+          alert('Preencha LP USD (> 0) e HL USD (>= 0)');
+          return;
+        }
+        if (!confirm('Resetar base do P&L para LP=$' + lp.toFixed(2) + ' HL=$' + hl.toFixed(2) + '?')) return;
+        var btn = $('resetPnlBtn');
+        btn.disabled = true;
+        btn.textContent = 'RESETTING...';
+        fetch('/api/reset-pnl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: activeTokenId, initialLpUsd: lp, initialHlUsd: hl })
+        }).then(r => r.json()).then(d => {
+          btn.disabled = false;
+          btn.textContent = d.success ? 'RESET OK!' : 'ERROR';
+          setTimeout(function () { btn.textContent = 'RESET P&L BASE'; }, 3000);
+        }).catch(function () {
+          btn.disabled = false;
+          btn.textContent = 'FAILED';
+          setTimeout(function () { btn.textContent = 'RESET P&L BASE'; }, 3000);
+        });
+      });
+
+      function drawChart() {
+        const canvas = $('deltaChart');
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+        const W = rect.width, H = rect.height, pad = 38;
+
+        ctx.clearRect(0, 0, W, H);
+
+        const deltaHistory = historyMap[activeTokenId] || [];
+
+        if (deltaHistory.length < 2) {
+          ctx.fillStyle = '#2a3d50';
+          ctx.font = '12px Share Tech Mono, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('Waiting for data...', W / 2, H / 2);
+          return;
+        }
+
+        const values = deltaHistory.map(d => d.netDelta);
+        const min = Math.min(...values), max = Math.max(...values);
+        const range = max - min || 1;
+
+        // Subtle horizontal grid
+        ctx.strokeStyle = '#1a2230';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+          const y = pad + (i / 4) * (H - pad * 2);
+          ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
+        }
+
+        // Zero line
+        const zeroY = H - pad - ((0 - min) / range) * (H - pad * 2);
+        ctx.strokeStyle = '#2e4060';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(pad, zeroY); ctx.lineTo(W - pad, zeroY); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Labels
+        ctx.fillStyle = '#4a6070';
+        ctx.font = '9px Share Tech Mono, monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(fmt(max, 4), pad - 6, pad + 4);
+        ctx.fillText(fmt(min, 4), pad - 6, H - pad + 4);
+        ctx.fillText('0', pad - 6, zeroY + 4);
+
+        // Line
+        const n = values.length;
+        ctx.strokeStyle = '#60a5fa';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const x = pad + (i / (n - 1)) * (W - pad * 2);
+          const y = H - pad - ((values[i] - min) / range) * (H - pad * 2);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Fill
+        ctx.lineTo(pad + ((n - 1) / (n - 1)) * (W - pad * 2), H - pad);
+        ctx.lineTo(pad, H - pad);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, pad, 0, H - pad);
+        grad.addColorStop(0, 'rgba(96,165,250,0.15)');
+        grad.addColorStop(1, 'rgba(96,165,250,0.01)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+
+      function renderRebalances() {
+        const tbody = $('rebalanceBody');
+        const rebalances = rebalanceMap[activeTokenId] || [];
+
+        if (rebalances.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">No rebalances yet</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rebalances.slice().reverse().map(r =>
+          '<tr>' +
+          '<td>' + fmtTime(r.timestamp) + '</td>' +
+          '<td>' + fmt(r.fromSize, 4) + '</td>' +
+          '<td>' + fmt(r.toSize, 4) + '</td>' +
+          '<td>' + fmtUsd(r.fromNotional) + '</td>' +
+          '<td>' + fmtUsd(r.toNotional) + '</td>' +
+          '<td>' + fmt(r.price, 6) + '</td>' +
+          '</tr>'
+        ).join('');
+      }
+
+      let bootTime = null;
+      setInterval(function () {
+        if (bootTime != null) $('uptime').textContent = fmtUptime(Date.now() - bootTime);
+      }, 5000);
+
+      var discoveredPositions = [];
+
+      window.toggleConfig = function (index) {
+        var p = discoveredPositions[index];
+        var panel = $('cfg-' + p.tokenId);
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+      }
+
+      function renderPositionList(positions) {
+        var list = $('positionList');
+        if (positions.length === 0) {
+          list.innerHTML = '<div class="empty-msg">No Uniswap V3/V4 positions found.</div>';
+          list.style.display = 'flex';
+          return;
+        }
+        list.innerHTML = positions.map(function (p, i) {
+          var isActive = activePositionsConfig[p.tokenId] != null;
+          var verLabel = p.protocolVersion ? p.protocolVersion.toUpperCase() : 'V3';
+          return '<div class="position-item' + (isActive ? ' active-position' : '') + '">' +
+            '<div class="pos-info">' +
+            '<div class="pos-title"><span class="ver-pill">' + verLabel + '</span> NFT #' + p.tokenId +
+            ' &nbsp; ' + p.token0Symbol + '/' + p.token1Symbol +
+            ' &nbsp; <span class="range-badge ' + p.rangeStatus + '">' + p.rangeStatus + '</span>' +
+            '</div>' +
+            '<div class="pos-detail">' +
+            p.token0AmountFormatted.toFixed(4) + ' ' + p.token0Symbol +
+            ' + ' + p.token1AmountFormatted.toFixed(4) + ' ' + p.token1Symbol +
+            ' · fee ' + (p.fee / 10000).toFixed(2) + '%' +
+            '</div>' +
+            '</div>' +
+            '<div class="pos-usd">~' + fmtUsd(p.estimatedUsd) + '</div>' +
+            (isActive
+              ? '<span class="active-badge">● ACTIVE</span>'
+              : '<button class="btn btn-blue" onclick="toggleConfig(' + i + ')">CONFIGURE</button>'
+            ) +
+            '</div>' +
+            (isActive ? '' :
+              '<div class="config-panel" id="cfg-' + p.tokenId + '" style="display:none;">' +
+              '<div class="irow"><label>Hedge Ratio (%):</label> <input type="number" step="0.05" id="cfg-ratio-' + p.tokenId + '" value="0.8" class="t-in"></div>' +
+              '<div class="irow"><label>Cooldown (min):</label> <input type="number" id="cfg-int-' + p.tokenId + '" value="240" class="t-in"></div>' +
+              '<div class="irow"><label>Delta Thresh:</label> <input type="number" step="0.01" id="cfg-dth-' + p.tokenId + '" value="0.08" class="t-in"></div>' +
+              '<div class="irow"><label>Emerg Thresh:</label> <input type="number" step="0.01" id="cfg-eth-' + p.tokenId + '" value="0.6" class="t-in"></div>' +
+              '<div class="irow"><label>Emerg Hedge Ratio:</label> <input type="number" step="0.05" id="cfg-ehr-' + p.tokenId + '" value="0.5" class="t-in"></div>' +
+              '<button class="btn btn-blue" onclick="activatePosition(' + i + ')" style="margin-top:4px;">START PROTECTION</button>' +
+              '</div>');
+        }).join('');
+        list.style.display = 'flex';
+      }
+
+      window.activatePosition = function (index) {
+        var p = discoveredPositions[index];
+        if (!p) return;
+
+        var hedgeRatio = parseFloat($('cfg-ratio-' + p.tokenId).value) || 0;
+        var timeRebal = parseFloat($('cfg-int-' + p.tokenId).value) || 0;
+        var dThresh = parseFloat($('cfg-dth-' + p.tokenId).value) || 0;
+        var eThresh = parseFloat($('cfg-eth-' + p.tokenId).value) || 0;
+        var eRatio = parseFloat($('cfg-ehr-' + p.tokenId).value) || 0;
+
+        if (!confirm(
+          'Activate delta-neutral protection for ' + (p.protocolVersion || 'V3').toUpperCase() + ' NFT #' + p.tokenId + '?\n\n' +
+          'Protecting ' + (hedgeRatio * 100) + '%.\n\n' +
+          'This will capture current LP and HL equity as the PnL baseline.'
+        )) return;
+        $('scanStatus').textContent = 'Activating NFT #' + p.tokenId + '...';
+
+        fetch('/api/activate-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokenId: p.tokenId,
+            protocolVersion: p.protocolVersion || 'v3',
+            poolAddress: p.poolAddress,
+            token0Symbol: p.token0Symbol, token1Symbol: p.token1Symbol,
+            hedgeRatio: hedgeRatio,
+            cooldownSeconds: Math.round(timeRebal * 60),
+            deltaMismatchThreshold: dThresh,
+            emergencyMismatchThreshold: eThresh,
+            emergencyHedgeRatio: eRatio
+          }),
+        }).then(r => r.json()).then(function (data) {
+          if (data.queued)
+            $('scanStatus').textContent = 'Activation sent — waiting for confirmation...';
+        }).catch(function () {
+          $('scanStatus').textContent = 'Activation request failed.';
+        });
+      };
+
+      window.switchTab = function (tokenId) {
+        activeTokenId = tokenId;
+        renderTabs();
+
+        if (dataMap[tokenId]) updateCards(dataMap[tokenId]);
+        updateStrategyInputs();
+
+        fetch('/api/history?tokenId=' + tokenId).then(r => r.json()).then(h => {
+          historyMap[tokenId] = h || [];
+          drawChart();
+        });
+        fetch('/api/rebalances?tokenId=' + tokenId).then(r => r.json()).then(r => {
+          rebalanceMap[tokenId] = r || [];
+          renderRebalances();
+        });
+      };
+
+      function renderTabs() {
+        var container = $('tabsContainer');
+        var tokenIds = Object.keys(activePositionsConfig);
+        if (tokenIds.length === 0) {
+          container.style.display = 'none';
+          return;
+        }
+        container.style.display = 'flex';
+        container.innerHTML = tokenIds.map(tid => {
+          return '<div class="tab-btn ' + (activeTokenId == tid ? 'active' : '') + '" onclick="switchTab(' + tid + ')">NFT #' + tid + '</div>';
+        }).join('');
+
+        $('activeBannerText').textContent = 'MONITORING: NFT #' + activeTokenId;
+        $('activeBanner').style.display = 'flex';
+      }
+
+      $('scanBtn').addEventListener('click', function () {
+        var addr = $('walletInput').value.trim();
+        if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+          $('scanStatus').textContent = 'Enter a valid 0x wallet address.';
+          return;
+        }
+        $('scanBtn').disabled = true;
+        $('scanStatus').textContent = 'Scanning…';
+        $('positionList').style.display = 'none';
+        fetch('/api/scan-wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ walletAddress: addr }),
+        }).then(r => r.json()).then(function (data) {
+          $('scanBtn').disabled = false;
+          if (data.error) { $('scanStatus').textContent = 'Error: ' + data.error; return; }
+          discoveredPositions = data.positions || [];
+          $('scanStatus').textContent = 'Found ' + discoveredPositions.length + ' position(s).';
+          renderPositionList(discoveredPositions);
+        }).catch(function () {
+          $('scanBtn').disabled = false;
+          $('scanStatus').textContent = 'Scan failed — check connection.';
+        });
+      });
+
+      function showCredentialsStatus(walletAddress) {
+        $('credStatus').textContent = '● LIVE  ' + walletAddress;
+        $('credStatus').style.color = '#34d399';
+      }
+
+      $('saveCredBtn').addEventListener('click', function () {
+        var key = $('hlKeyInput').value.trim();
+        var addr = $('hlWalletInput').value.trim();
+        if (!key || !/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+          $('credStatus').textContent = 'Enter valid private key and wallet address.';
+          $('credStatus').style.color = '';
+          return;
+        }
+        $('saveCredBtn').disabled = true;
+        $('credStatus').textContent = 'Saving…';
+        $('credStatus').style.color = '';
+        fetch('/api/credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ privateKey: key, walletAddress: addr }),
+        }).then(r => r.json()).then(function (d) {
+          $('saveCredBtn').disabled = false;
+          if (d.error) { $('credStatus').textContent = 'Error: ' + d.error; return; }
+          $('credStatus').textContent = 'Saved — awaiting confirmation…';
+          $('hlKeyInput').value = '';
+          $('hlWalletInput').value = '';
+        }).catch(function () {
+          $('saveCredBtn').disabled = false;
+          $('credStatus').textContent = 'Request failed.';
+        });
+      });
+
+      fetch('/api/state').then(r => r.json()).then(s => {
+        bootTime = Date.now() - s.uptime;
+
+        activePositionsConfig = s.activePositions || {};
+
+        var tokenIds = Object.keys(activePositionsConfig);
+        if (tokenIds.length > 0) {
+          activeTokenId = parseInt(tokenIds[0]);
+          renderTabs();
+        }
+
+        if (s.dataMap) {
+          dataMap = s.dataMap;
+          if (activeTokenId && dataMap[activeTokenId]) updateCards(dataMap[activeTokenId]);
+        }
+
+        if (activeTokenId) {
+          fetch('/api/history?tokenId=' + activeTokenId).then(r => r.json()).then(h => {
+            historyMap[activeTokenId] = h; drawChart();
+          }).catch(() => { });
+
+          fetch('/api/rebalances?tokenId=' + activeTokenId).then(r => r.json()).then(r => {
+            rebalanceMap[activeTokenId] = r; renderRebalances();
+          }).catch(() => { });
+        }
+
+        if (s.credentials && s.credentials.isSet) showCredentialsStatus(s.credentials.walletAddress);
+      }).catch(() => { });
+
+      function connectSSE() {
+        const es = new EventSource('/api/events');
+
+        es.onopen = function () {
+          $('connDot').className = 'dot connected';
+          $('connStatus').textContent = 'CONNECTED';
+        };
+
+        es.addEventListener('update', function (e) {
+          const d = JSON.parse(e.data);
+          console.log('[Dashboard] Update received:', d);
+          dataMap[d.tokenId] = d;
+          if (!historyMap[d.tokenId]) historyMap[d.tokenId] = [];
+          historyMap[d.tokenId].push(d);
+          if (historyMap[d.tokenId].length > 200) historyMap[d.tokenId].shift();
+
+          if (d.tokenId === activeTokenId) {
+            updateCards(d);
+            drawChart();
+          }
+        });
+
+        es.addEventListener('rebalance', function (e) {
+          var r = JSON.parse(e.data);
+          if (!rebalanceMap[r.tokenId]) rebalanceMap[r.tokenId] = [];
+          rebalanceMap[r.tokenId].push(r);
+          if (rebalanceMap[r.tokenId].length > 50) rebalanceMap[r.tokenId].shift();
+          if (r.tokenId === activeTokenId) {
+            renderRebalances();
+          }
+        });
+
+        es.addEventListener('activationResult', function (e) {
+          var r = JSON.parse(e.data);
+          if (r.success) {
+            activePositionsConfig[r.tokenId] = { tokenId: r.tokenId };
+            if (!activeTokenId) activeTokenId = r.tokenId;
+            renderTabs();
+
+            $('scanStatus').textContent =
+              'NFT #' + r.tokenId + ' activated. LP: ' + fmtUsd(r.initialLpUsd) +
+              ' | HL: ' + fmtUsd(r.initialHlUsd);
+            renderPositionList(discoveredPositions);
+          } else {
+            $('scanStatus').textContent = 'Activation failed: ' + (r.error || 'unknown');
+          }
+        });
+
+        es.addEventListener('positionsDiscovered', function (e) {
+          discoveredPositions = JSON.parse(e.data);
+          if ($('positionList').style.display !== 'none') renderPositionList(discoveredPositions);
+        });
+
+        es.addEventListener('credentialsUpdated', function (e) {
+          var d = JSON.parse(e.data);
+          if (d.walletAddress) showCredentialsStatus(d.walletAddress);
+        });
+
+        es.addEventListener('configUpdated', function (e) {
+          var cfg = JSON.parse(e.data);
+          activePositionsConfig[cfg.tokenId] = cfg;
+          if (cfg.tokenId === activeTokenId) {
+            updateStrategyInputs();
+          }
+        });
+
+        es.onerror = function () {
+          $('connDot').className = 'dot';
+          $('connStatus').textContent = 'RECONNECTING';
+          es.close();
+          setTimeout(connectSSE, 3000);
+        };
+      }
+
+      connectSSE();
+      window.addEventListener('resize', drawChart);
+    })();
+  </script>
+</body>
+
+</html>

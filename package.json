@@ -1,0 +1,28 @@
+{
+  "name": "apr-delta-neuto",
+  "version": "1.0.0",
+  "description": "Delta-neutral LP bot for Uniswap V3 positions",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "backtest": "ts-node src/backtest/run.ts",
+    "analysis": "ts-node src/analysis/run.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.4",
+    "express": "^5.2.1",
+    "hyperliquid": "^1.7.7",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
