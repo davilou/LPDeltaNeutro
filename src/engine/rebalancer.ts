@@ -186,24 +186,29 @@ export class Rebalancer {
     // Get current hedge position for this symbol
     const currentHedge = await this.exchange.getPosition(hedgeSymbol);
 
-    // Forced close: LP saiu do range, hedge deve ser fechado independente de triggers
+    // Forced close: LP acima do range (100% stablecoin), fecha o hedge
     const isForcedClose = target.size <= 0 && currentHedge.size > 0;
+    // Forced hedge: LP abaixo do range (100% token volátil), aumenta hedge até o target imediatamente
+    const isForcedHedge = position.rangeStatus === 'below-range' && target.size > currentHedge.size + 1e-8;
 
     const lastRebalancePrice = ps.lastRebalancePrice ?? 0;
 
     // Check triggers — cada um retorna reason string ou null
-    const emergencyReason = !isForcedClose
+    const emergencyReason = !isForcedClose && !isForcedHedge
       ? this.checkEmergencyPriceMovement(tokenId, position.price, lastRebalancePrice, emergencyPriceMovThreshold)
       : null;
-    const timeReason = !isForcedClose && !emergencyReason
+    const timeReason = !isForcedClose && !isForcedHedge && !emergencyReason
       ? this.checkTimeRebalance(tokenId, ps, rebalanceIntervalMin)
       : null;
     const forcedCloseReason = isForcedClose
-      ? `forced close: LP exited range (hedge=${currentHedge.size.toFixed(4)})`
+      ? `forced close: LP exited range above (hedge=${currentHedge.size.toFixed(4)})`
+      : null;
+    const forcedHedgeReason = isForcedHedge
+      ? `forced hedge: LP below range, 100% volatile exposure (${currentHedge.size.toFixed(4)} → ${target.size.toFixed(4)})`
       : null;
 
-    const triggerReason = forcedCloseReason ?? emergencyReason ?? timeReason ?? null;
-    const isEmergency = isForcedClose || emergencyReason !== null;
+    const triggerReason = forcedCloseReason ?? forcedHedgeReason ?? emergencyReason ?? timeReason ?? null;
+    const isEmergency = isForcedClose || isForcedHedge || emergencyReason !== null;
     const needsRebalance = triggerReason !== null;
 
     // Compute net delta and total position value
@@ -313,7 +318,7 @@ export class Rebalancer {
           checkMaxNotional(effectiveNotional),
           checkDuplicate(effectiveSize, currentHedge.size),
         ];
-        const rateLimitChecks = isForcedClose ? [] : [
+        const rateLimitChecks = (isForcedClose || isForcedHedge) ? [] : [
           checkMinNotional(changeUsd),
           checkDailyLimit(ps.dailyRebalanceCount),
         ];
@@ -338,7 +343,7 @@ export class Rebalancer {
     }
 
     // Execute rebalance
-    const rebalanceLabel = isEmergency ? 'EMERGENCY REBALANCE' : 'REBALANCING';
+    const rebalanceLabel = isForcedClose ? 'FORCED CLOSE' : isForcedHedge ? 'FORCED HEDGE' : isEmergency ? 'EMERGENCY REBALANCE' : 'REBALANCING';
     logger.info(
       `[NFT#${tokenId}] ${rebalanceLabel} [trigger: ${triggerReason}]: ` +
       `${currentHedge.size.toFixed(4)} → ${effectiveSize.toFixed(4)} ` +
