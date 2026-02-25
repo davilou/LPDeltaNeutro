@@ -18,6 +18,7 @@ export interface DashboardData {
   rangeStatus: string;
   dailyRebalanceCount: number;
   lastRebalanceTimestamp: number;
+  lastRebalancePrice: number;
   // PnL (Virtual / Isolated)
   pnlTotalUsd?: number;
   pnlTotalPercent?: number;
@@ -53,9 +54,8 @@ export interface ActivatePositionRequest {
   protectionType?: string;
   hedgeRatio?: number;
   cooldownSeconds?: number;
-  deltaMismatchThreshold?: number;
-  emergencyMismatchThreshold?: number;
-  emergencyHedgeRatio?: number;
+  priceMovementThreshold?: number;
+  emergencyPriceMovementThreshold?: number;
 }
 
 export interface ActivationResult {

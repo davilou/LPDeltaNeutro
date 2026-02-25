@@ -1,6 +1,6 @@
 # APRDeltaNeuto
 
-Bot de hedging delta-neutro para posições Uniswap V3 na Base Chain. Lê LP positions on-chain, calcula delta mismatch e executa hedges em perpétuos na Hyperliquid. Inclui dashboard de monitoramento e persistência no Supabase.
+Bot de hedging delta-neutro para posições Uniswap V3/V4 na Base Chain. Lê LP positions on-chain e executa hedges em perpétuos na Hyperliquid, disparado por movimento de preço do ativo volátil. Inclui dashboard de monitoramento e persistência no Supabase.
 
 ---
 
@@ -106,43 +106,38 @@ Pelo dashboard é possível:
 
 ## Estratégia
 
-### Threshold adaptativo por gamma
+### Gatilhos de rebalance
 
-Ranges estreitos têm gamma alto (delta muda rapidamente com o preço), causando rebalances excessivos. O threshold se ajusta automaticamente:
+O bot usa dois gatilhos para decidir quando rebalancear:
 
-```
-effectiveThreshold = DELTA_MISMATCH_THRESHOLD × (ADAPTIVE_REFERENCE_TICK_RANGE / tickRange)
-```
+| Gatilho | Condição | Comportamento |
+|---|---|---|
+| **Price movement** | `\|preço atual − preço ref\| / preço ref > PRICE_MOVEMENT_THRESHOLD` | Rebalance normal, respeita cooldown |
+| **Emergency** | Mesmo critério com `EMERGENCY_PRICE_MOVEMENT_THRESHOLD` | Bypassa cooldown |
+| **Timer** | `TIME_REBALANCE_INTERVAL_MIN` minutos desde o último rebalance | Rebalance periódico |
+| **Forced close** | LP saiu do range (`rangeStatus != 'in-range'`) | Fecha o hedge imediatamente |
 
-Ativar no `.env`:
-
-```env
-ADAPTIVE_THRESHOLD=true
-ADAPTIVE_REFERENCE_TICK_RANGE=2040   # tick range de referência da sua posição
-ADAPTIVE_MAX_THRESHOLD=0.35          # teto máximo do threshold
-```
+O `preço ref` é o preço no momento do último rebalance executado (`lastRebalancePrice`), visível no dashboard em **Ref Price**.
 
 ### Parâmetros por posição (dashboard)
 
 | Campo | Descrição |
 |---|---|
 | **Hedge Ratio** | Fração da exposição protegida. `0.8` = protege 80% dos tokens voláteis |
-| **Cooldown (m)** | Tempo mínimo entre rebalances em minutos. Sobrescreve o `COOLDOWN_SECONDS` global |
-| **Delta Thresh** | % de mismatch para acionar rebalance normal |
-| **Emerg Thresh** | % de mismatch para rebalance de emergência (bypassa cooldown) |
-| **Emerg Ratio** | Fração do gap fechada no rebalance de emergência (`0.5` = fecha metade) |
+| **Cooldown (m)** | Tempo mínimo entre rebalances em minutos |
+| **Price Move %** | % de variação de preço para acionar rebalance normal (ex: `0.05` = 5%) |
+| **Emerg Price %** | % de variação de preço para emergency — bypassa cooldown (ex: `0.15` = 15%) |
 
 ### Parâmetros globais (`.env`)
 
 | Variável | Descrição | Padrão |
 |---|---|---|
-| `COOLDOWN_SECONDS` | Cooldown global entre rebalances (sobrescrito por posição) | `14400` (4h) |
-| `DELTA_MISMATCH_THRESHOLD` | % de mismatch padrão para acionar rebalance | `0.08` |
+| `COOLDOWN_SECONDS` | Cooldown mínimo entre rebalances | `14400` (4h) |
+| `PRICE_MOVEMENT_THRESHOLD` | % de movimento de preço para rebalance normal | `0.05` (5%) |
+| `EMERGENCY_PRICE_MOVEMENT_THRESHOLD` | % de movimento para emergency (bypassa cooldown) | `0.15` (15%) |
+| `TIME_REBALANCE_INTERVAL_MIN` | Rebalance periódico por tempo (minutos, `0` = off) | `0` |
 | `MAX_DAILY_REBALANCES` | Limite de ordens por dia | `150` |
 | `MAX_HOURLY_REBALANCES` | Limite de ordens por hora | `7` |
-| `EMERGENCY_MISMATCH_THRESHOLD` | Threshold para bypass do cooldown | `0.75` |
-| `TIME_REBALANCE_INTERVAL_MIN` | Rebalance periódico forçado por tempo (minutos, `0` = off) | `0` |
-| `TIME_REBALANCE_MIN_MISMATCH` | Mismatch mínimo para o timer forçado disparar | `0.03` |
 
 ---
 

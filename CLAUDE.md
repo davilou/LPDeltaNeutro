@@ -1,7 +1,7 @@
 # CLAUDE.md — APRDeltaNeuto
 
 ## Projeto
-Bot de hedging delta-neutro para posições Uniswap V3 na Base Chain. Lê LP positions on-chain, calcula delta mismatch e executa hedges em perpétuos na Hyperliquid. Inclui dashboard de monitoramento e módulo de backtesting.
+Bot de hedging delta-neutro para posições Uniswap V3/V4 na Base Chain. Lê LP positions on-chain e executa hedges em perpétuos na Hyperliquid, disparado por movimento de preço do ativo volátil. Inclui dashboard de monitoramento e módulo de backtesting.
 
 ## Stack
 - **Runtime**: Node.js + TypeScript (strict, ES2022, CommonJS)
@@ -58,6 +58,17 @@ src/
 - Toda iteração do bot passa pelo `rebalancer.ts` — não executar hedge direto do `index.ts`.
 - RPC: sempre via `fallbackProvider` (multi-RPC com fallback automático).
 - Configurações de estratégia (thresholds, bands) vêm do `.env` via `config.ts`.
+
+## Gatilhos de Rebalance
+O sistema usa **dois gatilhos** para acionar rebalances (sem delta mismatch percentual):
+1. **Price movement** — `|preço atual − lastRebalancePrice| / lastRebalancePrice > PRICE_MOVEMENT_THRESHOLD`
+2. **Timer** — intervalo fixo via `TIME_REBALANCE_INTERVAL_MIN`
+3. **Emergency** — mesmo critério do price movement com `EMERGENCY_PRICE_MOVEMENT_THRESHOLD`, bypassa cooldown
+4. **Forced close** — LP saiu do range, fecha hedge independente de outros gatilhos
+
+`lastRebalancePrice` é persistido em `state.json` e atualizado a cada rebalance executado. Se for `0` (posição nova ou migrada), os gatilhos de preço não disparam — aguarda timer ou forced close.
+
+Variáveis relevantes: `PRICE_MOVEMENT_THRESHOLD` (default 5%), `EMERGENCY_PRICE_MOVEMENT_THRESHOLD` (default 15%), `COOLDOWN_SECONDS`, `TIME_REBALANCE_INTERVAL_MIN`.
 
 ## Diretrizes para Respostas
 - Responder diretamente com código quando a solicitação for clara.

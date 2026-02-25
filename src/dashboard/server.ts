@@ -83,9 +83,8 @@ export function startDashboard(port: number): void {
       protectionType: body.protectionType,
       hedgeRatio: body.hedgeRatio,
       cooldownSeconds: body.cooldownSeconds,
-      deltaMismatchThreshold: body.deltaMismatchThreshold,
-      emergencyMismatchThreshold: body.emergencyMismatchThreshold,
-      emergencyHedgeRatio: body.emergencyHedgeRatio,
+      priceMovementThreshold: body.priceMovementThreshold,
+      emergencyPriceMovementThreshold: body.emergencyPriceMovementThreshold,
     };
     dashboardStore.requestActivation(request);
     res.json({ queued: true, tokenId: request.tokenId });

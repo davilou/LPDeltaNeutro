@@ -90,14 +90,14 @@ export interface ActivePositionConfig {
   protectionType?: string; // 'delta-neutral'
   hedgeRatio?: number; // 0.8 to protect 80%
   cooldownSeconds?: number; // min time between rebalances (overrides global config)
-  deltaMismatchThreshold?: number;
-  emergencyMismatchThreshold?: number;
-  emergencyHedgeRatio?: number;
+  priceMovementThreshold?: number;          // % de movimento de preço para rebalance normal
+  emergencyPriceMovementThreshold?: number; // % de movimento de preço para emergency (bypassa cooldown)
 }
 
 export interface PositionState {
   lastHedge: HedgeState;
   lastPrice: number;
+  lastRebalancePrice: number; // preço no momento do último rebalance (referência para price movement trigger)
   lastRebalanceTimestamp: number;
   dailyRebalanceCount: number;
   dailyResetDate: string;

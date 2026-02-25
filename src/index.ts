@@ -79,6 +79,7 @@ async function main() {
         rangeStatus: '-',
         dailyRebalanceCount: ps.dailyRebalanceCount || 0,
         lastRebalanceTimestamp: ps.lastRebalanceTimestamp || 0,
+        lastRebalancePrice: ps.lastRebalancePrice || 0,
         pnlTotalUsd: ps.pnl?.virtualPnlUsd ?? 0,
         pnlTotalPercent: 0,
         accountPnlUsd: 0,
@@ -149,9 +150,8 @@ async function main() {
         protectionType: req.protectionType || 'delta-neutral',
         hedgeRatio: req.hedgeRatio ?? 1.0,
         cooldownSeconds: req.cooldownSeconds ?? config.cooldownSeconds,
-        deltaMismatchThreshold: req.deltaMismatchThreshold ?? config.deltaMismatchThreshold,
-        emergencyMismatchThreshold: req.emergencyMismatchThreshold ?? config.emergencyMismatchThreshold,
-        emergencyHedgeRatio: req.emergencyHedgeRatio ?? config.emergencyHedgeRatio,
+        priceMovementThreshold: req.priceMovementThreshold ?? config.priceMovementThreshold,
+        emergencyPriceMovementThreshold: req.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold,
       };
 
       rebalancer.getPnlTracker(req.tokenId).reinitialize(initialLpUsd, initialHlUsd, initialFeesUsd);

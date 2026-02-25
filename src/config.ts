@@ -67,25 +67,12 @@ export const config = {
   maxDailyRebalances: numEnv('MAX_DAILY_REBALANCES', 10),
   maxHourlyRebalances: numEnv('MAX_HOURLY_REBALANCES', 3),
   cooldownSeconds: numEnv('COOLDOWN_SECONDS', 60),
-  deltaMismatchThreshold: numEnv('DELTA_MISMATCH_THRESHOLD', 0.08),
-  minRebalanceUsd: numEnv('MIN_REBALANCE_USD', 10),
   timeRebalanceIntervalMin: numEnv('TIME_REBALANCE_INTERVAL_MIN', 0),
-  // Mismatch mínimo para o time rebalance disparar (evita micro-ajustes no timer)
-  timeRebalanceMinMismatch: numEnv('TIME_REBALANCE_MIN_MISMATCH', 0.0),
 
-  // Threshold adaptativo por gamma: escala deltaMismatchThreshold inversamente
-  // com a largura do range de ticks. Ranges estreitos → threshold maior → menos rebalances.
-  // effectiveThreshold = deltaMismatchThreshold * (adaptiveReferenceTickRange / tickRange)
-  // capped em [deltaMismatchThreshold * 0.5, adaptiveMaxThreshold]
-  adaptiveThreshold: optionalEnv('ADAPTIVE_THRESHOLD', 'false').toLowerCase() === 'true',
-  adaptiveReferenceTickRange: numEnv('ADAPTIVE_REFERENCE_TICK_RANGE', 1000),
-  adaptiveMaxThreshold: numEnv('ADAPTIVE_MAX_THRESHOLD', 0.40),
-
-  // Emergency rebalance: dispara se o mismatch ultrapassar este valor,
-  // ignorando cooldown. Executa rebalance parcial (emergencyHedgeRatio do gap).
-  emergencyMismatchThreshold: numEnv('EMERGENCY_MISMATCH_THRESHOLD', 0.60),
-  // Fração do gap a fechar no emergency (0.5 = fecha metade, 1.0 = fecha tudo)
-  emergencyHedgeRatio: numEnv('EMERGENCY_HEDGE_RATIO', 0.50),
+  // Gatilho por movimento de preço: dispara rebalance quando o preço se move X% desde o último rebalance
+  priceMovementThreshold: numEnv('PRICE_MOVEMENT_THRESHOLD', 0.05),
+  // Emergency: movimento de preço maior, bypassa cooldown
+  emergencyPriceMovementThreshold: numEnv('EMERGENCY_PRICE_MOVEMENT_THRESHOLD', 0.15),
   blockThrottle: numEnv('BLOCK_THROTTLE', 10),
 
   // Hyperliquid credentials (required when DRY_RUN=false)

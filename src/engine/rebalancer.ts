@@ -59,6 +59,7 @@ export class Rebalancer {
           newState.positions[tokenId] = {
             lastHedge: loaded.lastHedge || { symbol: config.hedgeSymbol, size: 0, notionalUsd: 0, side: 'none' },
             lastPrice: loaded.lastPrice || 0,
+            lastRebalancePrice: loaded.lastRebalancePrice || 0,
             lastRebalanceTimestamp: loaded.lastRebalanceTimestamp || 0,
             dailyRebalanceCount: loaded.dailyRebalanceCount || 0,
             dailyResetDate: loaded.dailyResetDate || new Date().toISOString().split('T')[0],
@@ -99,6 +100,7 @@ export class Rebalancer {
     this.state.positions[tokenId] = {
       lastHedge: { symbol: hedgeSymbol, size: 0, notionalUsd: 0, side: 'none' },
       lastPrice: 0,
+      lastRebalancePrice: 0,
       lastRebalanceTimestamp: 0,
       dailyRebalanceCount: 0,
       dailyResetDate: new Date().toISOString().split('T')[0],
@@ -164,9 +166,8 @@ export class Rebalancer {
     const hedgeToken = cfg.hedgeToken || config.hedgeToken;
     const hedgeRatio = cfg.hedgeRatio ?? 1.0;
     const cooldownSec = cfg.cooldownSeconds ?? config.cooldownSeconds;
-    const deltaMismatchThreshold = cfg.deltaMismatchThreshold ?? config.deltaMismatchThreshold;
-    const emergencyMismatchThreshold = cfg.emergencyMismatchThreshold ?? config.emergencyMismatchThreshold;
-    const emergencyHedgeRatio = cfg.emergencyHedgeRatio ?? config.emergencyHedgeRatio;
+    const priceMovThreshold = cfg.priceMovementThreshold ?? config.priceMovementThreshold;
+    const emergencyPriceMovThreshold = cfg.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold;
     const timeRebalanceIntervalMin = config.timeRebalanceIntervalMin;
 
     // Reset daily counter if new day
@@ -198,23 +199,27 @@ export class Rebalancer {
     // Get current hedge position for this symbol
     const currentHedge = await this.exchange.getPosition(hedgeSymbol);
 
-    // Pre-compute mismatch
-    const hedgeReference = target.size > 0 ? target.size : currentHedge.size;
-    const currentMismatch = hedgeReference > 0
-      ? Math.abs(target.size - currentHedge.size) / hedgeReference
-      : 0;
+    // Forced close: LP saiu do range, hedge deve ser fechado independente de triggers
+    const isForcedClose = target.size <= 0 && currentHedge.size > 0;
 
-    // Check triggers — each returns a reason string or null
-    const emergencyReason = this.checkEmergencyRebalance(tokenId, target, currentHedge, emergencyMismatchThreshold, emergencyHedgeRatio);
-    const deltaReason = !emergencyReason
-      ? this.checkNeedsRebalance(tokenId, target, currentHedge, position.rangeStatus, position.price, position.tickLower, position.tickUpper, deltaMismatchThreshold)
+    const lastRebalancePrice = ps.lastRebalancePrice ?? 0;
+
+    // Check triggers — cada um retorna reason string ou null
+    const emergencyReason = !isForcedClose
+      ? this.checkEmergencyPriceMovement(tokenId, position.price, lastRebalancePrice, emergencyPriceMovThreshold)
       : null;
-    const timeReason = !emergencyReason && !deltaReason
-      ? this.checkTimeRebalance(tokenId, ps, currentMismatch, timeRebalanceIntervalMin)
+    const timeReason = !isForcedClose && !emergencyReason
+      ? this.checkTimeRebalance(tokenId, ps, timeRebalanceIntervalMin)
+      : null;
+    const priceReason = !isForcedClose && !emergencyReason && !timeReason
+      ? this.checkPriceMovement(tokenId, position.price, lastRebalancePrice, priceMovThreshold)
+      : null;
+    const forcedCloseReason = isForcedClose
+      ? `forced close: LP exited range (hedge=${currentHedge.size.toFixed(4)})`
       : null;
 
-    const triggerReason = emergencyReason ?? deltaReason ?? timeReason ?? null;
-    const isEmergency = emergencyReason !== null;
+    const triggerReason = forcedCloseReason ?? emergencyReason ?? timeReason ?? priceReason ?? null;
+    const isEmergency = isForcedClose || emergencyReason !== null;
     const needsRebalance = triggerReason !== null;
 
     // Compute net delta and total position value
@@ -288,6 +293,7 @@ export class Rebalancer {
       rangeStatus: position.rangeStatus,
       dailyRebalanceCount: ps.dailyRebalanceCount,
       lastRebalanceTimestamp: ps.lastRebalanceTimestamp,
+      lastRebalancePrice: ps.lastRebalancePrice ?? 0,
       pnlTotalUsd: pnl.virtualPnlUsd,
       pnlTotalPercent: pnl.virtualPnlPercent,
       accountPnlUsd: pnl.accountPnlUsd,
@@ -312,25 +318,23 @@ export class Rebalancer {
       return;
     }
 
-    // Compute effective target: emergency uses partial (close X% of gap)
-    let effectiveSize = target.size;
-    let effectiveNotional = target.notionalUsd;
-    if (isEmergency) {
-      effectiveSize = currentHedge.size + (target.size - currentHedge.size) * emergencyHedgeRatio;
-      effectiveNotional = effectiveSize * position.price;
-    }
+    const effectiveSize = target.size;
+    const effectiveNotional = target.notionalUsd;
 
-    // Run safety checks — emergency bypasses cooldown
+    // Run safety checks — emergency bypasses cooldown; forced close also bypasses daily/hourly limits and minNotional
     const changeUsd = Math.abs(effectiveNotional - currentHedge.notionalUsd);
     const safetyResult = isEmergency
       ? (() => {
-        for (const r of [
-          checkMinNotional(changeUsd),
+        const baseChecks = [
           checkMaxNotional(effectiveNotional),
           checkDuplicate(effectiveSize, currentHedge.size),
+        ];
+        const rateLimitChecks = isForcedClose ? [] : [
+          checkMinNotional(changeUsd),
           checkDailyLimit(ps.dailyRebalanceCount),
           checkHourlyLimit(ps.hourlyRebalanceCount),
-        ]) { if (!r.allowed) return r; }
+        ];
+        for (const r of [...baseChecks, ...rateLimitChecks]) { if (!r.allowed) return r; }
         return { allowed: true as const };
       })()
       : runAllSafetyChecks({
@@ -356,8 +360,7 @@ export class Rebalancer {
     logger.info(
       `[NFT#${tokenId}] ${rebalanceLabel} [trigger: ${triggerReason}]: ` +
       `${currentHedge.size.toFixed(4)} → ${effectiveSize.toFixed(4)} ` +
-      `($${currentHedge.notionalUsd.toFixed(2)} → $${effectiveNotional.toFixed(2)})` +
-      (isEmergency ? ` [partial ${(emergencyHedgeRatio * 100).toFixed(0)}% of gap]` : '')
+      `($${currentHedge.notionalUsd.toFixed(2)} → $${effectiveNotional.toFixed(2)})`
     );
 
     // Capture virtual state before trade to compute per-trade closed PnL
@@ -411,6 +414,7 @@ export class Rebalancer {
       side: effectiveSize > 0 ? 'short' : 'none',
     };
     ps.lastPrice = position.price;
+    ps.lastRebalancePrice = position.price;
     ps.lastRebalanceTimestamp = Date.now();
     ps.dailyRebalanceCount++;
     ps.hourlyRebalanceCount++;
@@ -461,19 +465,33 @@ export class Rebalancer {
     this.saveState();
   }
 
-  private checkEmergencyRebalance(
+  private checkEmergencyPriceMovement(
     tokenId: number,
-    target: HedgeTarget,
-    current: HedgeState,
-    emergencyThreshold: number,
-    emergencyRatio: number
+    currentPrice: number,
+    lastRebalancePrice: number,
+    threshold: number
   ): string | null {
-    if (target.size === 0 && current.size === 0) return null;
-    const reference = target.size > 0 ? target.size : current.size;
-    const mismatch = Math.abs(target.size - current.size) / reference;
-    if (mismatch > emergencyThreshold) {
-      const reason = `emergency: mismatch ${(mismatch * 100).toFixed(1)}% > ${(emergencyThreshold * 100).toFixed(0)}%, partial ${(emergencyRatio * 100).toFixed(0)}% of gap, cooldown bypassed`;
+    if (lastRebalancePrice <= 0) return null;
+    const movement = Math.abs(currentPrice - lastRebalancePrice) / lastRebalancePrice;
+    if (movement > threshold) {
+      const reason = `emergency: price moved ${(movement * 100).toFixed(2)}% ($${lastRebalancePrice.toFixed(4)} → $${currentPrice.toFixed(4)}), cooldown bypassed`;
       logger.warn(`[NFT#${tokenId}] EMERGENCY: ${reason}`);
+      return reason;
+    }
+    return null;
+  }
+
+  private checkPriceMovement(
+    tokenId: number,
+    currentPrice: number,
+    lastRebalancePrice: number,
+    threshold: number
+  ): string | null {
+    if (lastRebalancePrice <= 0) return null;
+    const movement = Math.abs(currentPrice - lastRebalancePrice) / lastRebalancePrice;
+    if (movement > threshold) {
+      const reason = `price moved ${(movement * 100).toFixed(2)}% ($${lastRebalancePrice.toFixed(4)} → $${currentPrice.toFixed(4)}) > threshold ${(threshold * 100).toFixed(1)}%`;
+      logger.info(`[NFT#${tokenId}] Price movement trigger: ${reason}`);
       return reason;
     }
     return null;
@@ -482,7 +500,6 @@ export class Rebalancer {
   private checkTimeRebalance(
     tokenId: number,
     ps: PositionState,
-    currentMismatch: number,
     intervalMin: number
   ): string | null {
     if (intervalMin <= 0) return null;
@@ -492,17 +509,8 @@ export class Rebalancer {
 
     if (elapsedMs < intervalMs) return null;
 
-    const minMismatch = config.timeRebalanceMinMismatch;
-    if (minMismatch > 0 && currentMismatch < minMismatch) {
-      logger.info(
-        `[NFT#${tokenId}] Time rebalance skipped: mismatch ${(currentMismatch * 100).toFixed(2)}% < min ${(minMismatch * 100).toFixed(2)}%`
-      );
-      return null;
-    }
-
-    const reason = `scheduled timer: ${(elapsedMs / 60000).toFixed(1)}min elapsed ≥ ${intervalMin}min interval` +
-      (minMismatch > 0 ? `, mismatch=${(currentMismatch * 100).toFixed(2)}%` : '');
-    logger.info(`[NFT#${tokenId}] Time-based rebalance triggered: ${reason}`);
+    const reason = `timer: ${(elapsedMs / 60000).toFixed(1)}min elapsed ≥ ${intervalMin}min interval`;
+    logger.info(`[NFT#${tokenId}] Time-based rebalance: ${reason}`);
     return reason;
   }
 
@@ -539,66 +547,4 @@ export class Rebalancer {
     logger.info(`[NFT#${tokenId}] Rebalance window — ${parts.join(' | ')}`);
   }
 
-  private computeEffectiveThreshold(tickLower: number, tickUpper: number, baseDeltaMismatch: number): number {
-    if (!config.adaptiveThreshold) return baseDeltaMismatch;
-
-    const tickRange = tickUpper - tickLower;
-    if (tickRange <= 0) return baseDeltaMismatch;
-
-    const scale = config.adaptiveReferenceTickRange / tickRange;
-    const adaptive = baseDeltaMismatch * scale;
-
-    const clamped = Math.min(
-      Math.max(adaptive, baseDeltaMismatch * 0.5),
-      config.adaptiveMaxThreshold
-    );
-
-    logger.info(
-      `Adaptive threshold: tickRange=${tickRange}, scale=${scale.toFixed(2)}x, ` +
-      `effective=${(clamped * 100).toFixed(1)}% (base=${(baseDeltaMismatch * 100).toFixed(1)}%)`
-    );
-    return clamped;
-  }
-
-  private checkNeedsRebalance(
-    tokenId: number,
-    target: HedgeTarget,
-    current: HedgeState,
-    rangeStatus: string,
-    price: number,
-    tickLower: number,
-    tickUpper: number,
-    deltaMismatchThreshold: number
-  ): string | null {
-    const lastRangeStatus = this.lastRangeStatusMap[tokenId] ?? null;
-
-    // Range status changed
-    if (lastRangeStatus !== null && lastRangeStatus !== rangeStatus) {
-      const reason = `range status changed: ${lastRangeStatus} → ${rangeStatus}`;
-      logger.info(`[NFT#${tokenId}] ${reason}`);
-      return reason;
-    }
-
-    // Delta mismatch threshold
-    if (target.size === 0 && current.size === 0) {
-      return null;
-    }
-
-    const reference = target.size > 0 ? target.size : current.size;
-    const mismatch = Math.abs(target.size - current.size) / reference;
-    const effectiveThreshold = this.computeEffectiveThreshold(tickLower, tickUpper, deltaMismatchThreshold);
-
-    if (mismatch > effectiveThreshold) {
-      const deltaUsd = Math.abs(target.size - current.size) * price;
-      if (deltaUsd < config.minRebalanceUsd) {
-        logger.info(`[NFT#${tokenId}] Delta mismatch ${(mismatch * 100).toFixed(2)}% but order $${deltaUsd.toFixed(2)} < min $${config.minRebalanceUsd} — skipping`);
-        return null;
-      }
-      const reason = `delta mismatch: ${(mismatch * 100).toFixed(2)}% > threshold ${(effectiveThreshold * 100).toFixed(2)}% (order ~$${deltaUsd.toFixed(2)})`;
-      logger.info(`[NFT#${tokenId}] ${reason}`);
-      return reason;
-    }
-
-    return null;
-  }
 }
