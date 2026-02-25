@@ -39,7 +39,7 @@ console.log(`Loaded ${ticks.length} ticks from ${first} to ${last}`);
 const baseConfig: Omit<BacktestConfig, 'label' | 'deltaMismatchThreshold'> = {
   hedgeFloor: 0.90,
   hedgeRatio: 1.0,
-  cooldownSeconds: 14400,       // 4h — config atual
+  rebalanceIntervalMin: 240,    // 4h — config atual
   maxHourlyRebalances: 7,
   maxDailyRebalances: 150,
   minRebalanceUsd: 10,

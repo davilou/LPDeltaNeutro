@@ -54,8 +54,8 @@ export const config = {
   maxNotionalUsd: numEnv('MAX_NOTIONAL_USD', 100000),
   maxDailyRebalances: numEnv('MAX_DAILY_REBALANCES', 10),
   maxHourlyRebalances: numEnv('MAX_HOURLY_REBALANCES', 3),
-  cooldownSeconds: numEnv('COOLDOWN_SECONDS', 60),
-  timeRebalanceIntervalMin: numEnv('TIME_REBALANCE_INTERVAL_MIN', 0),
+  // Intervalo de rebalance periódico (minutos) — serve também como cooldown mínimo entre rebalances
+  rebalanceIntervalMin: numEnv('REBALANCE_INTERVAL_MIN', 720),
 
   // Gatilho por movimento de preço: dispara rebalance quando o preço se move X% desde o último rebalance
   priceMovementThreshold: numEnv('PRICE_MOVEMENT_THRESHOLD', 0.05),

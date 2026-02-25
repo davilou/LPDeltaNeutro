@@ -82,7 +82,6 @@ export function startDashboard(port: number): void {
       token1Symbol: body.token1Symbol ?? '',
       protectionType: body.protectionType,
       hedgeRatio: body.hedgeRatio,
-      cooldownSeconds: body.cooldownSeconds,
       priceMovementThreshold: body.priceMovementThreshold,
       emergencyPriceMovementThreshold: body.emergencyPriceMovementThreshold,
     };

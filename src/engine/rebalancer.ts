@@ -165,10 +165,10 @@ export class Rebalancer {
     const hedgeSymbol = cfg.hedgeSymbol;
     const hedgeToken = cfg.hedgeToken ?? 'token0';
     const hedgeRatio = cfg.hedgeRatio ?? 1.0;
-    const cooldownSec = cfg.cooldownSeconds ?? config.cooldownSeconds;
+    const cooldownSec = config.rebalanceIntervalMin * 60;
     const priceMovThreshold = cfg.priceMovementThreshold ?? config.priceMovementThreshold;
     const emergencyPriceMovThreshold = cfg.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold;
-    const timeRebalanceIntervalMin = config.timeRebalanceIntervalMin;
+    const rebalanceIntervalMin = config.rebalanceIntervalMin;
 
     // Reset daily counter if new day
     const today = new Date().toISOString().split('T')[0];
@@ -209,7 +209,7 @@ export class Rebalancer {
       ? this.checkEmergencyPriceMovement(tokenId, position.price, lastRebalancePrice, emergencyPriceMovThreshold)
       : null;
     const timeReason = !isForcedClose && !emergencyReason
-      ? this.checkTimeRebalance(tokenId, ps, timeRebalanceIntervalMin)
+      ? this.checkTimeRebalance(tokenId, ps, rebalanceIntervalMin)
       : null;
     const priceReason = !isForcedClose && !emergencyReason && !timeReason
       ? this.checkPriceMovement(tokenId, position.price, lastRebalancePrice, priceMovThreshold)
@@ -309,7 +309,7 @@ export class Rebalancer {
     });
 
     // Log time until next rebalance on every cycle
-    this.logTimeUntilNextRebalance(tokenId, ps, cooldownSec, timeRebalanceIntervalMin);
+    this.logTimeUntilNextRebalance(tokenId, ps, rebalanceIntervalMin);
 
     if (!needsRebalance) {
       logger.info(`[NFT#${tokenId}] No rebalance needed`);
@@ -514,37 +514,16 @@ export class Rebalancer {
     return reason;
   }
 
-  private logTimeUntilNextRebalance(tokenId: number, ps: PositionState, cooldownSec: number, intervalMin: number): void {
-    const now = Date.now();
-    const elapsedMs = now - ps.lastRebalanceTimestamp;
-
-    const parts: string[] = [];
-
-    // Cooldown remaining
-    const cooldownMs = cooldownSec * 1000;
-    const cooldownRemainingMs = cooldownMs - elapsedMs;
-    if (cooldownRemainingMs > 0) {
-      const h = Math.floor(cooldownRemainingMs / 3600000);
-      const m = Math.floor((cooldownRemainingMs % 3600000) / 60000);
-      parts.push(`cooldown: ${h}h ${m}m remaining`);
+  private logTimeUntilNextRebalance(tokenId: number, ps: PositionState, intervalMin: number): void {
+    const elapsedMs = Date.now() - ps.lastRebalanceTimestamp;
+    const remainingMs = intervalMin * 60 * 1000 - elapsedMs;
+    if (remainingMs > 0) {
+      const h = Math.floor(remainingMs / 3600000);
+      const m = Math.floor((remainingMs % 3600000) / 60000);
+      logger.info(`[NFT#${tokenId}] Next rebalance in ${h}h ${m}m`);
     } else {
-      parts.push(`cooldown: open`);
+      logger.info(`[NFT#${tokenId}] Next rebalance window: open`);
     }
-
-    // Time-based rebalance remaining
-    if (intervalMin > 0) {
-      const intervalMs = intervalMin * 60 * 1000;
-      const intervalRemainingMs = intervalMs - elapsedMs;
-      if (intervalRemainingMs > 0) {
-        const h = Math.floor(intervalRemainingMs / 3600000);
-        const m = Math.floor((intervalRemainingMs % 3600000) / 60000);
-        parts.push(`next scheduled: ${h}h ${m}m`);
-      } else {
-        parts.push(`next scheduled: open`);
-      }
-    }
-
-    logger.info(`[NFT#${tokenId}] Rebalance window — ${parts.join(' | ')}`);
   }
 
 }

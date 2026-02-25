@@ -51,7 +51,7 @@ export function checkHourlyLimit(count: number): SafetyCheckResult {
   return { allowed: true };
 }
 
-export function checkCooldown(lastTimestamp: number, cooldownSec: number = config.cooldownSeconds): SafetyCheckResult {
+export function checkCooldown(lastTimestamp: number, cooldownSec: number = config.rebalanceIntervalMin * 60): SafetyCheckResult {
   const elapsed = (Date.now() - lastTimestamp) / 1000;
   if (elapsed < cooldownSec) {
     const remaining = cooldownSec - elapsed;
@@ -78,7 +78,7 @@ export function runAllSafetyChecks(params: {
     checkDuplicate(params.targetSize, params.currentSize),
     checkDailyLimit(params.dailyCount),
     checkHourlyLimit(params.hourlyCount),
-    checkCooldown(params.lastRebalanceTimestamp, params.cooldownSeconds ?? config.cooldownSeconds),
+    checkCooldown(params.lastRebalanceTimestamp, params.cooldownSeconds ?? config.rebalanceIntervalMin * 60),
   ];
 
   for (const check of checks) {

@@ -63,7 +63,7 @@ function passesSafetyChecks(
   if (dailyCount >= config.maxDailyRebalances) return false;
   if (hourlyCount >= config.maxHourlyRebalances) return false;
   const elapsedSec = (tickTs - lastRebalanceTs) / 1000;
-  if (elapsedSec < config.cooldownSeconds) return false;
+  if (elapsedSec < config.rebalanceIntervalMin * 60) return false;
   return true;
 }
 
