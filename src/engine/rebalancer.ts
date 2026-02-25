@@ -162,7 +162,6 @@ export class Rebalancer {
     const hedgeToken = cfg.hedgeToken ?? 'token0';
     const hedgeRatio = cfg.hedgeRatio ?? 1.0;
     const cooldownSec = config.rebalanceIntervalMin * 60;
-    const priceMovThreshold = cfg.priceMovementThreshold ?? config.priceMovementThreshold;
     const emergencyPriceMovThreshold = cfg.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold;
     const rebalanceIntervalMin = config.rebalanceIntervalMin;
 
@@ -199,14 +198,11 @@ export class Rebalancer {
     const timeReason = !isForcedClose && !emergencyReason
       ? this.checkTimeRebalance(tokenId, ps, rebalanceIntervalMin)
       : null;
-    const priceReason = !isForcedClose && !emergencyReason && !timeReason
-      ? this.checkPriceMovement(tokenId, position.price, lastRebalancePrice, priceMovThreshold)
-      : null;
     const forcedCloseReason = isForcedClose
       ? `forced close: LP exited range (hedge=${currentHedge.size.toFixed(4)})`
       : null;
 
-    const triggerReason = forcedCloseReason ?? emergencyReason ?? timeReason ?? priceReason ?? null;
+    const triggerReason = forcedCloseReason ?? emergencyReason ?? timeReason ?? null;
     const isEmergency = isForcedClose || emergencyReason !== null;
     const needsRebalance = triggerReason !== null;
 
@@ -466,21 +462,6 @@ export class Rebalancer {
     return null;
   }
 
-  private checkPriceMovement(
-    tokenId: number,
-    currentPrice: number,
-    lastRebalancePrice: number,
-    threshold: number
-  ): string | null {
-    if (lastRebalancePrice <= 0) return null;
-    const movement = Math.abs(currentPrice - lastRebalancePrice) / lastRebalancePrice;
-    if (movement > threshold) {
-      const reason = `price moved ${(movement * 100).toFixed(2)}% ($${lastRebalancePrice.toFixed(4)} → $${currentPrice.toFixed(4)}) > threshold ${(threshold * 100).toFixed(1)}%`;
-      logger.info(`[NFT#${tokenId}] Price movement trigger: ${reason}`);
-      return reason;
-    }
-    return null;
-  }
 
   private checkTimeRebalance(
     tokenId: number,

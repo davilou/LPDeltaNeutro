@@ -89,7 +89,6 @@ export interface ActivePositionConfig {
   hedgeToken: 'token0' | 'token1';
   protectionType?: string; // 'delta-neutral'
   hedgeRatio?: number; // 0.8 to protect 80%
-  priceMovementThreshold?: number;          // % de movimento de preço para rebalance normal
   emergencyPriceMovementThreshold?: number; // % de movimento de preço para emergency (bypassa cooldown)
 }
 

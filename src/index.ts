@@ -149,7 +149,6 @@ async function main() {
         hedgeToken,
         protectionType: req.protectionType || 'delta-neutral',
         hedgeRatio: req.hedgeRatio ?? 1.0,
-        priceMovementThreshold: req.priceMovementThreshold ?? config.priceMovementThreshold,
         emergencyPriceMovementThreshold: req.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold,
       };
 

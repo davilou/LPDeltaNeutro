@@ -57,7 +57,6 @@ export const config = {
   rebalanceIntervalMin: numEnv('REBALANCE_INTERVAL_MIN', 720),
 
   // Gatilho por movimento de preço: dispara rebalance quando o preço se move X% desde o último rebalance
-  priceMovementThreshold: numEnv('PRICE_MOVEMENT_THRESHOLD', 0.05),
   // Emergency: movimento de preço maior, bypassa cooldown
   emergencyPriceMovementThreshold: numEnv('EMERGENCY_PRICE_MOVEMENT_THRESHOLD', 0.15),
   blockThrottle: numEnv('BLOCK_THROTTLE', 10),
