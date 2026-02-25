@@ -40,7 +40,6 @@ const baseConfig: Omit<BacktestConfig, 'label' | 'deltaMismatchThreshold'> = {
   hedgeFloor: 0.90,
   hedgeRatio: 1.0,
   rebalanceIntervalMin: 240,    // 4h — config atual
-  maxHourlyRebalances: 7,
   maxDailyRebalances: 150,
   minRebalanceUsd: 10,
   minNotionalUsd: 10,

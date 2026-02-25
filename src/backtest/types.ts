@@ -25,7 +25,6 @@ export interface BacktestConfig {
   hedgeRatio: number;
   deltaMismatchThreshold: number;
   rebalanceIntervalMin: number;
-  maxHourlyRebalances: number;
   maxDailyRebalances: number;
   minRebalanceUsd: number;
   minNotionalUsd: number;

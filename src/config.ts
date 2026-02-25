@@ -53,7 +53,6 @@ export const config = {
   minNotionalUsd: numEnv('MIN_NOTIONAL_USD', 50),
   maxNotionalUsd: numEnv('MAX_NOTIONAL_USD', 100000),
   maxDailyRebalances: numEnv('MAX_DAILY_REBALANCES', 10),
-  maxHourlyRebalances: numEnv('MAX_HOURLY_REBALANCES', 3),
   // Intervalo de rebalance periódico (minutos) — serve também como cooldown mínimo entre rebalances
   rebalanceIntervalMin: numEnv('REBALANCE_INTERVAL_MIN', 720),
 

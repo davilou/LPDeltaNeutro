@@ -42,14 +42,6 @@ export function checkDailyLimit(count: number): SafetyCheckResult {
   return { allowed: true };
 }
 
-export function checkHourlyLimit(count: number): SafetyCheckResult {
-  if (count >= config.maxHourlyRebalances) {
-    const reason = `Hourly rebalance limit reached: ${count}/${config.maxHourlyRebalances}`;
-    logger.warn(`[SAFETY] BLOCKED: ${reason}`);
-    return { allowed: false, reason };
-  }
-  return { allowed: true };
-}
 
 export function checkCooldown(lastTimestamp: number, cooldownSec: number = config.rebalanceIntervalMin * 60): SafetyCheckResult {
   const elapsed = (Date.now() - lastTimestamp) / 1000;
@@ -68,7 +60,6 @@ export function runAllSafetyChecks(params: {
   targetSize: number;
   currentSize: number;
   dailyCount: number;
-  hourlyCount: number;
   lastRebalanceTimestamp: number;
   cooldownSeconds?: number;
 }): SafetyCheckResult {
@@ -77,7 +68,6 @@ export function runAllSafetyChecks(params: {
     checkMaxNotional(params.totalNotionalUsd),
     checkDuplicate(params.targetSize, params.currentSize),
     checkDailyLimit(params.dailyCount),
-    checkHourlyLimit(params.hourlyCount),
     checkCooldown(params.lastRebalanceTimestamp, params.cooldownSeconds ?? config.rebalanceIntervalMin * 60),
   ];
 

@@ -53,7 +53,6 @@ function passesSafetyChecks(
   targetSize: number,
   currentSize: number,
   dailyCount: number,
-  hourlyCount: number,
   lastRebalanceTs: number,
   tickTs: number,
   config: BacktestConfig,
@@ -61,7 +60,6 @@ function passesSafetyChecks(
   if (Math.abs(changeUsd) < config.minNotionalUsd) return false;
   if (Math.abs(targetSize - currentSize) < 1e-8) return false;
   if (dailyCount >= config.maxDailyRebalances) return false;
-  if (hourlyCount >= config.maxHourlyRebalances) return false;
   const elapsedSec = (tickTs - lastRebalanceTs) / 1000;
   if (elapsedSec < config.rebalanceIntervalMin * 60) return false;
   return true;
@@ -96,9 +94,7 @@ export function runBacktest(
   let currentHedgeSize = ticks[0].hedgeSize; // start with the actual hedge from first tick
   let lastRebalanceTs = 0;
   let dailyCount = 0;
-  let hourlyCount = 0;
   let dailyResetDate = '';
-  let hourlyResetTs = 0;
   let lastRangeStatus: string | null = null;
 
   // P&L tracking — valores do tick anterior (antes do 1º intervalo)
@@ -122,12 +118,6 @@ export function runBacktest(
     if (dailyResetDate !== tickDate) {
       dailyCount = 0;
       dailyResetDate = tickDate;
-    }
-
-    // Reset hourly counter
-    if (hourlyResetTs === 0 || tick.timestamp - hourlyResetTs >= 3600_000) {
-      hourlyCount = 0;
-      hourlyResetTs = tick.timestamp;
     }
 
     // -----------------------------------------------------------
@@ -173,13 +163,12 @@ export function runBacktest(
           const emNotional = emSize * tick.price;
           const changeUsd  = Math.abs(emNotional - currentHedgeSize * tick.price);
 
-          // Safety sem cooldown: minNotional, daily, hourly, duplicate
-          const safeDup     = Math.abs(emSize - currentHedgeSize) >= 1e-8;
-          const safeMin     = changeUsd >= config.minNotionalUsd;
-          const safeDaily   = dailyCount < config.maxDailyRebalances;
-          const safeHourly  = hourlyCount < config.maxHourlyRebalances;
+          // Safety sem cooldown: minNotional, daily, duplicate
+          const safeDup   = Math.abs(emSize - currentHedgeSize) >= 1e-8;
+          const safeMin   = changeUsd >= config.minNotionalUsd;
+          const safeDaily = dailyCount < config.maxDailyRebalances;
 
-          if (safeDup && safeMin && safeDaily && safeHourly) {
+          if (safeDup && safeMin && safeDaily) {
             const deltaTokens = Math.abs(emSize - currentHedgeSize);
             const deltaUsd    = deltaTokens * tick.price;
             const feeUsd      = deltaUsd * config.hlTakerFee;
@@ -198,7 +187,6 @@ export function runBacktest(
             currentHedgeSize = emSize;
             lastRebalanceTs  = tick.timestamp;
             dailyCount++;
-            hourlyCount++;
             handledByEmergency = true;
           }
         }
@@ -216,7 +204,7 @@ export function runBacktest(
         const changeUsd = Math.abs(targetNotionalUsd - currentHedgeSize * tick.price);
         const safe = passesSafetyChecks(
           changeUsd, targetNotionalUsd, targetSize, currentHedgeSize,
-          dailyCount, hourlyCount, lastRebalanceTs, tick.timestamp, config,
+          dailyCount, lastRebalanceTs, tick.timestamp, config,
         );
 
         if (safe) {
@@ -238,7 +226,6 @@ export function runBacktest(
           currentHedgeSize = targetSize;
           lastRebalanceTs  = tick.timestamp;
           dailyCount++;
-          hourlyCount++;
         }
       }
     }

@@ -3,7 +3,7 @@ import { ActivePositionConfig, BotState, HedgeState, LPPosition, PositionState }
 import { FillResult, IHedgeExchange } from '../hedge/types';
 import { calculateHedge, HedgeTarget } from '../hedge/hedgeCalculator';
 import { insertRebalance } from '../db/supabase';
-import { runAllSafetyChecks, checkMinNotional, checkMaxNotional, checkDuplicate, checkDailyLimit, checkHourlyLimit } from '../utils/safety';
+import { runAllSafetyChecks, checkMinNotional, checkMaxNotional, checkDuplicate, checkDailyLimit } from '../utils/safety';
 import { logger, logCycle } from '../utils/logger';
 import { dashboardStore } from '../dashboard/store';
 import { PnlTracker } from '../pnl/tracker';
@@ -63,8 +63,6 @@ export class Rebalancer {
             lastRebalanceTimestamp: loaded.lastRebalanceTimestamp || 0,
             dailyRebalanceCount: loaded.dailyRebalanceCount || 0,
             dailyResetDate: loaded.dailyResetDate || new Date().toISOString().split('T')[0],
-            hourlyRebalanceCount: loaded.hourlyRebalanceCount || 0,
-            hourlyResetTimestamp: loaded.hourlyResetTimestamp || Date.now(),
             pnl: loaded.pnl,
             config: {
               ...loaded.activePosition,
@@ -104,8 +102,6 @@ export class Rebalancer {
       lastRebalanceTimestamp: 0,
       dailyRebalanceCount: 0,
       dailyResetDate: new Date().toISOString().split('T')[0],
-      hourlyRebalanceCount: 0,
-      hourlyResetTimestamp: Date.now(),
       config: cfg,
     };
 
@@ -176,14 +172,6 @@ export class Rebalancer {
       ps.dailyRebalanceCount = 0;
       ps.dailyResetDate = today;
       logger.info(`[NFT#${tokenId}] Daily rebalance counter reset`);
-    }
-
-    // Reset hourly counter if 1 hour has passed
-    const now = Date.now();
-    if (!ps.hourlyResetTimestamp || now - ps.hourlyResetTimestamp >= 3600_000) {
-      ps.hourlyRebalanceCount = 0;
-      ps.hourlyResetTimestamp = now;
-      logger.info(`[NFT#${tokenId}] Hourly rebalance counter reset`);
     }
 
     // Get funding rate
@@ -332,7 +320,6 @@ export class Rebalancer {
         const rateLimitChecks = isForcedClose ? [] : [
           checkMinNotional(changeUsd),
           checkDailyLimit(ps.dailyRebalanceCount),
-          checkHourlyLimit(ps.hourlyRebalanceCount),
         ];
         for (const r of [...baseChecks, ...rateLimitChecks]) { if (!r.allowed) return r; }
         return { allowed: true as const };
@@ -343,7 +330,6 @@ export class Rebalancer {
         targetSize: effectiveSize,
         currentSize: currentHedge.size,
         dailyCount: ps.dailyRebalanceCount,
-        hourlyCount: ps.hourlyRebalanceCount,
         lastRebalanceTimestamp: ps.lastRebalanceTimestamp,
         cooldownSeconds: cooldownSec,
       });
@@ -417,7 +403,6 @@ export class Rebalancer {
     ps.lastRebalancePrice = position.price;
     ps.lastRebalanceTimestamp = Date.now();
     ps.dailyRebalanceCount++;
-    ps.hourlyRebalanceCount++;
     this.lastRangeStatusMap[tokenId] = position.rangeStatus;
 
     // Persist to Supabase (fire-and-forget)

@@ -100,8 +100,6 @@ export interface PositionState {
   lastRebalanceTimestamp: number;
   dailyRebalanceCount: number;
   dailyResetDate: string;
-  hourlyRebalanceCount: number;
-  hourlyResetTimestamp: number;
   pnl?: PnlState;
   config: ActivePositionConfig;
   rebalances?: any[]; // Store history in state
