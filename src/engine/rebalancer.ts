@@ -57,7 +57,7 @@ export class Rebalancer {
         if (loaded.activePosition) {
           const tokenId = loaded.activePosition.tokenId;
           newState.positions[tokenId] = {
-            lastHedge: loaded.lastHedge || { symbol: config.hedgeSymbol, size: 0, notionalUsd: 0, side: 'none' },
+            lastHedge: loaded.lastHedge || { symbol: loaded.activePosition?.hedgeSymbol ?? '', size: 0, notionalUsd: 0, side: 'none' },
             lastPrice: loaded.lastPrice || 0,
             lastRebalancePrice: loaded.lastRebalancePrice || 0,
             lastRebalanceTimestamp: loaded.lastRebalanceTimestamp || 0,
@@ -95,7 +95,7 @@ export class Rebalancer {
 
   activatePosition(cfg: ActivePositionConfig): void {
     const tokenId = cfg.tokenId;
-    const hedgeSymbol = cfg.hedgeSymbol || config.hedgeSymbol;
+    const hedgeSymbol = cfg.hedgeSymbol;
 
     this.state.positions[tokenId] = {
       lastHedge: { symbol: hedgeSymbol, size: 0, notionalUsd: 0, side: 'none' },
@@ -162,8 +162,8 @@ export class Rebalancer {
     }
 
     const cfg = ps.config;
-    const hedgeSymbol = cfg.hedgeSymbol || config.hedgeSymbol;
-    const hedgeToken = cfg.hedgeToken || config.hedgeToken;
+    const hedgeSymbol = cfg.hedgeSymbol;
+    const hedgeToken = cfg.hedgeToken ?? 'token0';
     const hedgeRatio = cfg.hedgeRatio ?? 1.0;
     const cooldownSec = cfg.cooldownSeconds ?? config.cooldownSeconds;
     const priceMovThreshold = cfg.priceMovementThreshold ?? config.priceMovementThreshold;
@@ -190,7 +190,7 @@ export class Rebalancer {
     const fundingRate = await this.exchange.getFundingRate(hedgeSymbol);
 
     // Calculate target hedge (uses global config for hedgeToken/hedgeFloor, we override below)
-    const target: HedgeTarget = calculateHedge(position, fundingRate);
+    const target: HedgeTarget = calculateHedge(position, fundingRate, hedgeToken);
 
     // Apply per-position hedgeRatio override
     target.size *= hedgeRatio;

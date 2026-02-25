@@ -85,8 +85,8 @@ export interface ActivePositionConfig {
   protocolVersion: 'v3' | 'v4';
   poolAddress: string;
   activatedAt: number;
-  hedgeSymbol?: string;
-  hedgeToken?: 'token0' | 'token1';
+  hedgeSymbol: string;
+  hedgeToken: 'token0' | 'token1';
   protectionType?: string; // 'delta-neutral'
   hedgeRatio?: number; // 0.8 to protect 80%
   cooldownSeconds?: number; // min time between rebalances (overrides global config)

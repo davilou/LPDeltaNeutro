@@ -10,9 +10,9 @@ export interface HedgeTarget {
 
 export function calculateHedge(
   position: LPPosition,
-  fundingRate: number
+  fundingRate: number,
+  hedgeToken: 'token0' | 'token1'
 ): HedgeTarget {
-  const hedgeToken = config.hedgeToken;
   const tokenInfo = hedgeToken === 'token0' ? position.token0 : position.token1;
   const exposure = tokenInfo.amountFormatted;
 

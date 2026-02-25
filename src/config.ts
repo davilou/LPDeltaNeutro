@@ -3,14 +3,6 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
-function requireEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing required env var: ${key}`);
-  }
-  return value;
-}
-
 function optionalEnv(key: string, fallback: string): string {
   return process.env[key] || fallback;
 }
@@ -56,10 +48,6 @@ export const config = {
     return urls.map(u => u.endsWith('/') ? u.slice(0, -1) : u);
   },
 
-  // Hedge config
-  hedgeToken: optionalEnv('HEDGE_TOKEN', 'token0') as 'token0' | 'token1',
-  hedgeSymbol: requireEnv('HEDGE_SYMBOL'),
-
   // Strategy
   hedgeFloor: numEnv('HEDGE_FLOOR', 0.90),
   minNotionalUsd: numEnv('MIN_NOTIONAL_USD', 50),
@@ -98,7 +86,3 @@ export const config = {
   supabaseKey: optionalEnv('SUPABASE_KEY', ''),
 } as const;
 
-// Validate hedge token
-if (config.hedgeToken !== 'token0' && config.hedgeToken !== 'token1') {
-  throw new Error(`HEDGE_TOKEN must be "token0" or "token1", got: ${config.hedgeToken}`);
-}
