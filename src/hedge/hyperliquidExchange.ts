@@ -74,7 +74,9 @@ export class HyperliquidExchange implements IHedgeExchange {
   async getAccountEquity(): Promise<number> {
     await this.sdk.ensureInitialized();
 
-    // Spot USDC balance = Total Equity on Hyperliquid (perps margin is drawn from this)
+    // Use spot USDC balance as HL equity baseline (consistent with initialHlUsd calibration).
+    // marginSummary.accountValue includes unrealized perp PnL, which would misalign with
+    // the spot-based initialHlUsd and double-count perp PnL already tracked by virtualPnl.
     const spotState = await this.sdk.info.spot.getSpotClearinghouseState(this.walletAddress, true);
     let equity = 0;
     for (const bal of spotState.balances) {
@@ -84,7 +86,7 @@ export class HyperliquidExchange implements IHedgeExchange {
       }
     }
 
-    logger.info(`[HL] Account equity: $${equity.toFixed(2)}`);
+    logger.info(`[HL] Account equity (spot USDC): $${equity.toFixed(2)}`);
     return equity;
   }
 
@@ -100,18 +102,21 @@ export class HyperliquidExchange implements IHedgeExchange {
       return { symbol, size: 0, notionalUsd: 0, side: 'none' };
     }
 
-    const szi = parseFloat(assetPos.position.szi);
-    const positionValue = parseFloat(assetPos.position.positionValue);
+    const pos = assetPos.position as any;
+    const szi = parseFloat(pos.szi);
+    const positionValue = parseFloat(pos.positionValue);
+    const entryPx = pos.entryPx ? parseFloat(pos.entryPx) : undefined;
 
     const hedgeState: HedgeState = {
       symbol,
       size: Math.abs(szi),
       notionalUsd: Math.abs(positionValue),
       side: szi < 0 ? 'short' : 'none',
+      avgEntryPrice: entryPx && entryPx > 0 ? entryPx : undefined,
     };
 
     logger.info(
-      `[HL] Position: ${coin} size=${hedgeState.size} notional=$${hedgeState.notionalUsd.toFixed(2)} side=${hedgeState.side}`
+      `[HL] Position: ${coin} size=${hedgeState.size} notional=$${hedgeState.notionalUsd.toFixed(2)} side=${hedgeState.side} entryPx=${entryPx?.toFixed(6) ?? 'n/a'}`
     );
     return hedgeState;
   }

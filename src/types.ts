@@ -23,6 +23,7 @@ export interface HedgeState {
   size: number;
   notionalUsd: number;
   side: 'short' | 'none';
+  avgEntryPrice?: number; // weighted average entry price from HL (entryPx)
 }
 
 export interface PnlState {
@@ -89,6 +90,7 @@ export interface ActivePositionConfig {
   hedgeToken: 'token0' | 'token1';
   protectionType?: string; // 'delta-neutral'
   hedgeRatio?: number; // 0.8 to protect 80%
+  cooldownSeconds?: number; // intervalo mínimo entre rebalances (sobrescreve config global)
   emergencyPriceMovementThreshold?: number; // % de movimento de preço para emergency (bypassa cooldown)
 }
 

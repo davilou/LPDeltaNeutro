@@ -63,6 +63,29 @@ export function startDashboard(port: number): void {
     }
   });
 
+  // API: lookup a single position by tokenId (bypasses wallet ownership check)
+  app.post('/api/lookup-position', async (req, res) => {
+    const { tokenId } = req.body as { tokenId?: number };
+    if (typeof tokenId !== 'number') {
+      res.status(400).json({ error: 'tokenId required' });
+      return;
+    }
+    try {
+      const scanner = new WalletScanner();
+      const position = await scanner.lookupByTokenId(tokenId);
+      if (!position) {
+        res.status(404).json({ error: 'Position not found or has no liquidity' });
+        return;
+      }
+      const positions = [position];
+      dashboardStore.setDiscoveredPositions(positions);
+      res.json({ found: true, position });
+    } catch (err) {
+      logger.error(`[Dashboard] Position lookup failed: ${err}`);
+      res.status(500).json({ error: 'Lookup failed', detail: String(err) });
+    }
+  });
+
   // API: activate protection for a position
   app.post('/api/activate-position', (req, res) => {
     const body = req.body as Partial<ActivatePositionRequest>;
@@ -82,6 +105,7 @@ export function startDashboard(port: number): void {
       token1Symbol: body.token1Symbol ?? '',
       protectionType: body.protectionType,
       hedgeRatio: body.hedgeRatio,
+      cooldownSeconds: body.cooldownSeconds,
       emergencyPriceMovementThreshold: body.emergencyPriceMovementThreshold,
     };
     dashboardStore.requestActivation(request);

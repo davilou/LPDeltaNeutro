@@ -55,6 +55,78 @@ export class WalletScanner {
     this.fallback = new FallbackProvider(config.httpRpcUrls);
   }
 
+  async lookupByTokenId(tokenId: number): Promise<DiscoveredPosition | null> {
+    // Each RPC call that can fail transiently must propagate out of fallback.call
+    // so the FallbackProvider can rotate to the next RPC and retry.
+    // Only swallow errors that are deterministic (e.g. factory returning ZeroAddress).
+
+    const tokenInfoCache = new Map<string, { symbol: string; decimals: number }>();
+
+    // positions() — let transient errors propagate for FallbackProvider retry
+    const pos = await this.fallback.call(async (provider) => {
+      const pm = new ethers.Contract(POSITION_MANAGER_V3_ADDRESS, POSITION_MANAGER_V3_ABI, provider);
+      return pm.positions(tokenId);
+    });
+
+    if (BigInt(pos.liquidity) === 0n) {
+      logger.info(`[WalletScanner] lookupByTokenId #${tokenId}: liquidity=0`);
+      return null;
+    }
+
+    const t0Addr = pos.token0.toLowerCase();
+    const t1Addr = pos.token1.toLowerCase();
+    const fee = Number(pos.fee);
+
+    // Token info + pool address + slot0 — all through fallback for retry
+    const { t0, t1, poolAddr, tickCurrent } = await this.fallback.call(async (provider) => {
+      const factory = new ethers.Contract(FACTORY_V3_ADDRESS, FACTORY_V3_ABI, provider);
+
+      const [t0Info, t1Info] = await Promise.all([
+        this.getTokenInfo(t0Addr, provider, tokenInfoCache),
+        this.getTokenInfo(t1Addr, provider, tokenInfoCache),
+      ]);
+
+      let addr = ethers.ZeroAddress;
+      let factoryFailed = false;
+      try {
+        addr = await factory.getPool(pos.token0, pos.token1, pos.fee);
+      } catch {
+        factoryFailed = true;
+      }
+
+      if (factoryFailed) {
+        try {
+          const V3_POOL_INIT_CODE_HASH = '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54';
+          const [tA, tB] = t0Addr < t1Addr ? [pos.token0, pos.token1] : [pos.token1, pos.token0];
+          const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [tA, tB, fee]);
+          addr = ethers.getCreate2Address(FACTORY_V3_ADDRESS, salt, V3_POOL_INIT_CODE_HASH);
+        } catch { }
+      }
+
+      if (addr === ethers.ZeroAddress) {
+        throw new Error(`pool not found for ${t0Info.symbol}/${t1Info.symbol} fee=${fee}`);
+      }
+
+      // slot0 — let it propagate for FallbackProvider retry
+      const pool = new ethers.Contract(addr, POOL_V3_ABI, provider);
+      const slot0 = await pool.slot0();
+
+      return { t0: t0Info, t1: t1Info, poolAddr: addr, tickCurrent: Number(slot0.tick) };
+    });
+
+    const dp = this.buildDiscoveredPosition(
+      tokenId, 'v3',
+      pos.token0, t0,
+      pos.token1, t1,
+      fee,
+      Number(pos.tickLower), Number(pos.tickUpper), tickCurrent,
+      BigInt(pos.liquidity), poolAddr
+    );
+
+    logger.info(`[WalletScanner] lookupByTokenId #${tokenId}: found ${t0.symbol}/${t1.symbol} ~$${dp.estimatedUsd.toFixed(2)}`);
+    return dp;
+  }
+
   async scanWallet(walletAddress: string): Promise<DiscoveredPosition[]> {
     return this.fallback.call(async (provider) => {
       const discovered: DiscoveredPosition[] = [];
@@ -92,26 +164,45 @@ export class WalletScanner {
     logger.info(`[WalletScanner] V3: ${walletAddress} owns ${count} NFTs`);
 
     const tokenIds: bigint[] = [];
-    // Process token index fetch in smaller chunks to avoid RPC batch/concurrency limits
+    // Process token index fetch in smaller chunks to avoid RPC batch/concurrency limits.
+    // Some indices may revert if NFTs are staked in external gauges — skip them individually.
     const indices = Array.from({ length: count }, (_, i) => i);
-    const indexChunks = chunk(indices, 5); // Reduced from 10 to 5
+    const indexChunks = chunk(indices, 5);
     for (const batch of indexChunks) {
-      const ids = await Promise.all(batch.map(i => pm.tokenOfOwnerByIndex(walletAddress, i)));
-      tokenIds.push(...ids);
-      // Small delay to prevent hitting rate limits
+      const results = await Promise.allSettled(batch.map(i => pm.tokenOfOwnerByIndex(walletAddress, i)));
+      for (const r of results) {
+        if (r.status === 'fulfilled') tokenIds.push(r.value as bigint);
+      }
       await new Promise(r => setTimeout(r, 100));
     }
 
     const discovered: DiscoveredPosition[] = [];
-    // Process position details in very small chunks
-    const idChunks = chunk(tokenIds, 2); // Reduced from 5 to 2
+    // Process position details one at a time — each through its own fallback.call so
+    // the FallbackProvider can rotate RPCs on transient CALL_EXCEPTION (data=null) errors.
+    // Promise.allSettled inside a single provider would swallow errors before rotation.
+    const idChunks = chunk(tokenIds, 2);
     for (const batch of idChunks) {
-      const posResults = await Promise.all(batch.map(id => pm.positions(id)));
+      const posResults = await Promise.allSettled(
+        batch.map(id =>
+          this.fallback.call(async (p) => {
+            const pmFresh = new ethers.Contract(POSITION_MANAGER_V3_ADDRESS, POSITION_MANAGER_V3_ABI, p);
+            return pmFresh.positions(id);
+          })
+        )
+      );
 
       for (let i = 0; i < batch.length; i++) {
         const tokenId = Number(batch[i]);
-        const pos = posResults[i];
-        if (BigInt(pos.liquidity) === 0n) continue;
+        const r = posResults[i];
+        if (r.status === 'rejected') {
+          logger.warn(`[WalletScanner] NFT #${tokenId}: skipped (positions() call failed: ${r.reason})`);
+          continue;
+        }
+        const pos = r.value;
+        if (BigInt(pos.liquidity) === 0n) {
+          logger.info(`[WalletScanner] NFT #${tokenId}: skipped (liquidity=0)`);
+          continue;
+        }
 
         const t0Addr = pos.token0.toLowerCase();
         const t1Addr = pos.token1.toLowerCase();
@@ -121,18 +212,41 @@ export class WalletScanner {
         const t1 = await this.getTokenInfo(t1Addr, provider, tokenInfoCache);
 
         let poolAddr = ethers.ZeroAddress;
+        let factoryCallFailed = false;
         try {
           poolAddr = await factory.getPool(pos.token0, pos.token1, pos.fee);
-        } catch { }
+        } catch (err) {
+          factoryCallFailed = true;
+          logger.warn(`[WalletScanner] NFT #${tokenId}: factory.getPool() failed (${err}), falling back to CREATE2`);
+        }
 
-        if (poolAddr === ethers.ZeroAddress) continue;
+        // Fallback: compute pool address via CREATE2 when factory call fails due to RPC error.
+        // Only used for transient failures — if factory returns ZeroAddress, the pool genuinely doesn't exist there.
+        // This is purely a local computation and does not require any RPC call.
+        if (factoryCallFailed) {
+          try {
+            const V3_POOL_INIT_CODE_HASH = '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54';
+            const [tA, tB] = pos.token0.toLowerCase() < pos.token1.toLowerCase()
+              ? [pos.token0, pos.token1] : [pos.token1, pos.token0];
+            const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [tA, tB, fee]);
+            poolAddr = ethers.getCreate2Address(FACTORY_V3_ADDRESS, salt, V3_POOL_INIT_CODE_HASH);
+          } catch (err) {
+            logger.warn(`[WalletScanner] NFT #${tokenId}: CREATE2 fallback failed (${err})`);
+          }
+        }
+
+        if (poolAddr === ethers.ZeroAddress) {
+          logger.info(`[WalletScanner] NFT #${tokenId}: skipped (pool not found for ${t0.symbol}/${t1.symbol} fee=${fee})`);
+          continue;
+        }
 
         let tickCurrent = 0;
         try {
           const pool = new ethers.Contract(poolAddr, POOL_V3_ABI, provider);
           const slot0 = await pool.slot0();
           tickCurrent = Number(slot0.tick);
-        } catch {
+        } catch (err) {
+          logger.info(`[WalletScanner] NFT #${tokenId}: skipped (slot0 failed for pool ${poolAddr}: ${err})`);
           continue;
         }
 
@@ -157,6 +271,8 @@ export class WalletScanner {
 
         if (dp.estimatedUsd >= 10) {
           discovered.push(dp);
+        } else {
+          logger.info(`[WalletScanner] NFT #${tokenId}: skipped (estimatedUsd=$${dp.estimatedUsd.toFixed(2)} < $10, ${t0.symbol}/${t1.symbol})`);
         }
       }
       await new Promise(r => setTimeout(r, 100));
@@ -178,21 +294,32 @@ export class WalletScanner {
 
     const tokenIds: bigint[] = [];
     const indices = Array.from({ length: count }, (_, i) => i);
-    const indexChunks = chunk(indices, 5); // Reduced from 10
+    const indexChunks = chunk(indices, 5);
     for (const batch of indexChunks) {
-      const ids = await Promise.all(batch.map(i => pm.tokenOfOwnerByIndex(walletAddress, i)));
-      tokenIds.push(...ids);
+      const results = await Promise.allSettled(batch.map(i => pm.tokenOfOwnerByIndex(walletAddress, i)));
+      for (const r of results) {
+        if (r.status === 'fulfilled') tokenIds.push(r.value as bigint);
+      }
       await new Promise(r => setTimeout(r, 100));
     }
 
     const discovered: DiscoveredPosition[] = [];
-    const idChunks = chunk(tokenIds, 2); // Reduced from 5
+    const idChunks = chunk(tokenIds, 2);
     for (const batch of idChunks) {
-      const infoResults = await Promise.all(batch.map(id => pm.getPoolAndPositionInfo(id)));
+      const infoResults = await Promise.allSettled(
+        batch.map(id =>
+          this.fallback.call(async (p) => {
+            const pmFresh = new ethers.Contract(POSITION_MANAGER_V4_ADDRESS, POSITION_MANAGER_V4_ABI, p);
+            return pmFresh.getPoolAndPositionInfo(id);
+          })
+        )
+      );
 
       for (let i = 0; i < batch.length; i++) {
         const tokenId = Number(batch[i]);
-        const { poolKey, info } = infoResults[i];
+        const r = infoResults[i];
+        if (r.status === 'rejected') continue;
+        const { poolKey, info } = r.value;
 
         const liquidity = info & ((1n << 128n) - 1n);
         if (liquidity === 0n) continue;

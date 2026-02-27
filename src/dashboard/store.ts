@@ -53,6 +53,7 @@ export interface ActivatePositionRequest {
   token1Symbol: string;
   protectionType?: string;
   hedgeRatio?: number;
+  cooldownSeconds?: number;
   emergencyPriceMovementThreshold?: number;
 }
 

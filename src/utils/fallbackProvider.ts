@@ -1,6 +1,16 @@
 import { ethers } from 'ethers';
 import { logger } from './logger';
 
+function isContractRevert(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code;
+  if (code !== 'CALL_EXCEPTION') return false;
+  // data=null significa falha do RPC (sem revert data) — é retryável.
+  // Revert real tem data="0x..." (ao menos "0x" vazio).
+  const data = (err as { data?: unknown }).data;
+  return typeof data === 'string' && data.length > 0;
+}
+
 /**
  * Wraps multiple JsonRpcProviders with automatic fallback.
  * Tries each RPC in order; on failure rotates to the next.
@@ -38,6 +48,9 @@ export class FallbackProvider {
       try {
         return await fn(this.providers[this.currentIndex]);
       } catch (err) {
+        // Contract reverts (CALL_EXCEPTION) are deterministic — rotating RPC won't help.
+        // Only rotate on actual network/transport failures.
+        if (isContractRevert(err)) throw err;
         lastError = err;
         logger.warn(`RPC #${this.currentIndex} failed: ${err}`);
         this.rotate();

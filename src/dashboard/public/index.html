@@ -694,6 +694,11 @@
           spellcheck="false" />
         <button id="scanBtn" class="btn">SCAN</button>
       </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+        <span class="dr-lbl" style="white-space:nowrap;font-size:11px;color:#94a3b8;">NFT not found?</span>
+        <input id="tokenIdInput" type="number" class="t-in" placeholder="Enter NFT token ID manually" style="flex:1;" />
+        <button id="lookupBtn" class="btn" style="white-space:nowrap;">LOOKUP</button>
+      </div>
       <div id="scanStatus" class="status-line"></div>
       <div id="positionList" class="position-list" style="display:none;"></div>
     </div>
@@ -793,11 +798,7 @@
           </div>
           <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
             <span class="dr-lbl">Price Move %</span>
-            <input type="number" step="0.01" id="act-priceMovThresh" class="t-in-small" title="Rebalance quando preço move X% desde o último rebalance">
-          </div>
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <span class="dr-lbl">Emerg Price %</span>
-            <input type="number" step="0.01" id="act-emergPriceThresh" class="t-in-small" title="Emergency: move de preço maior bypassa cooldown">
+            <input type="number" step="0.01" id="act-emergPriceThresh" class="t-in-small" title="Rebalance quando preço move X% desde o último rebalance (bypassa cooldown)">
           </div>
           <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
             <span class="dr-lbl" style="color:#888;">Ref Price</span>
@@ -964,9 +965,8 @@
 
         // Only update if inputs are not focused to avoid interrupting user typing
         if (document.activeElement.className !== 't-in-small') {
-          $('act-hedgeRatio').value = cfg.hedgeRatio ?? 0;
+          $('act-hedgeRatio').value = cfg.hedgeRatio ?? 1;
           $('act-rebalInt').value = Math.round((cfg.cooldownSeconds ?? 0) / 60);
-          $('act-priceMovThresh').value = cfg.priceMovementThreshold ?? 0;
           $('act-emergPriceThresh').value = cfg.emergencyPriceMovementThreshold ?? 0;
         }
       }
@@ -982,7 +982,6 @@
           tokenId: activeTokenId,
           hedgeRatio: parseFloat($('act-hedgeRatio').value),
           cooldownSeconds: Math.round(parseFloat($('act-rebalInt').value) * 60),
-          priceMovementThreshold: parseFloat($('act-priceMovThresh').value),
           emergencyPriceMovementThreshold: parseFloat($('act-emergPriceThresh').value)
         };
 
@@ -1192,8 +1191,7 @@
               '<div class="config-panel" id="cfg-' + p.tokenId + '" style="display:none;">' +
               '<div class="irow"><label>Hedge Ratio (%):</label> <input type="number" step="0.05" id="cfg-ratio-' + p.tokenId + '" value="0.8" class="t-in"></div>' +
               '<div class="irow"><label>Cooldown (min):</label> <input type="number" id="cfg-int-' + p.tokenId + '" value="240" class="t-in"></div>' +
-              '<div class="irow"><label>Price Move % (normal):</label> <input type="number" step="0.01" id="cfg-pmt-' + p.tokenId + '" value="0.05" class="t-in"></div>' +
-              '<div class="irow"><label>Price Move % (emerg):</label> <input type="number" step="0.01" id="cfg-ept-' + p.tokenId + '" value="0.15" class="t-in"></div>' +
+              '<div class="irow"><label>Price Move %:</label> <input type="number" step="0.01" id="cfg-ept-' + p.tokenId + '" value="0.15" class="t-in"></div>' +
               '<button class="btn btn-blue" onclick="activatePosition(' + i + ')" style="margin-top:4px;">START PROTECTION</button>' +
               '</div>');
         }).join('');
@@ -1206,7 +1204,6 @@
 
         var hedgeRatio = parseFloat($('cfg-ratio-' + p.tokenId).value) || 0;
         var timeRebal = parseFloat($('cfg-int-' + p.tokenId).value) || 0;
-        var pmt = parseFloat($('cfg-pmt-' + p.tokenId).value) || 0;
         var ept = parseFloat($('cfg-ept-' + p.tokenId).value) || 0;
 
         if (!confirm(
@@ -1226,7 +1223,6 @@
             token0Symbol: p.token0Symbol, token1Symbol: p.token1Symbol,
             hedgeRatio: hedgeRatio,
             cooldownSeconds: Math.round(timeRebal * 60),
-            priceMovementThreshold: pmt,
             emergencyPriceMovementThreshold: ept
           }),
         }).then(r => r.json()).then(function (data) {
@@ -1292,6 +1288,32 @@
         }).catch(function () {
           $('scanBtn').disabled = false;
           $('scanStatus').textContent = 'Scan failed — check connection.';
+        });
+      });
+
+      $('lookupBtn').addEventListener('click', function () {
+        var raw = $('tokenIdInput').value.trim();
+        var tokenId = parseInt(raw, 10);
+        if (isNaN(tokenId) || tokenId <= 0) {
+          $('scanStatus').textContent = 'Enter a valid NFT token ID.';
+          return;
+        }
+        $('lookupBtn').disabled = true;
+        $('scanStatus').textContent = 'Looking up NFT #' + tokenId + '…';
+        $('positionList').style.display = 'none';
+        fetch('/api/lookup-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: tokenId }),
+        }).then(r => r.json()).then(function (data) {
+          $('lookupBtn').disabled = false;
+          if (data.error) { $('scanStatus').textContent = 'Not found: ' + data.error; return; }
+          discoveredPositions = [data.position];
+          $('scanStatus').textContent = 'Found NFT #' + tokenId + '.';
+          renderPositionList(discoveredPositions);
+        }).catch(function () {
+          $('lookupBtn').disabled = false;
+          $('scanStatus').textContent = 'Lookup failed — check connection.';
         });
       });
 

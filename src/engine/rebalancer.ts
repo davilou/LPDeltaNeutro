@@ -160,10 +160,10 @@ export class Rebalancer {
     const cfg = ps.config;
     const hedgeSymbol = cfg.hedgeSymbol;
     const hedgeToken = cfg.hedgeToken ?? 'token0';
-    const hedgeRatio = cfg.hedgeRatio ?? 1.0;
-    const cooldownSec = config.rebalanceIntervalMin * 60;
+    const hedgeRatio = (cfg.hedgeRatio && cfg.hedgeRatio > 0) ? cfg.hedgeRatio : 1.0;
+    const cooldownSec = cfg.cooldownSeconds ?? (config.rebalanceIntervalMin * 60);
     const emergencyPriceMovThreshold = cfg.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold;
-    const rebalanceIntervalMin = config.rebalanceIntervalMin;
+    const rebalanceIntervalMin = cfg.cooldownSeconds != null ? cfg.cooldownSeconds / 60 : config.rebalanceIntervalMin;
 
     // Reset daily counter if new day
     const today = new Date().toISOString().split('T')[0];
@@ -186,8 +186,11 @@ export class Rebalancer {
     // Get current hedge position for this symbol
     const currentHedge = await this.exchange.getPosition(hedgeSymbol);
 
-    // Forced close: LP acima do range (100% stablecoin), fecha o hedge
-    const isForcedClose = target.size <= 0 && currentHedge.size > 0;
+    // Forced close: LP saiu do range (100% stablecoin para token0, 100% volátil para token1)
+    const rangeRequiresClose =
+      (hedgeToken === 'token0' && position.rangeStatus === 'above-range') ||
+      (hedgeToken === 'token1' && position.rangeStatus === 'below-range');
+    const isForcedClose = rangeRequiresClose && currentHedge.size > 0;
     // Forced hedge: LP abaixo do range (100% token volátil), aumenta hedge até o target imediatamente
     const isForcedHedge = position.rangeStatus === 'below-range' && target.size > currentHedge.size + 1e-8;
 
@@ -249,13 +252,31 @@ export class Rebalancer {
     const pnlTracker = this.getPnlTracker(tokenId);
 
     // Fix corrupted state from previous decimal bug if needed
-    const virtualState = pnlTracker.getVirtualState();
+    let virtualState = pnlTracker.getVirtualState();
     if (virtualState.size > 0 && virtualState.avgPrice < 0.001) {
       logger.warn(`[NFT#${tokenId}] Fixing corrupted avgEntryPrice ($${virtualState.avgPrice} -> $${position.price})`);
       pnlTracker.reinitializeVirtualPrice(position.price);
+      virtualState = pnlTracker.getVirtualState();
     }
 
-    pnlTracker.accumulateFunding(fundingRate, currentHedge.notionalUsd);
+    // Reconcile virtual tracking with actual HL position if they diverged (e.g. bot restart with empty pnl state)
+    if (currentHedge.size > 0.01) {
+      const drift = Math.abs(currentHedge.size - virtualState.size) / currentHedge.size;
+      if (drift > 0.10) {
+        // Use HL's entryPx as ground truth for avg entry — avoids manual state.json edits
+        const reconcileAvgPrice = currentHedge.avgEntryPrice ?? position.price;
+        logger.warn(
+          `[NFT#${tokenId}] Virtual size drift ${(drift * 100).toFixed(1)}%: ` +
+          `tracked=${virtualState.size.toFixed(4)} actual=${currentHedge.size.toFixed(4)}. ` +
+          `Reconciling with HL entryPx=$${reconcileAvgPrice.toFixed(6)}`
+        );
+        pnlTracker.reconcilePosition(currentHedge.size, reconcileAvgPrice);
+        virtualState = pnlTracker.getVirtualState();
+      }
+    }
+
+    const virtualNotionalUsd = virtualState.size * position.price;
+    pnlTracker.accumulateFunding(fundingRate, virtualNotionalUsd);
 
     const lpFeesUsd = position.tokensOwed0 * position.price + position.tokensOwed1;
     const currentLpUsdWithFees = totalPositionUsd + lpFeesUsd;
@@ -370,11 +391,12 @@ export class Rebalancer {
     }
 
     // Record trade for Virtual Accounting
-    pnlTracker.recordTrade(effectiveSize - currentHedge.size, position.price);
+    const fillPrice = fillResult?.avgPx ?? position.price;
+    pnlTracker.recordTrade(effectiveSize - currentHedge.size, fillPrice);
 
     // Record trade fee for PnL
-    const orderNotionalUsd = Math.abs(effectiveNotional - currentHedge.notionalUsd);
-    pnlTracker.recordTradeFee(orderNotionalUsd);
+    const executedNotionalUsd = fillResult ? fillResult.sz * fillResult.avgPx : 0;
+    pnlTracker.recordTradeFee(executedNotionalUsd);
     ps.pnl = pnlTracker.getStateForPersist();
 
     // Record rebalance event in dashboard
@@ -407,7 +429,7 @@ export class Rebalancer {
     this.lastRangeStatusMap[tokenId] = position.rangeStatus;
 
     // Persist to Supabase (fire-and-forget)
-    const feeUsd = orderNotionalUsd * config.hlTakerFee;
+    const feeUsd = executedNotionalUsd * config.hlTakerFee;
     void insertRebalance({
       token_id: tokenId,
       timestamp: new Date().toISOString(),

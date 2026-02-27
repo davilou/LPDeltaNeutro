@@ -149,6 +149,7 @@ async function main() {
         hedgeToken,
         protectionType: req.protectionType || 'delta-neutral',
         hedgeRatio: req.hedgeRatio ?? 1.0,
+        cooldownSeconds: req.cooldownSeconds,
         emergencyPriceMovementThreshold: req.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold,
       };
 
@@ -326,8 +327,8 @@ async function main() {
       // Run on FIRST block and then every config.blockThrottle blocks
       if (blockCount !== 1 && blockCount % config.blockThrottle !== 0) return;
 
-      const activePositions = dashboardStore.getAllActivePositions();
-      if (Object.keys(activePositions).length === 0) {
+      const positionsState = rebalancer.fullState.positions;
+      if (Object.keys(positionsState).length === 0) {
         logger.info(`Block ${blockNumber}: no active positions — awaiting dashboard activation`);
         return;
       }

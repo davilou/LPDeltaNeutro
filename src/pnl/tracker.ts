@@ -202,6 +202,14 @@ export class PnlTracker {
     }
   }
 
+  reconcilePosition(actualSize: number, avgPrice: number): void {
+    if (this.state) {
+      this.state.virtualSize = actualSize;
+      this.state.avgEntryPrice = avgPrice;
+      logger.info(`[PnlTracker] Position reconciled: size=${actualSize.toFixed(4)} avgEntry=$${avgPrice.toFixed(6)}`);
+    }
+  }
+
   getStateForPersist(): PnlState | undefined {
     return this.state ?? undefined;
   }
