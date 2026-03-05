@@ -2137,7 +2137,7 @@
     var H = parseFloat(document.getElementById('calc-hedge').value) || 0;
     var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
 
-    if (!V || !P || !Pa || !Pb || Pa >= Pb || P <= 0 || Pa <= 0) {
+    if (!(V > 0) || !(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb) {
       errEl.textContent = 'Preencha todos os campos com valores válidos (Pa < Pb).';
       resultsEl.style.display = 'none';
       return;
