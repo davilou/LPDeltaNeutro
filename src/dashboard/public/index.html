@@ -800,6 +800,107 @@
       color: var(--tx-dim);
       line-height: 1.5;
     }
+
+    /* ══════════════════════════════════════
+       CALCULATOR PAGE
+    ══════════════════════════════════════ */
+    .calc-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .calc-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .calc-field label {
+      font-size: 0.7rem;
+      color: var(--tx-dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .calc-field input {
+      background: var(--surface2);
+      border: 1px solid var(--bd-md);
+      color: var(--tx);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      padding: 6px 10px;
+      border-radius: 3px;
+      width: 100%;
+      outline: none;
+    }
+
+    .calc-field input:focus {
+      border-color: var(--bd-hi);
+    }
+
+    .calc-result-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    .calc-result-table th {
+      text-align: right;
+      padding: 5px 10px;
+      color: var(--tx-dim);
+      font-size: 0.68rem;
+      letter-spacing: 1px;
+      border-bottom: 1px solid var(--bd);
+    }
+
+    .calc-result-table th:first-child { text-align: left; }
+
+    .calc-result-table td {
+      padding: 5px 10px;
+      text-align: right;
+      border-bottom: 1px solid var(--bd);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .calc-result-table td:first-child { text-align: left; color: var(--tx-dim); }
+
+    .calc-result-table tr.range-row td {
+      background: rgba(245, 158, 11, 0.07);
+      color: var(--amber);
+    }
+
+    .calc-result-table tr.range-row td:first-child { color: var(--amber); font-weight: bold; }
+
+    .calc-result-table tr.current-row td {
+      color: var(--tx-muted);
+    }
+
+    .calc-farm-card {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--bd-md);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .calc-farm-label {
+      font-size: 0.7rem;
+      color: var(--tx-dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .calc-farm-value {
+      font-family: var(--disp);
+      font-size: 1rem;
+      color: var(--green);
+    }
   </style>
 </head>
 
@@ -933,7 +1034,67 @@
 
       <!-- ── PAGE: CALCULATOR ──────────────────────────────────── -->
       <div id="page-calculator" style="display:none;">
-        <!-- content added in Task 2 & 3 -->
+        <div class="calc-layout">
+
+          <!-- LEFT: Inputs -->
+          <div class="panel">
+            <div class="panel-title">Parâmetros</div>
+
+            <div class="calc-field">
+              <label>Pool Value (USD)</label>
+              <input id="calc-poolValue" type="number" placeholder="30000" min="0" />
+            </div>
+            <div class="calc-field">
+              <label>Current Price</label>
+              <input id="calc-price" type="number" placeholder="2800" min="0" />
+            </div>
+            <div class="calc-field">
+              <label>Range Min — Pa</label>
+              <input id="calc-pa" type="number" placeholder="2400" min="0" />
+            </div>
+            <div class="calc-field">
+              <label>Range Max — Pb</label>
+              <input id="calc-pb" type="number" placeholder="3200" min="0" />
+            </div>
+            <div class="calc-field">
+              <label>Hedge Size (USD notional)</label>
+              <input id="calc-hedge" type="number" placeholder="15000" min="0" />
+            </div>
+            <div class="calc-field">
+              <label>Pool APR (%)</label>
+              <input id="calc-apr" type="number" placeholder="18" min="0" />
+            </div>
+
+            <button class="btn" style="width:100%;margin-top:4px;" onclick="runCalc()">CALCULATE</button>
+            <div id="calc-error" style="margin-top:8px;font-size:0.75rem;color:var(--red);min-height:16px;"></div>
+          </div>
+
+          <!-- RIGHT: Results -->
+          <div>
+            <div class="panel" id="calc-results" style="display:none;">
+              <div class="panel-title">Cenários</div>
+              <div style="overflow-x:auto;">
+                <table class="calc-result-table">
+                  <thead>
+                    <tr>
+                      <th>Cenário</th>
+                      <th>Preço</th>
+                      <th>P&amp;L LP</th>
+                      <th>P&amp;L Hedge</th>
+                      <th>P&amp;L Líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody id="calc-tbody"></tbody>
+                </table>
+              </div>
+              <div class="calc-farm-card" id="calc-farm-card" style="display:none;">
+                <span class="calc-farm-label">Farm Diário Estimado</span>
+                <span class="calc-farm-value" id="calc-farm-value">—</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div><!-- end #page-calculator -->
 
       <!-- ── PAGE: SETTINGS ────────────────────────────────────── -->
