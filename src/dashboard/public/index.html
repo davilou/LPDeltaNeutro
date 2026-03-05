@@ -825,19 +825,13 @@
       text-transform: uppercase;
     }
 
-    .calc-field input {
-      background: var(--surface2);
-      border: 1px solid var(--bd-md);
-      color: var(--tx);
-      font-family: var(--mono);
-      font-size: 0.85rem;
-      padding: 6px 10px;
-      border-radius: 3px;
+    .calc-field .t-in {
       width: 100%;
-      outline: none;
+      background: var(--surface2);
+      border-radius: 3px;
     }
 
-    .calc-field input:focus {
+    .calc-field .t-in:focus {
       border-color: var(--bd-hi);
     }
 
@@ -875,7 +869,7 @@
     .calc-result-table tr.range-row td:first-child { color: var(--amber); font-weight: bold; }
 
     .calc-result-table tr.current-row td {
-      color: var(--tx-muted);
+      color: var(--tx-dim);
     }
 
     .calc-farm-card {
@@ -1042,27 +1036,27 @@
 
             <div class="calc-field">
               <label>Pool Value (USD)</label>
-              <input id="calc-poolValue" type="number" placeholder="30000" min="0" />
+              <input id="calc-poolValue" type="number" class="t-in" placeholder="30000" min="0" />
             </div>
             <div class="calc-field">
               <label>Current Price</label>
-              <input id="calc-price" type="number" placeholder="2800" min="0" />
+              <input id="calc-price" type="number" class="t-in" placeholder="2800" min="0" />
             </div>
             <div class="calc-field">
               <label>Range Min — Pa</label>
-              <input id="calc-pa" type="number" placeholder="2400" min="0" />
+              <input id="calc-pa" type="number" class="t-in" placeholder="2400" min="0" />
             </div>
             <div class="calc-field">
               <label>Range Max — Pb</label>
-              <input id="calc-pb" type="number" placeholder="3200" min="0" />
+              <input id="calc-pb" type="number" class="t-in" placeholder="3200" min="0" />
             </div>
             <div class="calc-field">
               <label>Hedge Size (USD notional)</label>
-              <input id="calc-hedge" type="number" placeholder="15000" min="0" />
+              <input id="calc-hedge" type="number" class="t-in" placeholder="15000" min="0" />
             </div>
             <div class="calc-field">
               <label>Pool APR (%)</label>
-              <input id="calc-apr" type="number" placeholder="18" min="0" />
+              <input id="calc-apr" type="number" class="t-in" placeholder="18" min="0" />
             </div>
 
             <button class="btn" style="width:100%;margin-top:4px;" onclick="runCalc()">CALCULATE</button>
