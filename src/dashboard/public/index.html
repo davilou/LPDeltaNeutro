@@ -73,7 +73,8 @@
       background: var(--bg);
       color: var(--tx);
       min-height: 100vh;
-      padding: 16px 20px 32px;
+      display: flex;
+      flex-direction: column;
     }
 
     /* ══════════════════════════════════════
@@ -83,9 +84,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 0 13px;
+      padding: 10px 20px 13px;
       border-bottom: 1px solid var(--bd-md);
-      margin-bottom: 16px;
+      flex-shrink: 0;
     }
 
     .brand {
@@ -150,6 +151,68 @@
       50% {
         opacity: 0.5;
       }
+    }
+
+    /* ══════════════════════════════════════
+   APP LAYOUT
+══════════════════════════════════════ */
+    .app-layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ══════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════ */
+    .sidebar {
+      width: 152px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--bd);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 0;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sidebar-item {
+      padding: 10px 16px;
+      font-family: var(--disp);
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--tx-dim);
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .sidebar-item:hover {
+      color: var(--tx);
+      background: var(--surface2);
+    }
+
+    .sidebar-item.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(245, 158, 11, 0.05);
+    }
+
+    /* ══════════════════════════════════════
+   CONTENT AREA
+══════════════════════════════════════ */
+    .content-area {
+      flex: 1;
+      padding: 16px 20px 32px;
+      overflow-y: auto;
+      min-width: 0;
     }
 
     /* ══════════════════════════════════════
@@ -559,6 +622,28 @@
       border-bottom: none;
     }
 
+    .position-metrics-block {
+      margin-bottom: 16px;
+    }
+
+    .pos-metrics-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0 8px;
+      border-bottom: 1px solid var(--bd-md);
+      margin-bottom: 8px;
+      font-family: var(--disp);
+      font-size: 0.62rem;
+      letter-spacing: 1.5px;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .pos-pair {
+      color: var(--tx-dim);
+    }
+
     .dr-lbl {
       color: var(--tx-dim);
     }
@@ -648,6 +733,73 @@
       padding: 18px;
       letter-spacing: 1px;
     }
+
+    /* ══════════════════════════════════════
+   SETTINGS PAGE
+══════════════════════════════════════ */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 800px) {
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .api-steps {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .api-step {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 0.82rem;
+      color: var(--tx-dim);
+      line-height: 1.5;
+    }
+
+    .api-step-num {
+      font-family: var(--disp);
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: var(--accent);
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid var(--accent-dim);
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .api-step a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    .api-step a:hover {
+      text-decoration: underline;
+    }
+
+    .api-note {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(96, 165, 250, 0.05);
+      border-left: 2px solid var(--blue);
+      font-size: 0.78rem;
+      color: var(--tx-dim);
+      line-height: 1.5;
+    }
   </style>
 </head>
 
@@ -662,6 +814,7 @@
     </div>
     <div class="hdr-right">
       <span>UPTIME <span id="uptime">--</span></span>
+      <button class="btn" onclick="logout()" style="font-size:0.72rem;padding:4px 10px;letter-spacing:1px;color:var(--tx-dim);">[LOGOUT]</button>
       <div class="conn-row">
         <span class="dot" id="connDot"></span>
         <span id="connStatus">CONNECTING</span>
@@ -669,202 +822,203 @@
     </div>
   </header>
 
-  <!-- SETUP GRID -->
-  <div class="setup-grid">
+  <!-- APP LAYOUT -->
+  <div class="app-layout">
 
-    <div class="panel" id="credentialsPanel">
-      <div class="panel-title">Hyperliquid Auth</div>
-      <div id="credStatus" class="status-line"></div>
-      <div id="credForm">
-        <div class="irow">
-          <input id="hlWalletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
-            spellcheck="false" />
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="sidebar-nav">
+        <div class="sidebar-item active" id="nav-monitor" onclick="showPage('monitor')">MONITOR</div>
+        <div class="sidebar-item" id="nav-history" onclick="showPage('history')">HISTORY</div>
+        <div class="sidebar-item" id="nav-calculator" onclick="showPage('calculator')">CALCULATOR</div>
+        <div class="sidebar-item" id="nav-settings" onclick="showPage('settings')">SETTINGS</div>
+      </div>
+    </nav>
+
+    <!-- CONTENT -->
+    <div class="content-area">
+
+      <!-- ── PAGE: MONITOR ─────────────────────────────────────── -->
+      <div id="page-monitor">
+
+        <!-- Position Discovery -->
+        <div class="panel" style="margin-bottom:10px;">
+          <div class="panel-title">Position Discovery</div>
+          <div class="irow">
+            <input id="walletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
+              spellcheck="false" />
+            <button id="scanBtn" class="btn">SCAN</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+            <span class="dr-lbl" style="white-space:nowrap;font-size:11px;color:#94a3b8;">NFT not found?</span>
+            <input id="tokenIdInput" type="number" class="t-in" placeholder="Enter NFT token ID manually" style="flex:1;" />
+            <button id="lookupBtn" class="btn" style="white-space:nowrap;">LOOKUP</button>
+          </div>
+          <div id="scanStatus" class="status-line"></div>
+          <div id="positionList" class="position-list" style="display:none;"></div>
         </div>
-        <div class="irow">
-          <input id="hlKeyInput" type="password" class="t-in" placeholder="private key" autocomplete="new-password" />
-          <button id="saveCredBtn" class="btn">GO LIVE</button>
+
+        <!-- TABS CONTAINER -->
+        <div id="tabsContainer" class="tabs-container" style="display:none;"></div>
+
+        <!-- ACTIVE BANNER -->
+        <div id="activeBanner" class="active-banner" style="display:none;">
+          <span class="banner-dot"></span>
+          <span id="activeBannerText">MONITORING</span>
         </div>
-      </div>
-    </div>
 
-    <div class="panel">
-      <div class="panel-title">Position Discovery</div>
-      <div class="irow">
-        <input id="walletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
-          spellcheck="false" />
-        <button id="scanBtn" class="btn">SCAN</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-        <span class="dr-lbl" style="white-space:nowrap;font-size:11px;color:#94a3b8;">NFT not found?</span>
-        <input id="tokenIdInput" type="number" class="t-in" placeholder="Enter NFT token ID manually" style="flex:1;" />
-        <button id="lookupBtn" class="btn" style="white-space:nowrap;">LOOKUP</button>
-      </div>
-      <div id="scanStatus" class="status-line"></div>
-      <div id="positionList" class="position-list" style="display:none;"></div>
-    </div>
+        <!-- METRICS — one block per active position, generated dynamically -->
+        <div id="allMetrics"></div>
 
-  </div>
+        <!-- CHART -->
+        <div class="chart-panel">
+          <div class="chart-title">Net Delta · Time Series</div>
+          <canvas id="deltaChart" height="180"></canvas>
+        </div>
 
-  <!-- TABS CONTAINER -->
-  <div id="tabsContainer" class="tabs-container" style="display:none;"></div>
+        <!-- TABLE -->
+        <div class="tbl-panel">
+          <div class="tbl-title">Recent Rebalances</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Position</th>
+                <th>Action</th>
+                <th>Δ Hedge</th>
+                <th>Avg Px</th>
+                <th>Value</th>
+                <th>Fee</th>
+                <th>Trigger</th>
+              </tr>
+            </thead>
+            <tbody id="rebalanceBody">
+              <tr>
+                <td colspan="8" class="empty-msg">No rebalances yet</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-  <!-- ACTIVE BANNER -->
-  <div id="activeBanner" class="active-banner" style="display:none;">
-    <span class="banner-dot"></span>
-    <span id="activeBannerText">MONITORING: NFT #—</span>
-  </div>
+      </div><!-- end #page-monitor -->
 
-  <!-- METRICS -->
-  <div class="metrics">
-
-    <div class="mc">
-      <div class="mc-label">Net Delta</div>
-      <div class="mc-val" id="netDelta">--</div>
-      <div class="mc-sub" id="netDeltaSub"></div>
-    </div>
-
-    <div class="mc">
-      <div class="mc-label" style="display:flex;justify-content:space-between;">
-        <span>P &amp; L ISOLADO (NFT)</span>
-        <span style="font-size:0.55rem;opacity:0.6;">VIRTUAL</span>
-      </div>
-      <div style="display:flex;align-items:baseline;margin-bottom:6px;">
-        <span class="mc-val" id="pnlTotal" style="font-size:1.25rem;">--</span>
-        <span class="pnl-pct" id="pnlPct"></span>
-      </div>
-      <div class="drows">
-        <div class="dr"><span class="dr-lbl">Unrealized</span><span class="dr-val" id="pnlUnreal">--</span></div>
-        <div class="dr"><span class="dr-lbl">Realized</span><span class="dr-val" id="pnlReal">--</span></div>
-        <div class="dr"><span class="dr-lbl">LP Fees (Net)</span><span class="dr-val" id="lpFees">--</span></div>
-        <div class="dr"><span class="dr-lbl">Funding</span><span class="dr-val" id="cumFunding">--</span></div>
-      </div>
-    </div>
-
-    <div class="mc">
-      <div class="mc-label">P &amp; L GLOBAL (CONTA)</div>
-      <div style="display:flex;align-items:baseline;margin-bottom:6px;">
-        <span class="mc-val" id="pnlGlobalVal" style="font-size:1.25rem;">--</span>
-        <span class="pnl-pct" id="pnlGlobalPct"></span>
-      </div>
-      <div class="drows">
-        <div class="dr"><span class="dr-lbl">initial hl+lp</span><span class="dr-val" id="initialTotal">--</span></div>
-        <div class="dr"><span class="dr-lbl">current hl+lp</span><span class="dr-val" id="currentTotal">--</span></div>
-        <div class="dr"><span class="dr-lbl">hl equity</span><span class="dr-val" id="hlEquity">--</span></div>
-        <div class="dr"><span class="dr-lbl">hl total fees</span><span class="dr-val" id="hlFees">--</span></div>
-      </div>
-    </div>
-
-    <div class="mc">
-      <div class="mc-label">LP Position</div>
-      <div class="drows">
-        <div class="dr"><span class="dr-lbl" id="t0Label">token0</span><span class="dr-val" id="t0Val">--</span></div>
-        <div class="dr"><span class="dr-lbl" id="t1Label">token1</span><span class="dr-val" id="t1Val">--</span></div>
-        <div class="dr"><span class="dr-lbl">total usd</span><span class="dr-val" id="totalUsd">--</span></div>
-        <div class="dr"><span class="dr-lbl">range</span><span class="dr-val" id="rangeStatus">--</span></div>
-      </div>
-    </div>
-
-    <div class="mc">
-      <div class="mc-label">Hedge · HL Perp</div>
-      <div class="drows">
-        <div class="dr"><span class="dr-lbl">size</span><span class="dr-val" id="hedgeSize">--</span></div>
-        <div class="dr"><span class="dr-lbl">notional</span><span class="dr-val" id="hedgeNotional">--</span></div>
-        <div class="dr"><span class="dr-lbl">side</span><span class="dr-val" id="hedgeSide">--</span></div>
-        <div class="dr"><span class="dr-lbl">funding</span><span class="dr-val" id="fundingRate">--</span></div>
-      </div>
-    </div>
-
-    <div class="mc">
-      <div class="mc-label">Bot Status</div>
-      <div class="drows">
-        <div class="dr"><span class="dr-lbl">rebal / day</span><span class="dr-val" id="dailyCount">--</span></div>
-        <div class="dr"><span class="dr-lbl">last rebal</span><span class="dr-val" id="lastRebalance">--</span></div>
-        <div class="dr"><span class="dr-lbl">price</span><span class="dr-val" id="price">--</span></div>
-      </div>
-    </div>
-
-    <!-- NEW STRATEGY CONFIG CARD -->
-    <div class="mc">
-      <div class="mc-label">Strategy Config</div>
-      <div class="drows">
-        <div class="dr" style="border:none;flex-direction:column;gap:5px;">
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <span class="dr-lbl">Hedge Ratio</span>
-            <input type="number" step="0.05" id="act-hedgeRatio" class="t-in-small">
+      <!-- ── PAGE: HISTORY ─────────────────────────────────────── -->
+      <div id="page-history" style="display:none;">
+        <div id="history-summary" style="margin-bottom:12px;"></div>
+        <div id="active-in-history" style="margin-bottom:12px;"></div>
+        <div class="tbl-panel">
+          <div class="tbl-title">Closed Positions</div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>NFT#</th>
+                  <th>Pool</th>
+                  <th>Range (ticks)</th>
+                  <th>Duration</th>
+                  <th>Initial LP</th>
+                  <th>LP Fees</th>
+                  <th>Funding</th>
+                  <th>HL Fees</th>
+                  <th>Net P&L</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody">
+                <tr><td colspan="9" class="empty-msg">Nenhuma posição encerrada ainda.</td></tr>
+              </tbody>
+            </table>
           </div>
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <span class="dr-lbl">Cooldown (m)</span>
-            <input type="number" id="act-rebalInt" class="t-in-small">
-          </div>
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <span class="dr-lbl">Price Move %</span>
-            <input type="number" step="0.01" id="act-emergPriceThresh" class="t-in-small" title="Rebalance quando preço move X% desde o último rebalance (bypassa cooldown)">
-          </div>
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <span class="dr-lbl" style="color:#888;">Ref Price</span>
-            <span id="act-lastRebalPrice" style="font-size:0.75rem;color:#aaa;">—</span>
-          </div>
-          <button class="btn btn-blue" id="updateConfigBtn"
-            style="width:100%;margin-top:5px;font-size:0.7rem;padding:4px;">UPDATE STRATEGY</button>
+        </div>
+      </div><!-- end #page-history -->
 
-          <div style="border-top:1px solid #2a2a2a;margin-top:10px;padding-top:8px;">
-            <div style="font-size:0.65rem;color:#888;margin-bottom:4px;">RESET P&amp;L BASE</div>
-            <div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:3px;">
-              <span class="dr-lbl">LP USD</span>
-              <input type="number" step="0.01" id="act-initLp" class="t-in-small" placeholder="0.00">
+      <!-- ── PAGE: CALCULATOR ──────────────────────────────────── -->
+      <div id="page-calculator" style="display:none;">
+        <!-- content added in Task 2 & 3 -->
+      </div><!-- end #page-calculator -->
+
+      <!-- ── PAGE: SETTINGS ────────────────────────────────────── -->
+      <div id="page-settings" style="display:none;">
+        <div class="settings-grid">
+
+          <!-- Credentials Panel -->
+          <div class="panel" id="credentialsPanel">
+            <div class="panel-title">Hyperliquid Auth</div>
+            <div id="credStatus" class="status-line"></div>
+            <div id="credForm">
+              <div class="irow">
+                <input id="hlWalletInput" type="text" class="t-in" placeholder="Master wallet address (trading account)" autocomplete="off"
+                  spellcheck="false" />
+              </div>
+              <div class="irow">
+                <input id="hlKeyInput" type="password" class="t-in" placeholder="Private key (master or API agent)" autocomplete="new-password" />
+                <button id="saveCredBtn" class="btn">GO LIVE</button>
+              </div>
+              <div id="signerHint" style="font-size:0.72rem;color:var(--tx-dim);margin-top:4px;min-height:14px;"></div>
             </div>
-            <div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:5px;">
-              <span class="dr-lbl">HL USD</span>
-              <input type="number" step="0.01" id="act-initHl" class="t-in-small" placeholder="0.00">
-            </div>
-            <button class="btn" id="resetPnlBtn"
-              style="width:100%;font-size:0.7rem;padding:4px;background-color:#1a2a3a;color:#88ccff;border:1px solid #254060;">RESET P&amp;L BASE</button>
           </div>
 
-          <button class="btn" id="deactivateBtn" onclick="deactivateActivePosition()"
-            style="width:100%;margin-top:8px;font-size:0.7rem;padding:4px;background-color:#4a1a1a;color:#ff9999;border:1px solid #632525;">DEACTIVATE
-            PROTECTION</button>
-        </div>
-      </div>
-    </div>
+          <!-- API Key Instructions -->
+          <div class="panel">
+            <div class="panel-title">Como obter sua API Key</div>
+            <ul class="api-steps">
+              <li class="api-step">
+                <span class="api-step-num">1</span>
+                <span>Acesse <a href="https://app.hyperliquid.xyz/API" target="_blank" rel="noopener">app.hyperliquid.xyz/API</a> e conecte sua carteira principal de trading.</span>
+              </li>
+              <li class="api-step">
+                <span class="api-step-num">2</span>
+                <span>Clique em <strong style="color:var(--tx);">Generate API Key</strong> para criar uma carteira agente. Copie a chave privada exibida — ela é mostrada apenas uma vez.</span>
+              </li>
+              <li class="api-step">
+                <span class="api-step-num">3</span>
+                <span>Cole a chave privada no campo <em style="color:var(--tx);">Private key</em> ao lado. No campo <em style="color:var(--tx);">Master wallet address</em>, informe o endereço da sua <strong style="color:var(--amber);">carteira principal de trading</strong> — <strong style="color:var(--red);">não</strong> o endereço gerado pela API.</span>
+              </li>
+              <li class="api-step">
+                <span class="api-step-num">4</span>
+                <span>Clique em <strong style="color:var(--accent);">GO LIVE</strong>. O bot sairá do modo simulado e passará a operar de verdade na Hyperliquid.</span>
+              </li>
+            </ul>
+            <div class="api-note">
+              <strong style="color:var(--tx);">Carteira agente vs. carteira principal:</strong> A chave privada gerada na Hyperliquid pertence a uma <em>carteira agente</em> temporária — ela assina as ordens, mas não guarda fundos. Sua carteira principal (Master wallet) é a conta onde ficam seus saldos e posições. Insira sempre o endereço da carteira principal no campo correspondente.
+            </div>
+          </div>
 
-  </div>
+        </div><!-- end .settings-grid -->
+      </div><!-- end #page-settings -->
 
-  <!-- CHART -->
-  <div class="chart-panel">
-    <div class="chart-title">Net Delta · Time Series</div>
-    <canvas id="deltaChart" height="180"></canvas>
-  </div>
-
-  <!-- TABLE -->
-  <div class="tbl-panel">
-    <div class="tbl-title">Recent Rebalances</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>From Size</th>
-          <th>To Size</th>
-          <th>From Notional</th>
-          <th>To Notional</th>
-          <th>Price</th>
-        </tr>
-      </thead>
-      <tbody id="rebalanceBody">
-        <tr>
-          <td colspan="6" class="empty-msg">No rebalances yet</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+    </div><!-- end .content-area -->
+  </div><!-- end .app-layout -->
 
   <script>
+    // Auth check: redirect to login if not authenticated
+    (async function checkAuth() {
+      try {
+        const r = await fetch('/api/auth/me');
+        if (!r.ok) { window.location.href = '/login.html'; }
+      } catch { window.location.href = '/login.html'; }
+    })();
+
+    function logout() { window.location.href = '/auth/logout'; }
+
+    var currentPage = 'monitor';
+
+    window.showPage = function (page) {
+      currentPage = page;
+      ['monitor', 'history', 'calculator', 'settings'].forEach(function (p) {
+        document.getElementById('page-' + p).style.display = p === page ? '' : 'none';
+        var navEl = document.getElementById('nav-' + p);
+        navEl.className = 'sidebar-item' + (p === page ? ' active' : '');
+      });
+      if (page === 'history') { fetchHistory(); renderActivePositionsInHistory(); }
+    };
+
     (function () {
       const $ = id => document.getElementById(id);
 
       let dataMap = {};
       let historyMap = {};
       let rebalanceMap = {};
+      let allRebalances = [];
       let activePositionsConfig = {};
       let activeTokenId = null;
 
@@ -883,176 +1037,260 @@
         return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
       }
 
-      function updateCards(d) {
-        if (activeTokenId === null || d.tokenId !== activeTokenId) return;
+      // Generate full monitoring HTML for one active position
+      function positionMetricsHtml(tokenId, cfg) {
+        var t0 = cfg.token0Symbol || '?';
+        var t1 = cfg.token1Symbol || '?';
+        var hr = cfg.hedgeRatio != null ? cfg.hedgeRatio : 1;
+        var ri = Math.round((cfg.cooldownSeconds || 0) / 60);
+        var ept = cfg.emergencyPriceMovementThreshold != null ? cfg.emergencyPriceMovementThreshold : 0;
+        var tid = tokenId;
+        var feeLabel = cfg.fee ? ' <span class="ver-pill">' + (cfg.fee / 10000) + '%</span>' : '';
+        return '<div class="position-metrics-block" id="pos-block-' + tid + '">' +
+          '<div class="pos-metrics-header">NFT #' + tid + '&nbsp;&nbsp;<span class="pos-pair">' + t0 + '/' + t1 + '</span>' + feeLabel + '</div>' +
+          '<div class="metrics">' +
+          // Net Delta
+          '<div class="mc"><div class="mc-label">Net Delta</div>' +
+          '<div class="mc-val" id="' + tid + '-netDelta">--</div>' +
+          '<div class="mc-sub" id="' + tid + '-netDeltaSub"></div></div>' +
+          // P&L Isolado
+          '<div class="mc"><div class="mc-label" style="display:flex;justify-content:space-between;">' +
+          '<span>P &amp; L ISOLADO (NFT)</span><span style="font-size:0.55rem;opacity:0.6;">VIRTUAL</span></div>' +
+          '<div style="display:flex;align-items:baseline;margin-bottom:6px;">' +
+          '<span class="mc-val" id="' + tid + '-pnlTotal" style="font-size:1.25rem;">--</span>' +
+          '<span class="pnl-pct" id="' + tid + '-pnlPct"></span></div>' +
+          '<div class="drows">' +
+          '<div class="dr"><span class="dr-lbl">LP P&amp;L</span><span class="dr-val" id="' + tid + '-lpPnl">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">LP Fees</span><span class="dr-val positive" id="' + tid + '-lpFeesUsd">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">Unrealized</span><span class="dr-val" id="' + tid + '-pnlUnreal">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">Realized</span><span class="dr-val" id="' + tid + '-pnlReal">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">Funding</span><span class="dr-val" id="' + tid + '-cumFunding">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">HL Fees</span><span class="dr-val" id="' + tid + '-cumHlFees">--</span></div>' +
+          '</div></div>' +
+          // LP Position
+          '<div class="mc"><div class="mc-label">LP Position</div><div class="drows">' +
+          '<div class="dr"><span class="dr-lbl" id="' + tid + '-t0Label">' + t0 + '</span><span class="dr-val" id="' + tid + '-t0Val">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl" id="' + tid + '-t1Label">' + t1 + '</span><span class="dr-val" id="' + tid + '-t1Val">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">current usd</span><span class="dr-val" id="' + tid + '-totalUsd">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">initial usd</span><span class="dr-val" id="' + tid + '-initialLpUsd" style="color:var(--tx-dim);">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">range</span><span class="dr-val" id="' + tid + '-rangeStatus">--</span></div>' +
+          '</div></div>' +
+          // Hedge
+          '<div class="mc"><div class="mc-label">Hedge · HL Perp</div><div class="drows">' +
+          '<div class="dr"><span class="dr-lbl">size</span><span class="dr-val" id="' + tid + '-hedgeSize">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">notional</span><span class="dr-val" id="' + tid + '-hedgeNotional">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">side</span><span class="dr-val" id="' + tid + '-hedgeSide">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">funding</span><span class="dr-val" id="' + tid + '-fundingRate">--</span></div>' +
+          '</div></div>' +
+          // Bot Status
+          '<div class="mc"><div class="mc-label">Bot Status</div><div class="drows">' +
+          '<div class="dr"><span class="dr-lbl">rebal / day</span><span class="dr-val" id="' + tid + '-dailyCount">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">last rebal</span><span class="dr-val" id="' + tid + '-lastRebalance">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">price</span><span class="dr-val" id="' + tid + '-price">--</span></div>' +
+          '</div></div>' +
+          // Strategy Config
+          '<div class="mc"><div class="mc-label">Strategy Config</div><div class="drows">' +
+          '<div class="dr" style="border:none;flex-direction:column;gap:5px;">' +
+          '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">' +
+          '<span class="dr-lbl">Hedge Ratio</span>' +
+          '<input type="number" step="0.05" id="' + tid + '-act-hedgeRatio" class="t-in-small" value="' + hr + '"></div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">' +
+          '<span class="dr-lbl">Cooldown (m)</span>' +
+          '<input type="number" id="' + tid + '-act-rebalInt" class="t-in-small" value="' + ri + '"></div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">' +
+          '<span class="dr-lbl">Price Move %</span>' +
+          '<input type="number" step="0.01" id="' + tid + '-act-emergPriceThresh" class="t-in-small" value="' + ept + '"></div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">' +
+          '<span class="dr-lbl" style="color:#888;">Ref Price</span>' +
+          '<span id="' + tid + '-act-lastRebalPrice" style="font-size:0.75rem;color:#aaa;">—</span></div>' +
+          '<button class="btn btn-blue" id="' + tid + '-updateConfigBtn" onclick="updatePositionConfig(' + tid + ')" style="width:100%;margin-top:5px;font-size:0.7rem;padding:4px;">UPDATE STRATEGY</button>' +
+          '<div style="border-top:1px solid #2a2a2a;margin-top:10px;padding-top:8px;">' +
+          '<div style="font-size:0.65rem;color:#888;margin-bottom:4px;">RESET P&amp;L BASE</div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:3px;">' +
+          '<span class="dr-lbl">LP USD</span>' +
+          '<input type="number" step="0.01" id="' + tid + '-act-initLp" class="t-in-small" placeholder="0.00"></div>' +
+          '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:5px;">' +
+          '<span class="dr-lbl">HL USD</span>' +
+          '<input type="number" step="0.01" id="' + tid + '-act-initHl" class="t-in-small" placeholder="0.00"></div>' +
+          '<button class="btn" id="' + tid + '-resetPnlBtn" onclick="resetPositionPnl(' + tid + ')" style="width:100%;font-size:0.7rem;padding:4px;background-color:#1a2a3a;color:#88ccff;border:1px solid #254060;">RESET P&amp;L BASE</button>' +
+          '</div>' +
+          '<button class="btn" id="' + tid + '-deactivateBtn" onclick="deactivatePosition(' + tid + ')" style="width:100%;margin-top:8px;font-size:0.7rem;padding:4px;background-color:#4a1a1a;color:#ff9999;border:1px solid #632525;">DEACTIVATE PROTECTION</button>' +
+          '</div></div></div>' + // end strategy config card
+          '</div>' + // end .metrics grid
+          '</div>'; // end .position-metrics-block
+      }
 
-        const nd = $('netDelta');
-        nd.textContent = fmt(d.netDelta, 4);
-        const ratio = d.hedgeSize > 0 ? Math.abs(d.netDelta) / Math.abs(d.hedgeSize) : Math.abs(d.netDelta);
-        nd.className = 'mc-val ' + (ratio < 0.05 ? 'safe' : ratio < 0.15 ? 'warn' : 'danger');
-        $('netDeltaSub').textContent = 'hedge: ' + fmt(d.hedgeSize, 4);
-
-        $('t0Label').textContent = d.token0Symbol || 'token0';
-        $('t0Val').textContent = fmt(d.token0Amount, 4);
-        $('t1Label').textContent = d.token1Symbol || 'token1';
-        $('t1Val').textContent = fmt(d.token1Amount, 4);
-        $('totalUsd').textContent = fmtUsd(d.totalPositionUsd);
-
-        $('rangeStatus').innerHTML =
-          '<span class="range-badge ' + d.rangeStatus + '">' + d.rangeStatus + '</span>';
-
-        $('hedgeSize').textContent = fmt(d.hedgeSize, 4);
-        $('hedgeNotional').textContent = fmtUsd(d.hedgeNotionalUsd);
-        $('hedgeSide').textContent = d.hedgeSide || '--';
-        $('fundingRate').textContent =
-          d.fundingRate != null ? (d.fundingRate * 100).toFixed(4) + '%' : '--';
-
-        $('dailyCount').textContent = d.dailyRebalanceCount != null ? d.dailyRebalanceCount : '--';
-        $('lastRebalance').textContent = timeAgo(d.lastRebalanceTimestamp);
-        $('price').textContent = d.price != null ? d.price.toFixed(6) : '--';
-        var refPriceEl = $('act-lastRebalPrice');
-        if (refPriceEl) {
-          refPriceEl.textContent = d.lastRebalancePrice ? '$' + d.lastRebalancePrice.toFixed(4) : '—';
+      function renderAllMetrics() {
+        var container = $('allMetrics');
+        var tokenIds = Object.keys(activePositionsConfig).map(Number);
+        // Remove blocks for positions no longer active
+        Array.from(container.children).forEach(function (child) {
+          var tid = parseInt(child.id.replace('pos-block-', ''));
+          if (isNaN(tid) || !activePositionsConfig[tid]) container.removeChild(child);
+        });
+        // Add blocks for new positions (preserves existing blocks)
+        tokenIds.forEach(function (tid) {
+          if (!document.getElementById('pos-block-' + tid)) {
+            var div = document.createElement('div');
+            div.innerHTML = positionMetricsHtml(tid, activePositionsConfig[tid]);
+            container.appendChild(div.firstElementChild);
+          }
+          if (dataMap[tid]) updateCards(dataMap[tid]);
+        });
+        var banner = $('activeBanner');
+        if (tokenIds.length > 0) {
+          banner.style.display = 'flex';
+          $('activeBannerText').textContent = 'MONITORING: ' + tokenIds.length + ' position' + (tokenIds.length > 1 ? 's' : '');
+        } else {
+          banner.style.display = 'none';
         }
+      }
 
-        var pv = $('pnlTotal');
+      function updateCards(d) {
+        var tid = d.tokenId;
+        if (!document.getElementById('pos-block-' + tid)) return;
+        function get(suffix) { return document.getElementById(tid + '-' + suffix); }
+
+        var nd = get('netDelta');
+        nd.textContent = fmt(d.netDelta, 4);
+        var ratio = d.hedgeSize > 0 ? Math.abs(d.netDelta) / Math.abs(d.hedgeSize) : Math.abs(d.netDelta);
+        nd.className = 'mc-val ' + (ratio < 0.05 ? 'safe' : ratio < 0.15 ? 'warn' : 'danger');
+        get('netDeltaSub').textContent = 'hedge: ' + fmt(d.hedgeSize, 4);
+
+        get('t0Label').textContent = d.token0Symbol || 'token0';
+        get('t0Val').textContent = fmt(d.token0Amount, 4);
+        get('t1Label').textContent = d.token1Symbol || 'token1';
+        get('t1Val').textContent = fmt(d.token1Amount, 4);
+        get('totalUsd').textContent = fmtUsd(d.totalPositionUsd);
+        var initLpEl = get('initialLpUsd');
+        if (initLpEl) initLpEl.textContent = d.initialLpUsd != null ? fmtUsd(d.initialLpUsd) : '--';
+        get('rangeStatus').innerHTML = '<span class="range-badge ' + d.rangeStatus + '">' + d.rangeStatus + '</span>';
+
+        get('hedgeSize').textContent = fmt(d.hedgeSize, 4);
+        get('hedgeNotional').textContent = fmtUsd(d.hedgeNotionalUsd);
+        get('hedgeSide').textContent = d.hedgeSide || '--';
+        get('fundingRate').textContent = d.fundingRate != null ? (d.fundingRate * 100).toFixed(4) + '%' : '--';
+
+        get('dailyCount').textContent = d.dailyRebalanceCount != null ? d.dailyRebalanceCount : '--';
+        get('lastRebalance').textContent = timeAgo(d.lastRebalanceTimestamp);
+        get('price').textContent = d.price != null ? d.price.toFixed(6) : '--';
+        var refEl = get('act-lastRebalPrice');
+        if (refEl) refEl.textContent = d.lastRebalancePrice ? '$' + d.lastRebalancePrice.toFixed(4) : '—';
+
+        var pv = get('pnlTotal');
         if (d.pnlTotalUsd != null) {
           var sign = d.pnlTotalUsd >= 0 ? '+' : '';
           pv.textContent = sign + fmtUsd(d.pnlTotalUsd);
           pv.className = 'mc-val ' + (d.pnlTotalUsd > 0.01 ? 'positive' : d.pnlTotalUsd < -0.01 ? 'negative' : 'zero');
           pv.style.fontSize = '1.25rem';
-          var pp = $('pnlPct');
+          var pp = get('pnlPct');
           pp.textContent = '(' + sign + fmt(d.pnlTotalPercent, 2) + '%)';
           pp.className = 'pnl-pct ' + (d.pnlTotalPercent > 0 ? 'positive' : d.pnlTotalPercent < 0 ? 'negative' : '');
         }
 
-        var pgv = $('pnlGlobalVal');
-        var pgp = $('pnlGlobalPct');
-        if (d.accountPnlUsd != null) {
-          var s = d.accountPnlUsd >= 0 ? '+' : '';
-          pgv.textContent = s + fmtUsd(d.accountPnlUsd);
-          pgv.className = 'mc-val ' + (d.accountPnlUsd > 0.01 ? 'positive' : d.accountPnlUsd < -0.01 ? 'negative' : 'zero');
-          pgp.textContent = '(' + s + fmt(d.accountPnlPercent, 2) + '%)';
-          pgp.className = 'pnl-pct ' + (d.accountPnlPercent > 0 ? 'positive' : d.accountPnlPercent < 0 ? 'negative' : '');
+        if (d.lpPnlUsd != null) {
+          var s = d.lpPnlUsd >= 0 ? '+' : '';
+          get('lpPnl').innerHTML = '<span class="' + (d.lpPnlUsd >= 0 ? 'positive' : 'negative') + '">' + s + fmtUsd(d.lpPnlUsd) + '</span>';
         }
+
+        var lpFeesEl = get('lpFeesUsd');
+        if (lpFeesEl) lpFeesEl.textContent = d.lpFeesUsd != null ? '+' + fmtUsd(d.lpFeesUsd) : '--';
 
         if (d.unrealizedPnlUsd != null) {
           var s = d.unrealizedPnlUsd >= 0 ? '+' : '';
-          $('pnlUnreal').innerHTML = `<span class="${d.unrealizedPnlUsd >= 0 ? 'positive' : 'negative'}">${s}${fmtUsd(d.unrealizedPnlUsd)}</span>`;
+          get('pnlUnreal').innerHTML = '<span class="' + (d.unrealizedPnlUsd >= 0 ? 'positive' : 'negative') + '">' + s + fmtUsd(d.unrealizedPnlUsd) + '</span>';
         }
 
         if (d.realizedPnlUsd != null) {
           var s = d.realizedPnlUsd >= 0 ? '+' : '';
-          $('pnlReal').innerHTML = `<span class="${d.realizedPnlUsd >= 0 ? 'positive' : 'negative'}">${s}${fmtUsd(d.realizedPnlUsd)}</span>`;
+          get('pnlReal').innerHTML = '<span class="' + (d.realizedPnlUsd >= 0 ? 'positive' : 'negative') + '">' + s + fmtUsd(d.realizedPnlUsd) + '</span>';
         }
 
-        $('lpFees').textContent = d.lpFeesUsd != null ? '+' + fmtUsd(d.lpFeesUsd) : '--';
-        $('cumFunding').textContent = d.cumulativeFundingUsd != null
+        get('cumFunding').textContent = d.cumulativeFundingUsd != null
           ? (d.cumulativeFundingUsd >= 0 ? '+' : '') + fmtUsd(d.cumulativeFundingUsd) : '--';
-        $('hlFees').textContent = d.cumulativeHlFeesUsd != null ? '-' + fmtUsd(d.cumulativeHlFeesUsd) : '--';
-
-        $('initialTotal').textContent = fmtUsd(d.initialTotalUsd);
-        $('currentTotal').textContent = fmtUsd(d.currentTotalUsd);
-        $('hlEquity').textContent = fmtUsd(d.hlEquity);
-
-        // Update active config inputs if they haven't been touched yet or on tab switch
-        updateStrategyInputs();
+        get('cumHlFees').textContent = d.cumulativeHlFeesUsd != null ? '-' + fmtUsd(d.cumulativeHlFeesUsd) : '--';
       }
 
-      function updateStrategyInputs() {
-        if (!activeTokenId || !activePositionsConfig[activeTokenId]) return;
-        var cfg = activePositionsConfig[activeTokenId];
-
-        // Only update if inputs are not focused to avoid interrupting user typing
-        if (document.activeElement.className !== 't-in-small') {
-          $('act-hedgeRatio').value = cfg.hedgeRatio ?? 1;
-          $('act-rebalInt').value = Math.round((cfg.cooldownSeconds ?? 0) / 60);
-          $('act-emergPriceThresh').value = cfg.emergencyPriceMovementThreshold ?? 0;
-        }
+      function updateStrategyInputs(tokenId) {
+        if (!tokenId || !activePositionsConfig[tokenId]) return;
+        var cfg = activePositionsConfig[tokenId];
+        // Skip if any config input for this position is focused
+        var focused = document.activeElement && document.activeElement.id;
+        if (focused && focused.startsWith(tokenId + '-act-')) return;
+        var get = function (suffix) { return document.getElementById(tokenId + '-' + suffix); };
+        var hr = get('act-hedgeRatio'); if (hr) hr.value = cfg.hedgeRatio ?? 1;
+        var ri = get('act-rebalInt'); if (ri) ri.value = Math.round((cfg.cooldownSeconds ?? 0) / 60);
+        var ept = get('act-emergPriceThresh'); if (ept) ept.value = cfg.emergencyPriceMovementThreshold ?? 0;
       }
 
-      window.updateActiveConfig = function () {
-        if (!activeTokenId) return;
-        var btn = $('updateConfigBtn');
-        var originalText = btn.textContent;
+      window.updatePositionConfig = function (tokenId) {
+        var get = function (suffix) { return document.getElementById(tokenId + '-' + suffix); };
+        var btn = get('updateConfigBtn');
+        var orig = btn.textContent;
         btn.disabled = true;
         btn.textContent = 'UPDATING...';
-
-        var body = {
-          tokenId: activeTokenId,
-          hedgeRatio: parseFloat($('act-hedgeRatio').value),
-          cooldownSeconds: Math.round(parseFloat($('act-rebalInt').value) * 60),
-          emergencyPriceMovementThreshold: parseFloat($('act-emergPriceThresh').value)
-        };
-
         fetch('/api/update-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify({
+            tokenId: tokenId,
+            hedgeRatio: parseFloat(get('act-hedgeRatio').value),
+            cooldownSeconds: Math.round(parseFloat(get('act-rebalInt').value) * 60),
+            emergencyPriceMovementThreshold: parseFloat(get('act-emergPriceThresh').value)
+          })
         }).then(r => r.json()).then(d => {
           btn.disabled = false;
           btn.textContent = d.success ? 'UPDATED!' : 'ERROR';
-          setTimeout(() => { btn.textContent = originalText; }, 2000);
-        }).catch(() => {
-          btn.disabled = false;
-          btn.textContent = 'FAILED';
-          setTimeout(() => { btn.textContent = originalText; }, 2000);
+          setTimeout(function () { btn.textContent = orig; }, 2000);
+        }).catch(function () {
+          btn.disabled = false; btn.textContent = 'FAILED';
+          setTimeout(function () { btn.textContent = orig; }, 2000);
         });
       };
 
-      window.deactivateActivePosition = function () {
-        if (!activeTokenId) return;
-
-        var conf = prompt('To STOP protecting NFT #' + activeTokenId + ' and CLOSE its hedge on Hyperliquid, type CONFIRM below:');
+      window.deactivatePosition = function (tokenId) {
+        var conf = prompt('To STOP protecting NFT #' + tokenId + ' and CLOSE its hedge on Hyperliquid, type CONFIRM below:');
         if (conf !== 'CONFIRM') return;
-
-        var btn = $('deactivateBtn');
+        var btn = document.getElementById(tokenId + '-deactivateBtn');
         btn.disabled = true;
         btn.textContent = 'DEACTIVATING...';
-
         fetch('/api/deactivate-position', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokenId: activeTokenId })
-        }).then(r => r.json()).then(d => {
-          btn.disabled = false;
+          body: JSON.stringify({ tokenId: tokenId })
+        }).then(r => r.json()).then(function () {
           btn.textContent = 'DEACTIVATED';
-          // Reload page or refresh UI
-          setTimeout(() => { location.reload(); }, 1500);
-        }).catch(() => {
-          btn.disabled = false;
-          btn.textContent = 'FAILED';
+          setTimeout(function () { location.reload(); }, 1500);
+        }).catch(function () {
+          btn.disabled = false; btn.textContent = 'FAILED';
         });
       };
 
-      $('updateConfigBtn').addEventListener('click', window.updateActiveConfig);
-
-      $('resetPnlBtn').addEventListener('click', function () {
-        if (!activeTokenId) return;
-        var lp = parseFloat($('act-initLp').value);
-        var hl = parseFloat($('act-initHl').value);
+      window.resetPositionPnl = function (tokenId) {
+        var get = function (suffix) { return document.getElementById(tokenId + '-' + suffix); };
+        var lp = parseFloat(get('act-initLp').value);
+        var hl = parseFloat(get('act-initHl').value);
         if (isNaN(lp) || isNaN(hl) || lp <= 0 || hl < 0) {
           alert('Preencha LP USD (> 0) e HL USD (>= 0)');
           return;
         }
         if (!confirm('Resetar base do P&L para LP=$' + lp.toFixed(2) + ' HL=$' + hl.toFixed(2) + '?')) return;
-        var btn = $('resetPnlBtn');
+        var btn = get('resetPnlBtn');
         btn.disabled = true;
         btn.textContent = 'RESETTING...';
         fetch('/api/reset-pnl', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokenId: activeTokenId, initialLpUsd: lp, initialHlUsd: hl })
-        }).then(r => r.json()).then(d => {
+          body: JSON.stringify({ tokenId: tokenId, initialLpUsd: lp, initialHlUsd: hl })
+        }).then(r => r.json()).then(function (d) {
           btn.disabled = false;
           btn.textContent = d.success ? 'RESET OK!' : 'ERROR';
           setTimeout(function () { btn.textContent = 'RESET P&L BASE'; }, 3000);
         }).catch(function () {
-          btn.disabled = false;
-          btn.textContent = 'FAILED';
+          btn.disabled = false; btn.textContent = 'FAILED';
           setTimeout(function () { btn.textContent = 'RESET P&L BASE'; }, 3000);
         });
-      });
+      };
 
       function drawChart() {
         const canvas = $('deltaChart');
@@ -1127,28 +1365,57 @@
       }
 
       function renderRebalances() {
-        const tbody = $('rebalanceBody');
-        const rebalances = rebalanceMap[activeTokenId] || [];
+        var tbody = $('rebalanceBody');
+        var records = allRebalances;
 
-        if (rebalances.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">No rebalances yet</td></tr>';
+        if (!records || records.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">No rebalances yet</td></tr>';
           return;
         }
-        tbody.innerHTML = rebalances.slice().reverse().map(r =>
-          '<tr>' +
-          '<td>' + fmtTime(r.timestamp) + '</td>' +
-          '<td>' + fmt(r.fromSize, 4) + '</td>' +
-          '<td>' + fmt(r.toSize, 4) + '</td>' +
-          '<td>' + fmtUsd(r.fromNotional) + '</td>' +
-          '<td>' + fmtUsd(r.toNotional) + '</td>' +
-          '<td>' + fmt(r.price, 6) + '</td>' +
-          '</tr>'
-        ).join('');
+
+        tbody.innerHTML = records.map(function (r) {
+          // Normalise both Supabase (snake_case) and SSE (camelCase) shapes
+          var ts = r.timestamp ? (typeof r.timestamp === 'string' ? new Date(r.timestamp).getTime() : r.timestamp) : 0;
+          var tokenId = r.token_id != null ? r.token_id : r.tokenId;
+          var t0 = r.token0_symbol || r.token0Symbol || '?';
+          var t1 = r.token1_symbol || r.token1Symbol || '?';
+          var coin = r.coin || '';
+          var action = r.action || '';
+          var fromSz = r.from_size != null ? r.from_size : (r.fromSize != null ? r.fromSize : 0);
+          var toSz = r.to_size != null ? r.to_size : (r.toSize != null ? r.toSize : 0);
+          var avgPx = r.avg_px != null ? r.avg_px : (r.avgPx != null ? r.avgPx : null);
+          var value = r.trade_value_usd != null ? r.trade_value_usd : (r.tradeValueUsd != null ? r.tradeValueUsd : null);
+          var fee = r.fee_usd != null ? r.fee_usd : (r.feeUsd != null ? r.feeUsd : null);
+          var trigger = r.trigger_reason || r.triggerReason || '';
+          var isEmerg = r.is_emergency || r.isEmergency || false;
+
+          var aColor = action === 'SELL' ? 'var(--accent)' : action === 'BUY-REDUCE' ? 'var(--green)' : 'var(--tx-dim)';
+          var trigShort = trigger.split(':')[0] || trigger;
+
+          return '<tr>' +
+            '<td>' + fmtTime(ts) + '</td>' +
+            '<td>NFT #' + tokenId + '<br><span style="color:var(--tx-dim);font-size:0.75em">' + t0 + '/' + t1 + '</span></td>' +
+            '<td style="color:' + aColor + '">' + (action || '—') + '</td>' +
+            '<td>' + fmt(fromSz, 4) + ' → ' + fmt(toSz, 4) + (coin ? '<br><span style="color:var(--tx-dim);font-size:0.75em">' + coin + '</span>' : '') + '</td>' +
+            '<td>' + (avgPx != null ? '$' + fmt(avgPx, 2) : '—') + '</td>' +
+            '<td>' + (value != null ? fmtUsd(value) : '—') + '</td>' +
+            '<td>' + (fee != null ? '$' + fmt(fee, 4) : '—') + '</td>' +
+            '<td style="' + (isEmerg ? 'color:var(--accent)' : '') + '">' + trigShort + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      function loadRebalances() {
+        fetch('/api/rebalances').then(function (r) { return r.json(); }).then(function (data) {
+          allRebalances = Array.isArray(data) ? data : [];
+          renderRebalances();
+        }).catch(function () {});
       }
 
       let bootTime = null;
       setInterval(function () {
         if (bootTime != null) $('uptime').textContent = fmtUptime(Date.now() - bootTime);
+        if (currentPage === 'history') renderActivePositionsInHistory();
       }, 5000);
 
       var discoveredPositions = [];
@@ -1221,49 +1488,43 @@
             protocolVersion: p.protocolVersion || 'v3',
             poolAddress: p.poolAddress,
             token0Symbol: p.token0Symbol, token1Symbol: p.token1Symbol,
+            fee: p.fee,
+            tickLower: p.tickLower,
+            tickUpper: p.tickUpper,
             hedgeRatio: hedgeRatio,
             cooldownSeconds: Math.round(timeRebal * 60),
             emergencyPriceMovementThreshold: ept
           }),
-        }).then(r => r.json()).then(function (data) {
+        }).then(function (r) { return r.json(); }).then(function (data) {
           if (data.queued)
             $('scanStatus').textContent = 'Activation sent — waiting for confirmation...';
+          else
+            $('scanStatus').textContent = 'Activation error: ' + (data.error || 'unknown');
         }).catch(function () {
-          $('scanStatus').textContent = 'Activation request failed.';
+          $('scanStatus').textContent = 'Activation request failed (network error).';
         });
       };
 
       window.switchTab = function (tokenId) {
         activeTokenId = tokenId;
         renderTabs();
-
-        if (dataMap[tokenId]) updateCards(dataMap[tokenId]);
-        updateStrategyInputs();
-
         fetch('/api/history?tokenId=' + tokenId).then(r => r.json()).then(h => {
           historyMap[tokenId] = h || [];
           drawChart();
-        });
-        fetch('/api/rebalances?tokenId=' + tokenId).then(r => r.json()).then(r => {
-          rebalanceMap[tokenId] = r || [];
-          renderRebalances();
         });
       };
 
       function renderTabs() {
         var container = $('tabsContainer');
         var tokenIds = Object.keys(activePositionsConfig);
-        if (tokenIds.length === 0) {
+        if (tokenIds.length < 2) {
           container.style.display = 'none';
           return;
         }
         container.style.display = 'flex';
-        container.innerHTML = tokenIds.map(tid => {
-          return '<div class="tab-btn ' + (activeTokenId == tid ? 'active' : '') + '" onclick="switchTab(' + tid + ')">NFT #' + tid + '</div>';
+        container.innerHTML = tokenIds.map(function (tid) {
+          return '<div class="tab-btn ' + (activeTokenId == tid ? 'active' : '') + '" onclick="switchTab(' + tid + ')">NFT #' + tid + ' Chart</div>';
         }).join('');
-
-        $('activeBannerText').textContent = 'MONITORING: NFT #' + activeTokenId;
-        $('activeBanner').style.display = 'flex';
       }
 
       $('scanBtn').addEventListener('click', function () {
@@ -1322,6 +1583,29 @@
         $('credStatus').style.color = '#34d399';
       }
 
+      // Show derived signer address on blur so user can verify before saving
+      $('hlKeyInput').addEventListener('blur', function () {
+        var hint = $('signerHint');
+        var raw = this.value.trim();
+        if (!raw) { hint.textContent = ''; return; }
+        fetch('/api/derive-address', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ privateKey: raw }),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.address) { hint.textContent = ''; return; }
+          var master = $('hlWalletInput').value.trim().toLowerCase();
+          var isAgent = master && master !== d.address.toLowerCase();
+          if (isAgent) {
+            hint.style.color = 'var(--amber)';
+            hint.textContent = 'Signer: ' + d.address + ' (agent key — master wallet will be used as vault)';
+          } else {
+            hint.style.color = 'var(--green)';
+            hint.textContent = 'Signer: ' + d.address + ' ✓';
+          }
+        }).catch(function () { hint.textContent = ''; });
+      });
+
       $('saveCredBtn').addEventListener('click', function () {
         var key = $('hlKeyInput').value.trim();
         var addr = $('hlWalletInput').value.trim();
@@ -1362,18 +1646,17 @@
 
         if (s.dataMap) {
           dataMap = s.dataMap;
-          if (activeTokenId && dataMap[activeTokenId]) updateCards(dataMap[activeTokenId]);
         }
+
+        renderAllMetrics();
 
         if (activeTokenId) {
           fetch('/api/history?tokenId=' + activeTokenId).then(r => r.json()).then(h => {
             historyMap[activeTokenId] = h; drawChart();
           }).catch(() => { });
-
-          fetch('/api/rebalances?tokenId=' + activeTokenId).then(r => r.json()).then(r => {
-            rebalanceMap[activeTokenId] = r; renderRebalances();
-          }).catch(() => { });
         }
+
+        loadRebalances();
 
         if (s.credentials && s.credentials.isSet) showCredentialsStatus(s.credentials.walletAddress);
       }).catch(() => { });
@@ -1388,26 +1671,26 @@
 
         es.addEventListener('update', function (e) {
           const d = JSON.parse(e.data);
-          console.log('[Dashboard] Update received:', d);
           dataMap[d.tokenId] = d;
           if (!historyMap[d.tokenId]) historyMap[d.tokenId] = [];
           historyMap[d.tokenId].push(d);
           if (historyMap[d.tokenId].length > 200) historyMap[d.tokenId].shift();
 
-          if (d.tokenId === activeTokenId) {
-            updateCards(d);
-            drawChart();
-          }
+          updateCards(d);
+          if (d.tokenId === activeTokenId) drawChart();
+          if (currentPage === 'history') renderActivePositionsInHistory();
         });
 
         es.addEventListener('rebalance', function (e) {
           var r = JSON.parse(e.data);
+          // Keep in-memory map for chart compatibility
           if (!rebalanceMap[r.tokenId]) rebalanceMap[r.tokenId] = [];
           rebalanceMap[r.tokenId].push(r);
           if (rebalanceMap[r.tokenId].length > 50) rebalanceMap[r.tokenId].shift();
-          if (r.tokenId === activeTokenId) {
-            renderRebalances();
-          }
+          // Prepend to global list and re-render
+          allRebalances.unshift(r);
+          if (allRebalances.length > 100) allRebalances.pop();
+          renderRebalances();
         });
 
         es.addEventListener('activationResult', function (e) {
@@ -1416,11 +1699,13 @@
             activePositionsConfig[r.tokenId] = { tokenId: r.tokenId };
             if (!activeTokenId) activeTokenId = r.tokenId;
             renderTabs();
+            renderAllMetrics();
 
             $('scanStatus').textContent =
               'NFT #' + r.tokenId + ' activated. LP: ' + fmtUsd(r.initialLpUsd) +
               ' | HL: ' + fmtUsd(r.initialHlUsd);
             renderPositionList(discoveredPositions);
+            if (currentPage === 'history') renderActivePositionsInHistory();
           } else {
             $('scanStatus').textContent = 'Activation failed: ' + (r.error || 'unknown');
           }
@@ -1439,9 +1724,8 @@
         es.addEventListener('configUpdated', function (e) {
           var cfg = JSON.parse(e.data);
           activePositionsConfig[cfg.tokenId] = cfg;
-          if (cfg.tokenId === activeTokenId) {
-            updateStrategyInputs();
-          }
+          updateStrategyInputs(cfg.tokenId);
+          if (currentPage === 'history') renderActivePositionsInHistory();
         });
 
         es.onerror = function () {
@@ -1451,6 +1735,200 @@
           setTimeout(connectSSE, 3000);
         };
       }
+
+      // ── HISTORY ──────────────────────────────────────────────
+      var positionHistory = [];
+
+      function fetchHistory() {
+        fetch('/api/position-history')
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            positionHistory = data || [];
+            renderHistory();
+          })
+          .catch(function () { });
+      }
+
+      function fmtDuration(ms) {
+        if (!ms || ms <= 0) return '--';
+        var s = Math.floor(ms / 1000);
+        var h = Math.floor(s / 3600);
+        if (h >= 24) {
+          var d = Math.floor(h / 24);
+          return d + 'd ' + (h % 24) + 'h';
+        }
+        var m = Math.floor((s % 3600) / 60);
+        return h + 'h ' + m + 'm';
+      }
+
+      function renderActivePositionsInHistory() {
+        var el = $('active-in-history');
+        if (!el) return;
+        var tokenIds = Object.keys(activePositionsConfig);
+        if (tokenIds.length === 0) {
+          el.innerHTML = '<div class="tbl-panel" style="border-left:2px solid var(--green);margin-bottom:0;"><div class="tbl-title">● ACTIVE POSITIONS (0)</div><div class="empty-msg">Nenhuma posição ativa.</div></div>';
+          return;
+        }
+        var rows = tokenIds.map(function (tid) {
+          var cfg = activePositionsConfig[tid];
+          var d = dataMap[tid];
+          var t0 = (d && d.token0Symbol) || cfg.token0Symbol || '?';
+          var t1 = (d && d.token1Symbol) || cfg.token1Symbol || '?';
+          var fee = (d && d.fee) || cfg.fee;
+          var pool = t0 + '/' + t1 + (fee ? ' ' + (fee / 10000).toFixed(2) + '%' : '');
+          var range = (d && d.priceLower != null && d.priceUpper != null)
+            ? '$' + d.priceLower.toFixed(2) + ' – $' + d.priceUpper.toFixed(2)
+            : '--';
+          var status = d ? '<span class="range-badge ' + d.rangeStatus + '">' + d.rangeStatus + '</span>' : '--';
+          var dur = cfg.activatedAt ? fmtDuration(Date.now() - cfg.activatedAt) : '--';
+          var lpVal = d ? fmtUsd(d.totalPositionUsd) : '--';
+          var lpFees = d && d.lpFeesUsd != null ? '+' + fmtUsd(d.lpFeesUsd) : '--';
+          var funding = d && d.cumulativeFundingUsd != null
+            ? (d.cumulativeFundingUsd >= 0 ? '+' : '') + fmtUsd(d.cumulativeFundingUsd) : '--';
+          var hlFees = d && d.cumulativeHlFeesUsd != null ? '-' + fmtUsd(d.cumulativeHlFeesUsd) : '--';
+          var pnlUsd = d && d.pnlTotalUsd != null ? d.pnlTotalUsd : null;
+          var pnlPct = d && d.pnlTotalPercent != null ? d.pnlTotalPercent : null;
+          var pnlColor = pnlUsd == null ? 'var(--tx)' : pnlUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var pnlSign = pnlUsd != null && pnlUsd >= 0 ? '+' : '';
+          var pnlPctSign = pnlPct != null && pnlPct >= 0 ? '+' : '';
+          var pnlCell = pnlUsd != null
+            ? '<span style="color:' + pnlColor + ';">' + pnlSign + fmtUsd(pnlUsd) +
+              ' <span style="font-size:0.72rem;">(' + pnlPctSign + fmt(pnlPct, 2) + '%)</span></span>'
+            : '--';
+          return '<tr>' +
+            '<td>' + tid + '</td>' +
+            '<td>' + pool + '</td>' +
+            '<td style="font-size:0.72rem;color:var(--tx-dim);">' + range + '</td>' +
+            '<td>' + status + '</td>' +
+            '<td>' + dur + '</td>' +
+            '<td>' + lpVal + '</td>' +
+            '<td style="color:var(--green);">' + lpFees + '</td>' +
+            '<td>' + funding + '</td>' +
+            '<td>' + hlFees + '</td>' +
+            '<td>' + pnlCell + '</td>' +
+            '</tr>';
+        }).join('');
+        el.innerHTML =
+          '<div class="tbl-panel" style="border-left:2px solid var(--green);margin-bottom:0;">' +
+          '<div class="tbl-title">● ACTIVE POSITIONS (' + tokenIds.length + ')</div>' +
+          '<div style="overflow-x:auto;"><table><thead><tr>' +
+          '<th>NFT#</th><th>Pool</th><th>Range ($)</th><th>Status</th><th>Duration</th>' +
+          '<th>LP Value</th><th>LP Fees</th><th>Funding</th><th>HL Fees</th><th>P&L</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+      }
+
+      function renderHistory() {
+        var totalNet = 0, totalFees = 0, totalFunding = 0, totalHlFees = 0;
+        positionHistory.forEach(function (h) {
+          totalNet += h.finalVirtualPnlUsd || 0;
+          totalFees += h.finalLpFeesUsd || 0;
+          totalFunding += h.finalCumulativeFundingUsd || 0;
+          totalHlFees += h.finalCumulativeHlFeesUsd || 0;
+        });
+
+        // P&L das posições ativas (soma dos pnlTotalUsd em tempo real)
+        var activePnlUsd = 0;
+        var activeTokenIds = Object.keys(activePositionsConfig);
+        activeTokenIds.forEach(function (tid) {
+          var d = dataMap[tid];
+          if (d && d.pnlTotalUsd != null) activePnlUsd += d.pnlTotalUsd;
+        });
+
+        var totalAccountPnl = totalNet + activePnlUsd;
+
+        var summaryEl = $('history-summary');
+
+        // Card 1: P&L Total da Conta
+        var totalColor = totalAccountPnl >= 0 ? 'var(--green)' : 'var(--red)';
+        var totalSign = totalAccountPnl >= 0 ? '+' : '';
+        // Card 2: P&L Posições Ativas
+        var activeColor = activePnlUsd >= 0 ? 'var(--green)' : 'var(--red)';
+        var activeSign = activePnlUsd >= 0 ? '+' : '';
+        // Closed stats
+        var netColor = totalNet >= 0 ? 'var(--green)' : 'var(--red)';
+        var netSign = totalNet >= 0 ? '+' : '';
+        var fundingColor = totalFunding >= 0 ? 'var(--green)' : 'var(--red)';
+        var fundingSign = totalFunding >= 0 ? '+' : '';
+
+        var activeRows = activeTokenIds.map(function (tid) {
+          var d = dataMap[tid];
+          var cfg = activePositionsConfig[tid];
+          var t0 = (d && d.token0Symbol) || cfg.token0Symbol || '?';
+          var t1 = (d && d.token1Symbol) || cfg.token1Symbol || '?';
+          var pnl = d && d.pnlTotalUsd != null ? d.pnlTotalUsd : null;
+          var c = pnl == null ? 'var(--tx)' : pnl >= 0 ? 'var(--green)' : 'var(--red)';
+          var sg = pnl != null && pnl >= 0 ? '+' : '';
+          return '<div class="dr"><span class="dr-lbl">NFT #' + tid + ' ' + t0 + '/' + t1 + '</span>' +
+            '<span class="dr-val" style="color:' + c + ';">' + (pnl != null ? sg + fmtUsd(pnl) : '--') + '</span></div>';
+        }).join('');
+
+        summaryEl.innerHTML =
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">' +
+          // Card 1
+          '<div class="mc"><div class="mc-label">P&amp;L Total da Conta</div>' +
+          '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">' +
+          '<span class="mc-val" style="font-size:1.4rem;color:' + totalColor + ';">' + totalSign + fmtUsd(totalAccountPnl) + '</span></div>' +
+          '<div class="drows">' +
+          '<div class="dr"><span class="dr-lbl">Posições fechadas</span><span class="dr-val" style="color:' + netColor + ';">' + netSign + fmtUsd(totalNet) + '</span></div>' +
+          '<div class="dr"><span class="dr-lbl">Posições ativas</span><span class="dr-val" style="color:' + activeColor + ';">' + activeSign + fmtUsd(activePnlUsd) + '</span></div>' +
+          '</div></div>' +
+          // Card 2
+          '<div class="mc"><div class="mc-label">P&amp;L Posições Ativas</div>' +
+          '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">' +
+          '<span class="mc-val" style="font-size:1.4rem;color:' + activeColor + ';">' + activeSign + fmtUsd(activePnlUsd) + '</span></div>' +
+          '<div class="drows">' +
+          (activeRows || '<div class="dr"><span class="dr-lbl" style="color:var(--tx-muted);">Nenhuma posição ativa</span></div>') +
+          '</div></div>' +
+          '</div>' +
+          // Stats bar (fechadas)
+          '<div class="panel" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;">' +
+          '<div><div class="mc-label">Fechadas</div><span style="font-size:1.1rem;">' + positionHistory.length + '</span></div>' +
+          '<div><div class="mc-label">LP Fees</div><span style="color:var(--green);">+' + fmtUsd(totalFees) + '</span></div>' +
+          '<div><div class="mc-label">Funding</div><span style="color:' + fundingColor + ';">' + fundingSign + fmtUsd(totalFunding) + '</span></div>' +
+          '<div><div class="mc-label">HL Fees</div><span style="color:var(--red);">-' + fmtUsd(Math.abs(totalHlFees)) + '</span></div>' +
+          '</div>';
+
+        // Also refresh active cards when history page is re-rendered
+        renderActivePositionsInHistory();
+
+        var tbody = $('historyBody');
+        if (positionHistory.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Nenhuma posição encerrada ainda.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = positionHistory.map(function (h) {
+          var dur = (h.deactivatedAt && h.activatedAt) ? fmtDuration(h.deactivatedAt - h.activatedAt) : '--';
+          var pool = (h.token0Symbol || '?') + '/' + (h.token1Symbol || '?') +
+            (h.fee ? ' ' + (h.fee / 10000).toFixed(2) + '%' : '');
+          var range = (h.tickLower != null && h.tickUpper != null)
+            ? h.tickLower + ' / ' + h.tickUpper
+            : '--';
+          var netUsd = h.finalVirtualPnlUsd || 0;
+          var netPct = h.finalVirtualPnlPercent || 0;
+          var netColor = netUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var netSign = netUsd >= 0 ? '+' : '';
+          var netPctSign = netPct >= 0 ? '+' : '';
+          var fundUsd = h.finalCumulativeFundingUsd || 0;
+          var fundColor = fundUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var fundSign = fundUsd >= 0 ? '+' : '';
+          return '<tr>' +
+            '<td>' + h.tokenId + '</td>' +
+            '<td>' + pool + '</td>' +
+            '<td style="font-size:0.72rem;color:var(--tx-dim);">' + range + '</td>' +
+            '<td>' + dur + '</td>' +
+            '<td>' + fmtUsd(h.initialLpUsd) + '</td>' +
+            '<td style="color:var(--green);">+' + fmtUsd(h.finalLpFeesUsd || 0) + '</td>' +
+            '<td style="color:' + fundColor + ';">' + fundSign + fmtUsd(fundUsd) + '</td>' +
+            '<td style="color:var(--red);">-' + fmtUsd(Math.abs(h.finalCumulativeHlFeesUsd || 0)) + '</td>' +
+            '<td style="color:' + netColor + ';">' + netSign + fmtUsd(netUsd) +
+            ' <span style="font-size:0.72rem;">(' + netPctSign + fmt(netPct, 2) + '%)</span></td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      // Pre-fetch history on load
+      fetchHistory();
+      // ─────────────────────────────────────────────────────────
 
       connectSSE();
       window.addEventListener('resize', drawChart);
