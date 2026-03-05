@@ -2088,6 +2088,113 @@
       connectSSE();
       window.addEventListener('resize', drawChart);
     })();
+
+// ── HEDGE CALCULATOR ─────────────────────────────────────
+(function () {
+  // Uniswap V3: compute liquidity L from pool value and price bounds
+  function computeL(V, P, Pa, Pb) {
+    var sp = Math.sqrt(P), spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
+    // V = L * (sp*(spb-sp)/spb + sp - spa)
+    return V / (sp * (spb - sp) / spb + sp - spa);
+  }
+
+  // LP value at new price P' given liquidity L and bounds
+  function lpValue(L, Pp, Pa, Pb) {
+    if (Pp <= Pa) {
+      // fully volatile token
+      var spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
+      return L * (1 / spa - 1 / spb) * Pp;
+    }
+    if (Pp >= Pb) {
+      // fully stable
+      var spb2 = Math.sqrt(Pb), spa2 = Math.sqrt(Pa);
+      return L * (spb2 - spa2);
+    }
+    var sp2 = Math.sqrt(Pp), spb3 = Math.sqrt(Pb), spa3 = Math.sqrt(Pa);
+    return L * (sp2 * (spb3 - sp2) / spb3 + sp2 - spa3);
+  }
+
+  function fmtUsdPnl(v) {
+    var sign = v >= 0 ? '+' : '';
+    return sign + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function pnlColor(v) {
+    if (Math.abs(v) < 0.005) return 'var(--tx-muted)';
+    return v >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  window.runCalc = function () {
+    var errEl = document.getElementById('calc-error');
+    var resultsEl = document.getElementById('calc-results');
+    var farmCard = document.getElementById('calc-farm-card');
+    errEl.textContent = '';
+
+    var V = parseFloat(document.getElementById('calc-poolValue').value);
+    var P = parseFloat(document.getElementById('calc-price').value);
+    var Pa = parseFloat(document.getElementById('calc-pa').value);
+    var Pb = parseFloat(document.getElementById('calc-pb').value);
+    var H = parseFloat(document.getElementById('calc-hedge').value) || 0;
+    var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
+
+    if (!V || !P || !Pa || !Pb || Pa >= Pb || P <= 0 || Pa <= 0) {
+      errEl.textContent = 'Preencha todos os campos com valores válidos (Pa < Pb).';
+      resultsEl.style.display = 'none';
+      return;
+    }
+    if (P < Pa || P > Pb) {
+      errEl.textContent = 'Preço atual deve estar dentro do range (Pa ≤ P ≤ Pb).';
+      resultsEl.style.display = 'none';
+      return;
+    }
+
+    var L = computeL(V, P, Pa, Pb);
+
+    // Fixed percentage rows
+    var pcts = [-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15];
+    var rows = pcts.map(function (pct) {
+      return { label: pct === 0 ? 'Atual' : (pct > 0 ? '+' : '') + (pct * 100).toFixed(0) + '%', price: P * (1 + pct), isRange: false, isCurrent: pct === 0 };
+    });
+
+    // Insert range rows
+    rows.push({ label: '▼ RANGE MIN', price: Pa, isRange: true, isCurrent: false });
+    rows.push({ label: '▲ RANGE MAX', price: Pb, isRange: true, isCurrent: false });
+
+    // Sort by price ascending
+    rows.sort(function (a, b) { return a.price - b.price; });
+
+    // Render
+    var tbody = document.getElementById('calc-tbody');
+    tbody.innerHTML = rows.map(function (row) {
+      var Pp = row.price;
+      var lpPnl = row.isCurrent ? 0 : lpValue(L, Pp, Pa, Pb) - V;
+      var hPnl = row.isCurrent ? 0 : H * (1 - Pp / P);
+      var net = lpPnl + hPnl;
+
+      var lpStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(lpPnl) + ';">' + fmtUsdPnl(lpPnl) + '</span>';
+      var hStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(hPnl) + ';">' + fmtUsdPnl(hPnl) + '</span>';
+      var netStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(net) + ';font-weight:bold;">' + fmtUsdPnl(net) + '</span>';
+      var priceStr = '$' + Pp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      var cls = row.isRange ? 'range-row' : (row.isCurrent ? 'current-row' : '');
+      return '<tr class="' + cls + '"><td>' + row.label + '</td><td style="text-align:right;">' + priceStr + '</td><td>' + lpStr + '</td><td>' + hStr + '</td><td>' + netStr + '</td></tr>';
+    }).join('');
+
+    // Farm card
+    if (apr > 0) {
+      var daily = V * (apr / 100) / 365;
+      document.getElementById('calc-farm-value').textContent =
+        '$' + daily.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+        ' / dia  (APR ' + apr + '%)';
+      farmCard.style.display = 'flex';
+    } else {
+      farmCard.style.display = 'none';
+    }
+
+    resultsEl.style.display = '';
+  };
+})();
+// ─────────────────────────────────────────────────────────
   </script>
 </body>
 
