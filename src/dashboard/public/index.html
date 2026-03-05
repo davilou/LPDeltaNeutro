@@ -1051,8 +1051,8 @@
               <input id="calc-pb" type="number" class="t-in" placeholder="3200" min="0" />
             </div>
             <div class="calc-field">
-              <label>Hedge Size (USD notional)</label>
-              <input id="calc-hedge" type="number" class="t-in" placeholder="15000" min="0" />
+              <label>Hedge Size (%)</label>
+              <input id="calc-hedge" type="number" class="t-in" placeholder="100" min="0" max="200" />
             </div>
             <div class="calc-field">
               <label>Pool APR (%)</label>
@@ -2134,7 +2134,7 @@
     var P = parseFloat(document.getElementById('calc-price').value);
     var Pa = parseFloat(document.getElementById('calc-pa').value);
     var Pb = parseFloat(document.getElementById('calc-pb').value);
-    var H = parseFloat(document.getElementById('calc-hedge').value) || 0;
+    var hedgePct = parseFloat(document.getElementById('calc-hedge').value) || 0;
     var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
 
     if (!(V > 0) || !(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb) {
@@ -2149,6 +2149,9 @@
     }
 
     var L = computeL(V, P, Pa, Pb);
+    // Volatile token amount at current price, then hedge notional in USD
+    var xTokens = L * (1 / Math.sqrt(P) - 1 / Math.sqrt(Pb));
+    var hedgeUsd = xTokens * P * (hedgePct / 100);
 
     // Fixed percentage rows
     var pcts = [-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15];
@@ -2160,15 +2163,15 @@
     rows.push({ label: '▼ RANGE MIN', price: Pa, isRange: true, isCurrent: false });
     rows.push({ label: '▲ RANGE MAX', price: Pb, isRange: true, isCurrent: false });
 
-    // Sort by price ascending
-    rows.sort(function (a, b) { return a.price - b.price; });
+    // Sort by price descending (+15% at top, -15% at bottom)
+    rows.sort(function (a, b) { return b.price - a.price; });
 
     // Render
     var tbody = document.getElementById('calc-tbody');
     tbody.innerHTML = rows.map(function (row) {
       var Pp = row.price;
       var lpPnl = row.isCurrent ? 0 : lpValue(L, Pp, Pa, Pb) - V;
-      var hPnl = row.isCurrent ? 0 : H * (1 - Pp / P);
+      var hPnl = row.isCurrent ? 0 : hedgeUsd * (1 - Pp / P);
       var net = lpPnl + hPnl;
 
       var lpStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(lpPnl) + ';">' + fmtUsdPnl(lpPnl) + '</span>';
