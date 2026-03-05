@@ -895,6 +895,26 @@
       font-size: 1rem;
       color: var(--green);
     }
+
+    .range-mode-toggle {
+      display: flex;
+      border: 1px solid var(--bd-md);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .range-mode-btn {
+      padding: 2px 7px;
+      font-size: 0.62rem;
+      color: var(--tx-dim);
+      cursor: pointer;
+      user-select: none;
+      letter-spacing: 0.5px;
+    }
+
+    .range-mode-btn:hover { color: var(--tx); background: var(--surface2); }
+
+    .range-mode-btn.active { background: var(--accent-dim); color: var(--accent); }
   </style>
 </head>
 
@@ -1043,11 +1063,23 @@
               <input id="calc-price" type="number" class="t-in" placeholder="2800" min="0" />
             </div>
             <div class="calc-field">
-              <label>Range Min — Pa</label>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label style="margin-bottom:0;">Range Min — Pa</label>
+                <div class="range-mode-toggle" id="pa-mode-toggle">
+                  <span class="range-mode-btn active" onclick="setRangeMode('pa','usd',this)">USD</span>
+                  <span class="range-mode-btn" onclick="setRangeMode('pa','pct',this)">%</span>
+                </div>
+              </div>
               <input id="calc-pa" type="number" class="t-in" placeholder="2400" min="0" />
             </div>
             <div class="calc-field">
-              <label>Range Max — Pb</label>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label style="margin-bottom:0;">Range Max — Pb</label>
+                <div class="range-mode-toggle" id="pb-mode-toggle">
+                  <span class="range-mode-btn active" onclick="setRangeMode('pb','usd',this)">USD</span>
+                  <span class="range-mode-btn" onclick="setRangeMode('pb','pct',this)">%</span>
+                </div>
+              </div>
               <input id="calc-pb" type="number" class="t-in" placeholder="3200" min="0" />
             </div>
             <div class="calc-field">
@@ -2091,6 +2123,20 @@
 
 // ── HEDGE CALCULATOR ─────────────────────────────────────
 (function () {
+  var paModeState = 'usd';
+  var pbModeState = 'usd';
+
+  window.setRangeMode = function (field, mode, el) {
+    if (field === 'pa') paModeState = mode;
+    else pbModeState = mode;
+    var toggle = document.getElementById(field + '-mode-toggle');
+    toggle.querySelectorAll('.range-mode-btn').forEach(function (btn) { btn.classList.remove('active'); });
+    el.classList.add('active');
+    var input = document.getElementById('calc-' + field);
+    input.value = '';
+    input.placeholder = mode === 'pct' ? '10' : (field === 'pa' ? '2400' : '3200');
+  };
+
   // Uniswap V3: compute liquidity L from pool value and price bounds
   function computeL(V, P, Pa, Pb) {
     var sp = Math.sqrt(P), spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
@@ -2132,8 +2178,10 @@
 
     var V = parseFloat(document.getElementById('calc-poolValue').value);
     var P = parseFloat(document.getElementById('calc-price').value);
-    var Pa = parseFloat(document.getElementById('calc-pa').value);
-    var Pb = parseFloat(document.getElementById('calc-pb').value);
+    var paRaw = parseFloat(document.getElementById('calc-pa').value);
+    var pbRaw = parseFloat(document.getElementById('calc-pb').value);
+    var Pa = paModeState === 'pct' ? P * (1 - paRaw / 100) : paRaw;
+    var Pb = pbModeState === 'pct' ? P * (1 + pbRaw / 100) : pbRaw;
     var hedgePct = parseFloat(document.getElementById('calc-hedge').value) || 0;
     var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
 
