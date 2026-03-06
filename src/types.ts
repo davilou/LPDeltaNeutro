@@ -1,3 +1,6 @@
+import type { ChainId, DexId, PositionId } from './lp/types';
+export type { ChainId, DexId, PositionId };
+
 export interface TokenInfo {
   address: string;
   symbol: string;
@@ -16,6 +19,7 @@ export interface LPPosition {
   tickCurrent: number;
   tokensOwed0: number;
   tokensOwed1: number;
+  liquidity: bigint;
 }
 
 export interface HedgeState {
@@ -24,6 +28,7 @@ export interface HedgeState {
   notionalUsd: number;
   side: 'short' | 'none';
   avgEntryPrice?: number; // weighted average entry price from HL (entryPx)
+  unrealizedPnlUsd?: number; // unrealized PnL from HL clearinghouse
 }
 
 export interface PnlState {
@@ -31,14 +36,6 @@ export interface PnlState {
   initialHlUsd: number;
   initialLpFeesUsd?: number;
   initialTimestamp: number;
-  cumulativeFundingUsd: number;
-  cumulativeHlFeesUsd: number;
-  lastFundingTimestamp: number;
-  // Virtual accounting for multi-position tracking on single HL account
-  virtualSize?: number;
-  avgEntryPrice?: number;
-  realizedPnlUsd?: number;
-  virtualPnlUsd?: number;
 }
 
 export interface PnlSnapshot {
@@ -50,13 +47,12 @@ export interface PnlSnapshot {
   // Account-wide PnL (Legacy/Comparison)
   accountPnlUsd: number;
   accountPnlPercent: number;
-  // Virtual PnL (isolated to this NFT)
+  // Isolated PnL (from HL API, filtered by coin + sinceTimestamp)
   virtualPnlUsd: number;
   virtualPnlPercent: number;
   unrealizedVirtualPnlUsd: number;
   realizedVirtualPnlUsd: number;
-  virtualSize: number;
-  avgEntryPrice: number;
+  lpPnlUsd: number;
 }
 
 export interface DiscoveredPosition {
@@ -79,6 +75,8 @@ export interface DiscoveredPosition {
   token1AmountFormatted: number;
   price: number;
   estimatedUsd: number;
+  chain?: ChainId;
+  dex?: DexId;
 }
 
 export interface ActivePositionConfig {
@@ -92,6 +90,42 @@ export interface ActivePositionConfig {
   hedgeRatio?: number; // 0.8 to protect 80%
   cooldownSeconds?: number; // intervalo mínimo entre rebalances (sobrescreve config global)
   emergencyPriceMovementThreshold?: number; // % de movimento de preço para emergency (bypassa cooldown)
+  // Pool metadata — populated from DiscoveredPosition at activation
+  token0Symbol?: string;
+  token1Symbol?: string;
+  token0Address?: string;
+  token1Address?: string;
+  token0Decimals?: number;
+  token1Decimals?: number;
+  fee?: number;
+  tickLower?: number;
+  tickUpper?: number;
+  chain?: ChainId;           // default 'base' for existing positions
+  dex?: DexId;               // default 'uniswap-v3' for existing positions
+  positionId?: PositionId;   // alias for tokenId; number for EVM
+}
+
+export interface HistoricalPosition {
+  tokenId: number;
+  poolAddress: string;
+  protocolVersion: 'v3' | 'v4';
+  token0Symbol: string;
+  token1Symbol: string;
+  fee: number;
+  tickLower: number;
+  tickUpper: number;
+  hedgeSymbol: string;
+  activatedAt: number;
+  deactivatedAt: number;
+  initialLpUsd: number;
+  initialHlUsd: number;
+  finalLpFeesUsd: number;
+  finalCumulativeFundingUsd: number;
+  finalCumulativeHlFeesUsd: number;
+  finalVirtualPnlUsd: number;
+  finalVirtualPnlPercent: number;
+  finalUnrealizedPnlUsd: number;
+  finalRealizedPnlUsd: number;
 }
 
 export interface PositionState {
@@ -104,8 +138,10 @@ export interface PositionState {
   pnl?: PnlState;
   config: ActivePositionConfig;
   rebalances?: any[]; // Store history in state
+  lastLiquidity?: string; // serialized bigint — detect add/remove liquidity events
 }
 
 export interface BotState {
   positions: Record<number, PositionState>;
+  history?: HistoricalPosition[];
 }
