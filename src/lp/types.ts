@@ -1,5 +1,4 @@
-import { LPPosition } from '../types';
-import { DiscoveredPosition } from '../types';
+import type { LPPosition, DiscoveredPosition } from '../types';
 
 export type ChainId =
   | 'base'
