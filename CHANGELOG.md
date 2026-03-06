@@ -2,6 +2,32 @@
 
 ## [Unreleased] — 2026-03-06
 
+### Dashboard: Auto Hedge — Balancear extremos do range
+
+Novo modo **AUTO** no campo Hedge Size da calculadora. Calcula automaticamente o percentual de hedge que iguala o P&L líquido nos dois extremos do range (▲ RANGE MAX e ▼ RANGE MIN), criando proteção simétrica.
+
+#### Funcionamento
+
+- Toggle `MANUAL | AUTO` no label do campo Hedge Size (mesmo padrão visual dos toggles `USD | %`)
+- Modo AUTO: campo fica desabilitado (cinza); ao clicar CALCULATE, o % ótimo é calculado e exibido no campo
+- Painel de resultados mostra badge `Cenários · AUTO HEDGE` quando o modo está ativo
+- Caso `H ≤ 0` (range não requer hedge para equalizar): campo mostra `0.00` com aviso informativo; tabela ainda é exibida
+
+#### Matemática (solução analítica)
+
+```
+lpPnl_up   = lpValue(L, Pb, Pa, Pb) − V    # P&L LP ao sair pelo topo (100% stablecoin)
+lpPnl_down = lpValue(L, Pa, Pa, Pb) − V    # P&L LP ao sair pelo fundo (100% volátil)
+
+H = (lpPnl_up − lpPnl_down) × P / (Pb − Pa)   # hedge notional USD
+hedgePct = H / (xTokens × P) × 100             # converte para % da exposição volátil
+```
+
+#### Arquivos modificados
+- `src/dashboard/public/index.html` — toggle HTML, CSS `.calc-field .t-in:disabled`, `hedgeModeState`, `window.setHedgeMode`, lógica auto em `runCalc`
+
+---
+
 ### Dashboard: Hedge Calculator
 
 Nova aba **CALCULATOR** no dashboard — ferramenta client-side para simular o impacto de movimentos de preço em uma posição LP com hedge.

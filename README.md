@@ -115,7 +115,7 @@ O dashboard requer **login via Google**. Cada conta Google tem seu próprio espa
 - Ajustar parâmetros de estratégia por posição em tempo real (Hedge Ratio, Cooldown, Emergency threshold)
 - Resetar a base de P&L manualmente
 - Acompanhar P&L isolado (dados reais da HL API): LP P&L, LP Fees, Unrealized, Realized, Funding, HL Fees
-- **Hedge Calculator**: simular posições antes de ativar — define range em USD ou em % do preço atual, hedge size como % da exposição volátil, APR para estimativa de farm diário
+- **Hedge Calculator**: simular posições antes de ativar — define range em USD ou em % do preço atual, hedge size como % da exposição volátil, APR para estimativa de farm diário. Modo **Auto Hedge** calcula automaticamente o % de hedge que iguala o P&L nos dois extremos do range
 
 ---
 

@@ -121,7 +121,7 @@ O dashboard (`src/dashboard/`) é um servidor Express com SSE para atualizaçõe
 - **Lookup por token ID**: `POST /api/lookup-position` permite buscar qualquer NFT sem precisar do endereço da carteira.
 - **P&L Isolado**: exibe LP P&L, LP Fees, Unrealized, Realized, Funding e HL Fees — todos com dados reais da HL API.
 - **Strategy Config**: cada card de posição tem seus próprios inputs de configuração e botões de ação (UPDATE STRATEGY, RESET P&L BASE, DEACTIVATE PROTECTION) — funções globais `updatePositionConfig(tokenId)`, `deactivatePosition(tokenId)`, `resetPositionPnl(tokenId)`.
-- **Hedge Calculator** (aba CALCULATOR): simulador client-side de cenários LP + hedge. Inputs: Pool Value, Current Price, Range Min/Max (USD ou % do preço), Hedge Size (% da exposição volátil), APR. Tabela de 9 linhas ordenada de +15% a −15% com range boundaries inseridos dinamicamente.
+- **Hedge Calculator** (aba CALCULATOR): simulador client-side de cenários LP + hedge. Inputs: Pool Value, Current Price, Range Min/Max (USD ou % do preço), Hedge Size (% da exposição volátil), APR. Tabela de 9 linhas ordenada de +15% a −15% com range boundaries inseridos dinamicamente. Toggle `MANUAL | AUTO` no campo Hedge Size: modo AUTO calcula analiticamente o % que iguala P&L nos extremos do range (`H = (lpPnlUp − lpPnlDown) × P / (Pb − Pa)`); estado em `hedgeModeState` dentro do IIFE da calculadora.
 
 ## Uniswap V4 — LP Fees
 Fees V4 são lidas via contrato StateView (`0xa3c0c9b65bad0b08107aa264b0f3db444b867a71` na Base).
