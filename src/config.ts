@@ -15,6 +15,11 @@ function numEnv(key: string, fallback: number): number {
   return parsed;
 }
 
+function parseRpcList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(',').map(u => u.trim()).filter(Boolean).map(u => u.endsWith('/') ? u.slice(0, -1) : u);
+}
+
 export const config = {
   // RPC
   /** WebSocket URL for blocks */
@@ -48,6 +53,17 @@ export const config = {
     return urls.map(u => u.endsWith('/') ? u.slice(0, -1) : u);
   },
 
+  /** HTTP RPC URLs per additional chain (comma-separated list for fallback) */
+  get ethHttpRpcUrls(): string[] { return parseRpcList(process.env.ETH_HTTP_RPC_URL); },
+  get bscHttpRpcUrls(): string[] { return parseRpcList(process.env.BSC_HTTP_RPC_URL); },
+  get arbHttpRpcUrls(): string[] { return parseRpcList(process.env.ARB_HTTP_RPC_URL); },
+  get polygonHttpRpcUrls(): string[] { return parseRpcList(process.env.POLYGON_HTTP_RPC_URL); },
+  get avaxHttpRpcUrls(): string[] { return parseRpcList(process.env.AVAX_HTTP_RPC_URL); },
+  get hlL1HttpRpcUrls(): string[] { return parseRpcList(process.env.HL_L1_HTTP_RPC_URL); },
+
+  /** Enable Multicall3 batching for EVM reads (default true) */
+  multicall3Enabled: optionalEnv('MULTICALL3_ENABLED', 'true').toLowerCase() === 'true',
+
   // Strategy
   hedgeFloor: numEnv('HEDGE_FLOOR', 0.90),
   minNotionalUsd: numEnv('MIN_NOTIONAL_USD', 50),
@@ -60,6 +76,7 @@ export const config = {
   // Emergency: movimento de preço maior, bypassa cooldown
   emergencyPriceMovementThreshold: numEnv('EMERGENCY_PRICE_MOVEMENT_THRESHOLD', 0.15),
   blockThrottle: numEnv('BLOCK_THROTTLE', 10),
+  positionCacheRefreshCycles: numEnv('POSITION_CACHE_REFRESH_CYCLES', 60),
 
   // Hyperliquid credentials (required when DRY_RUN=false)
   hlPrivateKey: process.env.HL_PRIVATE_KEY || '',
@@ -82,5 +99,15 @@ export const config = {
   // Supabase (optional — deixar em branco para desativar persistência)
   supabaseUrl: optionalEnv('SUPABASE_URL', ''),
   supabaseKey: optionalEnv('SUPABASE_KEY', ''),
+  supabasePostgresUrl: optionalEnv('SUPABASE_POSTGRES_URL', ''),
+
+  // Auth (Google OAuth)
+  googleClientId: optionalEnv('GOOGLE_CLIENT_ID', ''),
+  googleClientSecret: optionalEnv('GOOGLE_CLIENT_SECRET', ''),
+  googleCallbackUrl: optionalEnv('GOOGLE_CALLBACK_URL', 'http://localhost:3000/auth/callback'),
+  sessionSecret: optionalEnv('SESSION_SECRET', 'dev-session-secret'),
+  credentialEncryptionKey: optionalEnv('CREDENTIAL_ENCRYPTION_KEY', ''),
+  // Comma-separated list of allowed Google emails. Empty = allow any.
+  allowedEmails: optionalEnv('ALLOWED_EMAILS', ''),
 } as const;
 
