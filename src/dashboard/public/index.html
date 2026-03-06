@@ -969,12 +969,36 @@
         <!-- Position Discovery -->
         <div class="panel" style="margin-bottom:10px;">
           <div class="panel-title">Position Discovery</div>
+          <div style="display:flex;gap:8px;margin-bottom:6px;">
+            <select id="chain-select" onchange="onChainChange()" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;">
+              <option value="base">Base</option>
+              <option value="eth">Ethereum</option>
+              <option value="bsc">BSC</option>
+              <option value="arbitrum">Arbitrum</option>
+              <option value="polygon">Polygon</option>
+              <option value="avalanche">Avalanche</option>
+              <option value="hyperliquid-l1">Hyperliquid L1</option>
+            </select>
+            <select id="dex-select" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;"></select>
+          </div>
           <div class="irow">
             <input id="walletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
               spellcheck="false" />
             <button id="scanBtn" class="btn">SCAN</button>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+          <div style="display:flex;gap:8px;margin-top:6px;margin-bottom:6px;">
+            <select id="chain-select-lookup" onchange="onChainChangeLookup()" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;">
+              <option value="base">Base</option>
+              <option value="eth">Ethereum</option>
+              <option value="bsc">BSC</option>
+              <option value="arbitrum">Arbitrum</option>
+              <option value="polygon">Polygon</option>
+              <option value="avalanche">Avalanche</option>
+              <option value="hyperliquid-l1">Hyperliquid L1</option>
+            </select>
+            <select id="dex-select-lookup" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;"></select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
             <span class="dr-lbl" style="white-space:nowrap;font-size:11px;color:#94a3b8;">NFT not found?</span>
             <input id="tokenIdInput" type="number" class="t-in" placeholder="Enter NFT token ID manually" style="flex:1;" />
             <button id="lookupBtn" class="btn" style="white-space:nowrap;">LOOKUP</button>
@@ -1249,8 +1273,11 @@
         var ept = cfg.emergencyPriceMovementThreshold != null ? cfg.emergencyPriceMovementThreshold : 0;
         var tid = tokenId;
         var feeLabel = cfg.fee ? ' <span class="ver-pill">' + (cfg.fee / 10000) + '%</span>' : '';
+        var chainDexBadge = (cfg.chain && cfg.dex)
+          ? '<span style="font-size:10px;padding:2px 6px;background:#2a2a4a;border:1px solid #444;border-radius:3px;color:#aaa;">' + cfg.chain + ' \u2022 ' + (DEX_LABELS[cfg.dex] || cfg.dex) + '</span>'
+          : '';
         return '<div class="position-metrics-block" id="pos-block-' + tid + '">' +
-          '<div class="pos-metrics-header">NFT #' + tid + '&nbsp;&nbsp;<span class="pos-pair">' + t0 + '/' + t1 + '</span>' + feeLabel + '</div>' +
+          '<div class="pos-metrics-header">NFT #' + tid + '&nbsp;&nbsp;<span class="pos-pair">' + t0 + '/' + t1 + '</span>' + feeLabel + (chainDexBadge ? '&nbsp;&nbsp;' + chainDexBadge : '') + '</div>' +
           '<div class="metrics">' +
           // Net Delta
           '<div class="mc"><div class="mc-label">Net Delta</div>' +
@@ -1742,7 +1769,7 @@
         fetch('/api/scan-wallet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ walletAddress: addr }),
+          body: JSON.stringify({ walletAddress: addr, chain: document.getElementById('chain-select').value, dex: document.getElementById('dex-select').value }),
         }).then(r => r.json()).then(function (data) {
           $('scanBtn').disabled = false;
           if (data.error) { $('scanStatus').textContent = 'Error: ' + data.error; return; }
@@ -1768,7 +1795,7 @@
         fetch('/api/lookup-position', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokenId: tokenId }),
+          body: JSON.stringify({ tokenId: tokenId, chain: document.getElementById('chain-select-lookup').value, dex: document.getElementById('dex-select-lookup').value }),
         }).then(r => r.json()).then(function (data) {
           $('lookupBtn').disabled = false;
           if (data.error) { $('scanStatus').textContent = 'Not found: ' + data.error; return; }
@@ -2307,6 +2334,49 @@
     resultsEl.style.display = '';
   };
 })();
+// ─────────────────────────────────────────────────────────
+
+// ── CHAIN / DEX SELECTORS ────────────────────────────────
+var DEX_OPTIONS_BY_CHAIN = {
+  base:             ['uniswap-v3', 'uniswap-v4', 'aerodrome-cl'],
+  eth:              ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+  bsc:              ['pancake-v3'],
+  arbitrum:         ['uniswap-v3', 'pancake-v3'],
+  polygon:          ['uniswap-v3', 'pancake-v3'],
+  avalanche:        ['uniswap-v3'],
+  'hyperliquid-l1': ['project-x'],
+};
+
+var DEX_LABELS = {
+  'uniswap-v3':   'Uniswap V3',
+  'uniswap-v4':   'Uniswap V4',
+  'pancake-v3':   'PancakeSwap V3',
+  'pancake-v4':   'PancakeSwap V4',
+  'aerodrome-cl': 'Aerodrome CL',
+  'project-x':    'ProjectX',
+};
+
+function populateDexSelect(selectEl, chain) {
+  var options = DEX_OPTIONS_BY_CHAIN[chain] || [];
+  selectEl.innerHTML = options
+    .map(function (d) { return '<option value="' + d + '">' + (DEX_LABELS[d] || d) + '</option>'; })
+    .join('');
+}
+
+function onChainChange() {
+  var chain = document.getElementById('chain-select').value;
+  populateDexSelect(document.getElementById('dex-select'), chain);
+}
+
+function onChainChangeLookup() {
+  var chain = document.getElementById('chain-select-lookup').value;
+  populateDexSelect(document.getElementById('dex-select-lookup'), chain);
+}
+
+window.addEventListener('DOMContentLoaded', function () {
+  onChainChange();
+  onChainChangeLookup();
+});
 // ─────────────────────────────────────────────────────────
   </script>
 </body>
