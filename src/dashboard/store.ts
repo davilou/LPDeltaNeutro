@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
-import { DiscoveredPosition, ActivePositionConfig } from '../types';
+import { DiscoveredPosition, ActivePositionConfig, HistoricalPosition } from '../types';
+import type { ChainId, DexId, PositionId } from '../lp/types';
 
 export interface DashboardData {
   tokenId: number;
@@ -24,15 +25,20 @@ export interface DashboardData {
   pnlTotalPercent?: number;
   unrealizedPnlUsd?: number;
   realizedPnlUsd?: number;
+  lpPnlUsd?: number;
   // Account PnL (Total Balance based)
   accountPnlUsd?: number;
   accountPnlPercent?: number;
   lpFeesUsd?: number;
   cumulativeFundingUsd?: number;
   cumulativeHlFeesUsd?: number;
+  initialLpUsd?: number;
   initialTotalUsd?: number;
   currentTotalUsd?: number;
   hlEquity?: number;
+  fee?: number;
+  priceLower?: number;
+  priceUpper?: number;
 }
 
 export interface RebalanceEvent {
@@ -43,6 +49,16 @@ export interface RebalanceEvent {
   fromNotional: number;
   toNotional: number;
   price: number;
+  // Extended fields for display
+  coin?: string;
+  action?: string;
+  avgPx?: number;
+  tradeValueUsd?: number;
+  feeUsd?: number;
+  triggerReason?: string;
+  token0Symbol?: string;
+  token1Symbol?: string;
+  isEmergency?: boolean;
 }
 
 export interface ActivatePositionRequest {
@@ -51,10 +67,16 @@ export interface ActivatePositionRequest {
   poolAddress: string;
   token0Symbol: string;
   token1Symbol: string;
+  fee?: number;
+  tickLower?: number;
+  tickUpper?: number;
   protectionType?: string;
   hedgeRatio?: number;
   cooldownSeconds?: number;
   emergencyPriceMovementThreshold?: number;
+  chain?: ChainId;
+  dex?: DexId;
+  positionId?: PositionId;
 }
 
 export interface ActivationResult {
@@ -81,6 +103,7 @@ class DashboardStore extends EventEmitter {
   private discoveredPositions: DiscoveredPosition[] = [];
   private activePositions: Record<number, ActivePositionConfig> = {};
   private credentialsWallet: string | null = null;
+  private positionHistory: HistoricalPosition[] = [];
 
   update(data: DashboardData): void {
     const id = data.tokenId;
@@ -131,6 +154,10 @@ class DashboardStore extends EventEmitter {
     return this.activePositions;
   }
 
+  getAllActiveConfigs(): ActivePositionConfig[] {
+    return Object.values(this.activePositions);
+  }
+
   requestActivation(req: ActivatePositionRequest): void {
     this.emit('activatePosition', req);
   }
@@ -167,12 +194,29 @@ class DashboardStore extends EventEmitter {
     this.emit('resetPnl', { tokenId, initialLpUsd, initialHlUsd });
   }
 
-  getState(): { dataMap: Record<number, DashboardData>; uptime: number; activePositions: Record<number, ActivePositionConfig>; credentials: { isSet: boolean; walletAddress: string | null } } {
+  setPositionHistory(h: HistoricalPosition[]): void {
+    this.positionHistory = h;
+  }
+
+  addPositionToHistory(entry: HistoricalPosition): void {
+    this.positionHistory.push(entry);
+  }
+
+  getPositionHistory(): HistoricalPosition[] {
+    return this.positionHistory;
+  }
+
+  getCurrentData(tokenId: number): DashboardData | null {
+    return this.currentMap[tokenId] ?? null;
+  }
+
+  getState(): { dataMap: Record<number, DashboardData>; uptime: number; activePositions: Record<number, ActivePositionConfig>; credentials: { isSet: boolean; walletAddress: string | null }; positionHistory: HistoricalPosition[] } {
     return {
       dataMap: this.currentMap,
       uptime: Date.now() - this.startTime,
       activePositions: this.activePositions,
       credentials: this.getCredentialsStatus(),
+      positionHistory: this.positionHistory,
     };
   }
 
@@ -183,6 +227,24 @@ class DashboardStore extends EventEmitter {
   getRebalanceEvents(tokenId: number): RebalanceEvent[] {
     return this.rebalanceEventsMap[tokenId] || [];
   }
+
+  getAllRebalanceEvents(): RebalanceEvent[] {
+    const all = Object.values(this.rebalanceEventsMap).flat();
+    all.sort((a, b) => b.timestamp - a.timestamp);
+    return all.slice(0, 100);
+  }
 }
 
 export const dashboardStore = new DashboardStore();
+
+// Per-user store map for multi-tenancy
+const userStoreMap = new Map<string, DashboardStore>();
+
+export function getStoreForUser(userId: string): DashboardStore {
+  let store = userStoreMap.get(userId);
+  if (!store) {
+    store = new DashboardStore();
+    userStoreMap.set(userId, store);
+  }
+  return store;
+}
