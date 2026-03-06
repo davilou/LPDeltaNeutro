@@ -2135,6 +2135,7 @@
 (function () {
   var paModeState = 'usd';
   var pbModeState = 'usd';
+  var hedgeModeState = 'manual';
 
   window.setRangeMode = function (field, mode, el) {
     if (field === 'pa') paModeState = mode;
@@ -2145,6 +2146,16 @@
     var input = document.getElementById('calc-' + field);
     input.value = '';
     input.placeholder = mode === 'pct' ? '10' : (field === 'pa' ? '2400' : '3200');
+  };
+
+  window.setHedgeMode = function (mode, el) {
+    hedgeModeState = mode;
+    var toggle = document.getElementById('hedge-mode-toggle');
+    toggle.querySelectorAll('.range-mode-btn').forEach(function (btn) { btn.classList.remove('active'); });
+    el.classList.add('active');
+    var input = document.getElementById('calc-hedge');
+    input.disabled = mode === 'auto';
+    if (mode === 'auto') input.value = '';
   };
 
   // Uniswap V3: compute liquidity L from pool value and price bounds
@@ -2192,7 +2203,6 @@
     var pbRaw = parseFloat(document.getElementById('calc-pb').value);
     var Pa = paModeState === 'pct' ? P * (1 - paRaw / 100) : paRaw;
     var Pb = pbModeState === 'pct' ? P * (1 + pbRaw / 100) : pbRaw;
-    var hedgePct = parseFloat(document.getElementById('calc-hedge').value) || 0;
     var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
 
     if (!(V > 0) || !(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb) {
@@ -2207,8 +2217,20 @@
     }
 
     var L = computeL(V, P, Pa, Pb);
-    // Volatile token amount at current price, then hedge notional in USD
     var xTokens = L * (1 / Math.sqrt(P) - 1 / Math.sqrt(Pb));
+
+    var hedgePct;
+    if (hedgeModeState === 'auto') {
+      var lpPnlUp = lpValue(L, Pb, Pa, Pb) - V;
+      var lpPnlDown = lpValue(L, Pa, Pa, Pb) - V;
+      var H = (lpPnlUp - lpPnlDown) * P / (Pb - Pa);
+      var safeX = xTokens > 0 ? xTokens : 1e-9;
+      hedgePct = Math.max(0, H / (safeX * P) * 100);
+      document.getElementById('calc-hedge').value = hedgePct.toFixed(2);
+      if (H <= 0) errEl.textContent = 'Auto Hedge: range não requer hedge para equalizar extremos (H ≤ 0).';
+    } else {
+      hedgePct = parseFloat(document.getElementById('calc-hedge').value) || 0;
+    }
     var hedgeUsd = xTokens * P * (hedgePct / 100);
 
     // Fixed percentage rows
@@ -2240,6 +2262,9 @@
       var cls = row.isRange ? 'range-row' : (row.isCurrent ? 'current-row' : '');
       return '<tr class="' + cls + '"><td>' + row.label + '</td><td style="text-align:right;">' + priceStr + '</td><td>' + lpStr + '</td><td>' + hStr + '</td><td>' + netStr + '</td></tr>';
     }).join('');
+
+    document.getElementById('calc-panel-title').textContent =
+      hedgeModeState === 'auto' ? 'Cenários · AUTO HEDGE' : 'Cenários';
 
     // Farm card
     if (apr > 0) {
