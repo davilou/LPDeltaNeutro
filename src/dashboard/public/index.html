@@ -2252,6 +2252,14 @@
     // Sort by price descending (+15% at top, -15% at bottom)
     rows.sort(function (a, b) { return b.price - a.price; });
 
+    // Hoist daily so it's available for break-even inside row render
+    var daily = apr > 0 ? V * (apr / 100) / 365 : 0;
+
+    // Update thead — add Break-even column only when APR > 0
+    document.getElementById('calc-thead').innerHTML =
+      '<tr><th>Cenário</th><th>Preço</th><th>P&amp;L LP</th><th>P&amp;L Hedge</th><th>P&amp;L Líquido</th>' +
+      (apr > 0 ? '<th>Break-even</th>' : '') + '</tr>';
+
     // Render
     var tbody = document.getElementById('calc-tbody');
     tbody.innerHTML = rows.map(function (row) {
@@ -2263,18 +2271,31 @@
       var lpStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(lpPnl) + ';">' + fmtUsdPnl(lpPnl) + '</span>';
       var hStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(hPnl) + ';">' + fmtUsdPnl(hPnl) + '</span>';
       var netStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(net) + ';font-weight:bold;">' + fmtUsdPnl(net) + '</span>';
-      var priceStr = '$' + Pp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Price cell: range rows show price + pct-from-current hint
+      var pxFormatted = '$' + Pp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      var pctFromCurrent = (Pp / P - 1) * 100;
+      var pctSign = pctFromCurrent >= 0 ? '+' : '';
+      var priceStr = pxFormatted + (row.isRange
+        ? '<span class="range-pct-hint">' + pctSign + pctFromCurrent.toFixed(2) + '%</span>'
+        : '');
+
+      // Break-even cell: only for range rows with a loss, only when APR > 0
+      var beStr = '—';
+      if (row.isRange && apr > 0 && net < 0) {
+        beStr = (Math.abs(net) / daily).toFixed(1) + ' dias';
+      }
+      var beTd = apr > 0 ? '<td>' + beStr + '</td>' : '';
 
       var cls = row.isRange ? 'range-row' : (row.isCurrent ? 'current-row' : '');
-      return '<tr class="' + cls + '"><td>' + row.label + '</td><td style="text-align:right;">' + priceStr + '</td><td>' + lpStr + '</td><td>' + hStr + '</td><td>' + netStr + '</td></tr>';
+      return '<tr class="' + cls + '"><td>' + row.label + '</td><td style="text-align:right;">' + priceStr + '</td><td>' + lpStr + '</td><td>' + hStr + '</td><td>' + netStr + '</td>' + beTd + '</tr>';
     }).join('');
 
     document.getElementById('calc-panel-title').textContent =
       hedgeModeState === 'auto' ? 'Cenários · AUTO HEDGE' : 'Cenários';
 
-    // Farm card
+    // Farm card (daily already computed above)
     if (apr > 0) {
-      var daily = V * (apr / 100) / 365;
       document.getElementById('calc-farm-value').textContent =
         '$' + daily.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
         ' / dia  (APR ' + apr + '%)';
