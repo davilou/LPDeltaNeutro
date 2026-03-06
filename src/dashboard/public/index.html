@@ -899,6 +899,12 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .range-pct-hint {
+      font-size: 0.68rem;
+      display: block;
+      color: var(--amber);
+      opacity: 0.85;
+    }
 
     .range-mode-toggle {
       display: flex;
@@ -1111,7 +1117,7 @@
               <div class="panel-title" id="calc-panel-title">Cenários</div>
               <div style="overflow-x:auto;">
                 <table class="calc-result-table">
-                  <thead>
+                  <thead id="calc-thead">
                     <tr>
                       <th>Cenário</th>
                       <th>Preço</th>
