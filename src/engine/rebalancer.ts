@@ -1,25 +1,27 @@
 import { config } from '../config';
-import { ActivePositionConfig, BotState, HedgeState, LPPosition, PositionState } from '../types';
-import { FillResult, IHedgeExchange } from '../hedge/types';
+import { ActivePositionConfig, BotState, HedgeState, HistoricalPosition, LPPosition, PnlSnapshot, PositionState } from '../types';
+import { FillResult, HlIsolatedPnl, IHedgeExchange } from '../hedge/types';
 import { calculateHedge, HedgeTarget } from '../hedge/hedgeCalculator';
 import { insertRebalance } from '../db/supabase';
 import { runAllSafetyChecks, checkMinNotional, checkMaxNotional, checkDuplicate, checkDailyLimit } from '../utils/safety';
 import { logger, logCycle } from '../utils/logger';
-import { dashboardStore } from '../dashboard/store';
+import { getStoreForUser } from '../dashboard/store';
 import { PnlTracker } from '../pnl/tracker';
 import fs from 'fs';
 import path from 'path';
-
-const STATE_FILE = path.resolve(__dirname, '..', '..', 'state.json');
 
 export class Rebalancer {
   private state: BotState;
   private exchange: IHedgeExchange;
   private lastRangeStatusMap: Record<number, string> = {};
   private pnlTrackers: Record<number, PnlTracker> = {};
+  private readonly userId: string;
+  private readonly stateFile: string;
 
-  constructor(exchange: IHedgeExchange) {
+  constructor(exchange: IHedgeExchange, userId = 'default') {
     this.exchange = exchange;
+    this.userId = userId;
+    this.stateFile = path.resolve(__dirname, '..', '..', `state-${userId}.json`);
     this.state = this.loadState();
 
     // Restore PnlTrackers for all persisted positions
@@ -35,10 +37,17 @@ export class Rebalancer {
 
   private loadState(): BotState {
     try {
-      if (fs.existsSync(STATE_FILE)) {
-        const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+      // Migrate legacy state.json → state-{userId}.json on first run
+      const legacyFile = path.resolve(__dirname, '..', '..', 'state.json');
+      if (!fs.existsSync(this.stateFile) && this.userId === 'default' && fs.existsSync(legacyFile)) {
+        fs.copyFileSync(legacyFile, this.stateFile);
+        logger.info(`Migrated state.json → ${this.stateFile}`);
+      }
+
+      if (fs.existsSync(this.stateFile)) {
+        const raw = fs.readFileSync(this.stateFile, 'utf-8');
         const loaded = JSON.parse(raw);
-        logger.info(`State loaded from ${STATE_FILE}`);
+        logger.info(`State loaded from ${this.stateFile}`);
 
         // Migrate old single-position format to new multi-position format
         if (loaded.positions) {
@@ -46,6 +55,17 @@ export class Rebalancer {
           for (const tokenId in loaded.positions) {
             if (!loaded.positions[tokenId].config.protocolVersion) {
               loaded.positions[tokenId].config.protocolVersion = 'v3';
+            }
+            // Multi-chain migration: default to base:uniswap-v3 for pre-existing positions
+            if (!loaded.positions[tokenId].config.chain) {
+              loaded.positions[tokenId].config.chain = 'base';
+            }
+            if (!loaded.positions[tokenId].config.dex) {
+              const proto = loaded.positions[tokenId].config.protocolVersion;
+              loaded.positions[tokenId].config.dex = proto === 'v4' ? 'uniswap-v4' : 'uniswap-v3';
+            }
+            if (loaded.positions[tokenId].config.positionId === undefined) {
+              loaded.positions[tokenId].config.positionId = loaded.positions[tokenId].config.tokenId;
             }
           }
           return loaded as BotState;
@@ -134,6 +154,46 @@ export class Rebalancer {
     return Object.values(this.state.positions).map(ps => ps.config);
   }
 
+  getHistory(): HistoricalPosition[] {
+    return this.state.history ?? [];
+  }
+
+  archivePosition(tokenId: number, finalPnl: PnlSnapshot): HistoricalPosition {
+    const ps = this.state.positions[tokenId];
+    if (!ps) throw new Error(`[Rebalancer] archivePosition: no state for tokenId ${tokenId}`);
+
+    const cfg = ps.config;
+    const record: HistoricalPosition = {
+      tokenId: cfg.tokenId,
+      poolAddress: cfg.poolAddress,
+      protocolVersion: cfg.protocolVersion,
+      token0Symbol: cfg.token0Symbol ?? '',
+      token1Symbol: cfg.token1Symbol ?? '',
+      fee: cfg.fee ?? 0,
+      tickLower: cfg.tickLower ?? 0,
+      tickUpper: cfg.tickUpper ?? 0,
+      hedgeSymbol: cfg.hedgeSymbol,
+      activatedAt: cfg.activatedAt,
+      deactivatedAt: Date.now(),
+      initialLpUsd: ps.pnl?.initialLpUsd ?? 0,
+      initialHlUsd: ps.pnl?.initialHlUsd ?? 0,
+      finalLpFeesUsd: finalPnl.lpFeesUsd,
+      finalCumulativeFundingUsd: finalPnl.cumulativeFundingUsd,
+      finalCumulativeHlFeesUsd: finalPnl.cumulativeHlFeesUsd,
+      finalVirtualPnlUsd: finalPnl.virtualPnlUsd,
+      finalVirtualPnlPercent: finalPnl.virtualPnlPercent,
+      finalUnrealizedPnlUsd: finalPnl.unrealizedVirtualPnlUsd,
+      finalRealizedPnlUsd: finalPnl.realizedVirtualPnlUsd,
+    };
+
+    if (!this.state.history) this.state.history = [];
+    this.state.history.push(record);
+    this.saveState();
+
+    logger.info(`[Rebalancer] Position NFT #${tokenId} archived to history`);
+    return record;
+  }
+
   saveState(): void {
     try {
       // Persist PnL state for all positions
@@ -143,8 +203,8 @@ export class Rebalancer {
           posState.pnl = this.pnlTrackers[tokenId].getStateForPersist();
         }
       }
-      fs.writeFileSync(STATE_FILE, JSON.stringify(this.state, null, 2));
-      logger.info(`State saved to ${STATE_FILE}`);
+      fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2));
+      logger.info(`State saved to ${this.stateFile}`);
     } catch (err) {
       logger.error(`Failed to save state: ${err}`);
     }
@@ -194,13 +254,16 @@ export class Rebalancer {
     // Forced hedge: LP abaixo do range (100% token volátil), aumenta hedge até o target imediatamente
     const isForcedHedge = position.rangeStatus === 'below-range' && target.size > currentHedge.size + 1e-8;
 
+    // Detect liquidity change early — used as a bypass-cooldown trigger
+    const liquidityChanged = ps.lastLiquidity !== undefined && ps.lastLiquidity !== position.liquidity.toString();
+
     const lastRebalancePrice = ps.lastRebalancePrice ?? 0;
 
     // Check triggers — cada um retorna reason string ou null
-    const emergencyReason = !isForcedClose && !isForcedHedge
+    const emergencyReason = !isForcedClose && !isForcedHedge && !liquidityChanged
       ? this.checkEmergencyPriceMovement(tokenId, position.price, lastRebalancePrice, emergencyPriceMovThreshold)
       : null;
-    const timeReason = !isForcedClose && !isForcedHedge && !emergencyReason
+    const timeReason = !isForcedClose && !isForcedHedge && !liquidityChanged && !emergencyReason
       ? this.checkTimeRebalance(tokenId, ps, rebalanceIntervalMin)
       : null;
     const forcedCloseReason = isForcedClose
@@ -209,9 +272,12 @@ export class Rebalancer {
     const forcedHedgeReason = isForcedHedge
       ? `forced hedge: LP below range, 100% volatile exposure (${currentHedge.size.toFixed(4)} → ${target.size.toFixed(4)})`
       : null;
+    const liquidityChangeReason = liquidityChanged && !isForcedClose && !isForcedHedge
+      ? `liquidity changed (${ps.lastLiquidity} → ${position.liquidity.toString()}): rebalancing to new delta`
+      : null;
 
-    const triggerReason = forcedCloseReason ?? forcedHedgeReason ?? emergencyReason ?? timeReason ?? null;
-    const isEmergency = isForcedClose || isForcedHedge || emergencyReason !== null;
+    const triggerReason = forcedCloseReason ?? forcedHedgeReason ?? liquidityChangeReason ?? emergencyReason ?? timeReason ?? null;
+    const isEmergency = isForcedClose || isForcedHedge || liquidityChangeReason !== null || emergencyReason !== null;
     const needsRebalance = triggerReason !== null;
 
     // Compute net delta and total position value
@@ -220,8 +286,14 @@ export class Rebalancer {
       : position.token1.amountFormatted;
     const netDelta = (hedgeTokenExposure * hedgeRatio) - currentHedge.size;
 
-    const token0Usd = position.token0.amountFormatted * position.price;
-    const token1Usd = position.token1.amountFormatted;
+    // price = token1/token0 (Uniswap convention); when volatile is token1, invert to get USD price
+    const volatilePriceUsd = hedgeToken === 'token0' ? position.price : 1 / position.price;
+    const token0Usd = hedgeToken === 'token0'
+      ? position.token0.amountFormatted * position.price
+      : position.token0.amountFormatted;
+    const token1Usd = hedgeToken === 'token1'
+      ? position.token1.amountFormatted * volatilePriceUsd
+      : position.token1.amountFormatted;
     const totalPositionUsd = token0Usd + token1Usd;
 
     // Log cycle data
@@ -242,51 +314,55 @@ export class Rebalancer {
     });
 
     // Safety check for insane prices (often from RPC decimal errors)
-    if (position.price < 0.001) {
-      logger.error(`[NFT#${tokenId}] ABORTING CYCLE: Insane price detected ($${position.price}). Check RPC decimals.`);
+    if (volatilePriceUsd < 0.001) {
+      logger.error(`[NFT#${tokenId}] ABORTING CYCLE: Insane price detected (volatileUsd=$${volatilePriceUsd}, rawPrice=$${position.price}). Check RPC decimals.`);
       return;
     }
+
+    // Detect liquidity change (add/remove LP) and adjust P&L baseline accordingly.
+    // Uses old liquidity at current price to isolate the liquidity effect from price movement.
+    const currLiqStr = position.liquidity.toString();
+    if (ps.lastLiquidity !== undefined && ps.lastLiquidity !== currLiqStr) {
+      const prevLiquidity = BigInt(ps.lastLiquidity);
+      const prevLpUsd = this.computeLpUsd(prevLiquidity, position, hedgeToken, volatilePriceUsd);
+      const deltaLpUsd = totalPositionUsd - prevLpUsd;
+      this.getPnlTracker(tokenId).adjustBaseline(deltaLpUsd);
+      logger.warn(
+        `[NFT#${tokenId}] Liquidity changed (${ps.lastLiquidity} → ${currLiqStr}), ` +
+        `P&L baseline adjusted ${deltaLpUsd >= 0 ? '+' : ''}$${deltaLpUsd.toFixed(2)}`
+      );
+    }
+    ps.lastLiquidity = currLiqStr;
 
     // PnL tracking
     const hlEquity = await this.exchange.getAccountEquity();
     const pnlTracker = this.getPnlTracker(tokenId);
 
-    // Fix corrupted state from previous decimal bug if needed
-    let virtualState = pnlTracker.getVirtualState();
-    if (virtualState.size > 0 && virtualState.avgPrice < 0.001) {
-      logger.warn(`[NFT#${tokenId}] Fixing corrupted avgEntryPrice ($${virtualState.avgPrice} -> $${position.price})`);
-      pnlTracker.reinitializeVirtualPrice(position.price);
-      virtualState = pnlTracker.getVirtualState();
-    }
+    const initialTimestamp = ps.pnl?.initialTimestamp ?? Date.now();
+    const isolatedPnlFromApi = await this.exchange.getIsolatedPnl(hedgeSymbol, initialTimestamp);
+    const hlPnl: HlIsolatedPnl = {
+      ...isolatedPnlFromApi,
+      unrealizedPnlUsd: currentHedge.unrealizedPnlUsd ?? 0,
+    };
 
-    // Reconcile virtual tracking with actual HL position if they diverged (e.g. bot restart with empty pnl state)
-    if (currentHedge.size > 0.01) {
-      const drift = Math.abs(currentHedge.size - virtualState.size) / currentHedge.size;
-      if (drift > 0.10) {
-        // Use HL's entryPx as ground truth for avg entry — avoids manual state.json edits
-        const reconcileAvgPrice = currentHedge.avgEntryPrice ?? position.price;
-        logger.warn(
-          `[NFT#${tokenId}] Virtual size drift ${(drift * 100).toFixed(1)}%: ` +
-          `tracked=${virtualState.size.toFixed(4)} actual=${currentHedge.size.toFixed(4)}. ` +
-          `Reconciling with HL entryPx=$${reconcileAvgPrice.toFixed(6)}`
-        );
-        pnlTracker.reconcilePosition(currentHedge.size, reconcileAvgPrice);
-        virtualState = pnlTracker.getVirtualState();
-      }
-    }
-
-    const virtualNotionalUsd = virtualState.size * position.price;
-    pnlTracker.accumulateFunding(fundingRate, virtualNotionalUsd);
-
-    const lpFeesUsd = position.tokensOwed0 * position.price + position.tokensOwed1;
+    const lpFeesUsd = hedgeToken === 'token0'
+      ? position.tokensOwed0 * position.price + position.tokensOwed1
+      : position.tokensOwed0 + position.tokensOwed1 * volatilePriceUsd;
     const currentLpUsdWithFees = totalPositionUsd + lpFeesUsd;
-    const pnl = pnlTracker.compute(currentLpUsdWithFees, hlEquity, lpFeesUsd, position.price);
+    const pnl = pnlTracker.compute(currentLpUsdWithFees, hlEquity, lpFeesUsd, hlPnl);
 
     // Persist PnL state
     ps.pnl = pnlTracker.getStateForPersist();
 
+    // Price range in volatile-token USD terms
+    const decimalAdj = position.token0.decimals - position.token1.decimals;
+    const rawPriceLower = Math.pow(1.0001, position.tickLower) * Math.pow(10, decimalAdj);
+    const rawPriceUpper = Math.pow(1.0001, position.tickUpper) * Math.pow(10, decimalAdj);
+    const priceLower = hedgeToken === 'token0' ? rawPriceLower : 1 / rawPriceUpper;
+    const priceUpper = hedgeToken === 'token0' ? rawPriceUpper : 1 / rawPriceLower;
+
     // Push data to dashboard
-    dashboardStore.update({
+    getStoreForUser(this.userId).update({
       tokenId,
       timestamp: Date.now(),
       token0Amount: position.token0.amountFormatted,
@@ -310,12 +386,17 @@ export class Rebalancer {
       accountPnlPercent: pnl.accountPnlPercent,
       unrealizedPnlUsd: pnl.unrealizedVirtualPnlUsd,
       realizedPnlUsd: pnl.realizedVirtualPnlUsd,
+      lpPnlUsd: pnl.lpPnlUsd,
       lpFeesUsd: pnl.lpFeesUsd,
       cumulativeFundingUsd: pnl.cumulativeFundingUsd,
       cumulativeHlFeesUsd: pnl.cumulativeHlFeesUsd,
+      initialLpUsd: this.pnlTrackers[tokenId]?.getStateForPersist()?.initialLpUsd,
       initialTotalUsd: pnl.initialTotalUsd,
       currentTotalUsd: pnl.currentTotalUsd,
       hlEquity,
+      fee: ps.config.fee,
+      priceLower,
+      priceUpper,
     });
 
     // Log time until next rebalance on every cycle
@@ -364,39 +445,33 @@ export class Rebalancer {
     }
 
     // Execute rebalance
-    const rebalanceLabel = isForcedClose ? 'FORCED CLOSE' : isForcedHedge ? 'FORCED HEDGE' : isEmergency ? 'EMERGENCY REBALANCE' : 'REBALANCING';
+    const rebalanceLabel = isForcedClose ? 'FORCED CLOSE' : isForcedHedge ? 'FORCED HEDGE' : liquidityChangeReason !== null ? 'LIQUIDITY REBALANCE' : isEmergency ? 'EMERGENCY REBALANCE' : 'REBALANCING';
     logger.info(
       `[NFT#${tokenId}] ${rebalanceLabel} [trigger: ${triggerReason}]: ` +
       `${currentHedge.size.toFixed(4)} → ${effectiveSize.toFixed(4)} ` +
       `($${currentHedge.notionalUsd.toFixed(2)} → $${effectiveNotional.toFixed(2)})`
     );
 
-    // Capture virtual state before trade to compute per-trade closed PnL
-    const virtualStateBefore = pnlTracker.getVirtualState();
-
     let fillResult: FillResult | null = null;
-    if (effectiveSize <= 0) {
-      fillResult = await this.exchange.closePosition(hedgeSymbol);
-    } else {
-      fillResult = await this.exchange.setPosition(hedgeSymbol, effectiveSize, effectiveNotional);
+    try {
+      if (effectiveSize <= 0) {
+        fillResult = await this.exchange.closePosition(hedgeSymbol);
+      } else {
+        fillResult = await this.exchange.setPosition(hedgeSymbol, effectiveSize, effectiveNotional);
+      }
+    } catch (exchangeErr) {
+      logger.error(`[NFT#${tokenId}] Exchange error — rebalance aborted, state unchanged: ${exchangeErr}`);
+      return; // do NOT update state, cooldown or insert to Supabase
     }
 
-    // Per-trade closed PnL: (avgEntry - exitPx) * closedSize for shorts (0 for opens)
+    // Per-trade closed PnL using HL entryPx as ground truth
     const sizeChange = effectiveSize - currentHedge.size;
-    let tradePnlUsd = 0;
-    if (sizeChange < 0 && virtualStateBefore.size > 0) {
-      const closedSize = Math.min(virtualStateBefore.size, Math.abs(sizeChange));
-      const exitPx = fillResult?.avgPx ?? position.price;
-      tradePnlUsd = (virtualStateBefore.avgPrice - exitPx) * closedSize;
-    }
+    const entryPx = currentHedge.avgEntryPrice ?? position.price;
+    const closedSz = sizeChange < 0 ? Math.min(currentHedge.size, Math.abs(sizeChange)) : 0;
+    const tradePnlUsd = closedSz > 0 ? (entryPx - (fillResult?.avgPx ?? position.price)) * closedSz : 0;
 
-    // Record trade for Virtual Accounting
-    const fillPrice = fillResult?.avgPx ?? position.price;
-    pnlTracker.recordTrade(effectiveSize - currentHedge.size, fillPrice);
-
-    // Record trade fee for PnL
     const executedNotionalUsd = fillResult ? fillResult.sz * fillResult.avgPx : 0;
-    pnlTracker.recordTradeFee(executedNotionalUsd);
+    const feeUsd = executedNotionalUsd * config.hlTakerFee;
     ps.pnl = pnlTracker.getStateForPersist();
 
     // Record rebalance event in dashboard
@@ -408,8 +483,17 @@ export class Rebalancer {
       fromNotional: currentHedge.notionalUsd,
       toNotional: effectiveNotional,
       price: position.price,
+      coin: hedgeSymbol,
+      action: fillResult?.action ?? undefined,
+      avgPx: fillResult?.avgPx ?? undefined,
+      tradeValueUsd: executedNotionalUsd || undefined,
+      feeUsd: feeUsd || undefined,
+      triggerReason: triggerReason ?? undefined,
+      token0Symbol: position.token0.symbol,
+      token1Symbol: position.token1.symbol,
+      isEmergency,
     };
-    dashboardStore.addRebalanceEvent(event);
+    getStoreForUser(this.userId).addRebalanceEvent(event);
 
     if (!ps.rebalances) ps.rebalances = [];
     ps.rebalances.push(event);
@@ -429,8 +513,8 @@ export class Rebalancer {
     this.lastRangeStatusMap[tokenId] = position.rangeStatus;
 
     // Persist to Supabase (fire-and-forget)
-    const feeUsd = executedNotionalUsd * config.hlTakerFee;
     void insertRebalance({
+      user_id: this.userId !== 'default' ? this.userId : undefined,
       token_id: tokenId,
       timestamp: new Date().toISOString(),
       coin: hedgeSymbol,
@@ -471,6 +555,35 @@ export class Rebalancer {
     );
 
     this.saveState();
+  }
+
+  // Computes LP value in USD for a given liquidity at the current price/tick.
+  // Mirrors computeAmountsFromTicks in uniswapReader but works with plain numbers.
+  private computeLpUsd(
+    liquidity: bigint,
+    position: LPPosition,
+    hedgeToken: 'token0' | 'token1',
+    volatilePriceUsd: number
+  ): number {
+    const sqrtCurrent = Math.sqrt(Math.pow(1.0001, position.tickCurrent));
+    const sqrtLower   = Math.sqrt(Math.pow(1.0001, position.tickLower));
+    const sqrtUpper   = Math.sqrt(Math.pow(1.0001, position.tickUpper));
+    const liq = Number(liquidity);
+    let amount0 = 0;
+    let amount1 = 0;
+    if (position.tickCurrent < position.tickLower) {
+      amount0 = liq * (1 / sqrtLower - 1 / sqrtUpper);
+    } else if (position.tickCurrent >= position.tickUpper) {
+      amount1 = liq * (sqrtUpper - sqrtLower);
+    } else {
+      amount0 = liq * (1 / sqrtCurrent - 1 / sqrtUpper);
+      amount1 = liq * (sqrtCurrent - sqrtLower);
+    }
+    const amt0F = amount0 / Math.pow(10, position.token0.decimals);
+    const amt1F = amount1 / Math.pow(10, position.token1.decimals);
+    const t0Usd = hedgeToken === 'token0' ? amt0F * position.price : amt0F;
+    const t1Usd = hedgeToken === 'token1' ? amt1F * volatilePriceUsd : amt1F;
+    return t0Usd + t1Usd;
   }
 
   private checkEmergencyPriceMovement(
