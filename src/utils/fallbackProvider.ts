@@ -19,11 +19,16 @@ export class FallbackProvider {
   private providers: ethers.JsonRpcProvider[];
   private currentIndex: number = 0;
 
-  constructor(rpcUrls: string[]) {
+  constructor(rpcUrls: string[], chainId?: number) {
     if (rpcUrls.length === 0) {
       throw new Error('At least one RPC URL is required');
     }
-    this.providers = rpcUrls.map((url) => new ethers.JsonRpcProvider(url));
+    // Pass staticNetwork when chainId is known to skip ethers auto-detection
+    // (avoids "failed to detect network" spam on slow RPCs)
+    const network = chainId != null ? ethers.Network.from(chainId) : undefined;
+    this.providers = rpcUrls.map(
+      (url) => new ethers.JsonRpcProvider(url, network, { staticNetwork: network ?? null })
+    );
     logger.info(`FallbackProvider initialized with ${rpcUrls.length} RPCs`);
   }
 

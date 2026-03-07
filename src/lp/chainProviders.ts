@@ -4,6 +4,15 @@ import { config } from '../config';
 
 const providers = new Map<ChainId, FallbackProvider>();
 
+const CHAIN_IDS: Partial<Record<ChainId, number>> = {
+  base:      8453,
+  eth:       1,
+  bsc:       56,
+  arbitrum:  42161,
+  polygon:   137,
+  avalanche: 43114,
+};
+
 function getRpcUrls(chain: ChainId): string[] {
   switch (chain) {
     case 'base':           return config.httpRpcUrls;
@@ -31,7 +40,7 @@ export function getChainProvider(chain: ChainId): FallbackProvider {
     throw new Error(`No RPC URLs configured for chain=${chain}. Set ${chain.toUpperCase().replace(/-/g, '_')}_HTTP_RPC_URL in .env`);
   }
 
-  const provider = new FallbackProvider(urls);
+  const provider = new FallbackProvider(urls, CHAIN_IDS[chain]);
   providers.set(chain, provider);
   return provider;
 }
