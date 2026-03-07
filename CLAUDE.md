@@ -201,6 +201,31 @@ Fees V4 são lidas via contrato StateView (`0xa3c0c9b65bad0b08107aa264b0f3db444b
 - `getFeeGrowthInside(poolId, tickLower, tickUpper)` — retorna fee growth inside diretamente
 - `fees = liquidity × (feeGrowthInside − feeGrowthInsideLast) >> 128`
 
+## Comandos
+```bash
+npm run build          # compila TypeScript → dist/
+npx tsc --noEmit       # type-check sem gerar arquivos
+npx pm2 restart apr-delta-neuto  # reiniciar após build
+npx pm2 logs apr-delta-neuto     # logs em tempo real
+```
+
+## Como adicionar nova Chain/DEX
+1. `src/lp/chainRegistry.ts` — adicionar `'chain:dex': { positionManagerV3, factoryV3, ... }`
+2. `src/lp/chainProviders.ts` — adicionar chain ID em `CHAIN_IDS` (obrigatório para staticNetwork)
+3. `.env` — adicionar `CHAIN_HTTP_RPC_URL=url1,url2,...`
+4. `src/dashboard/public/index.html` — adicionar dex em `DEX_OPTIONS_BY_CHAIN`
+
+Sem `initCodeHashV3`? Pool resolvido via `factory.getPool()` — CREATE2 é fallback opcional.
+
+## Gotchas
+- **ethers v6 staticNetwork**: sempre passar `chainId` ao `new FallbackProvider(urls, chainId)`. Sem isso: spam "JsonRpcProvider failed to detect network; retry in 1s" em RPCs lentos. Chain IDs ficam em `CHAIN_IDS` em `src/lp/chainProviders.ts`.
+- **Circular import em `lp/types.ts`**: usar `import type { LPPosition }` (não value import). Value import cria circular CommonJS require em runtime. Nunca mudar para import de valor.
+
+## Limitações conhecidas (multi-chain)
+- `createLPReader()` em `index.ts` cria instância nova a cada ciclo → cache TTL interno ineficaz
+- `EvmScanner.scanWallet()` só escaneia V3 (ERC721Enumerable) — V4 requer event log scan (não implementado)
+- `walletScannerFactory` não valida `isChainDexSupported` antes de construir `EvmScanner`
+
 ## Diretrizes para Respostas
 - Responder diretamente com código quando a solicitação for clara.
 - Sem explicações longas. Contexto mínimo necessário.
