@@ -49,6 +49,15 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   // 'eth:pancake-v4': { ... },
 
   // ── BSC ─────────────────────────────────────────────────────────────────
+  'bsc:uniswap-v3': {
+    positionManagerV3: '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613',
+    factoryV3:         '0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7',
+    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
+  },
+  'bsc:uniswap-v4': {
+    positionManagerV4: '0x7a4a5c919ae2541aed11041a1aeee68f1287f95b',
+    stateViewV4:       '0xd13dd3d6e93f276fafc9db9e6bb47c1180aee0c4',
+  },
   'bsc:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
@@ -63,6 +72,10 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     factoryV3:         '0x1F98431c8aD98523631AE4a59f267346ea31F984',
     initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
+  'arbitrum:uniswap-v4': {
+    positionManagerV4: '0xd88f38f930b7952f2db2432cb002e7abbf3dd869',
+    stateViewV4:       '0x76fd297e2d437cd7f76d50f01afe6160f86e9990',
+  },
   'arbitrum:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
@@ -75,6 +88,10 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     factoryV3:         '0x1F98431c8aD98523631AE4a59f267346ea31F984',
     initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
+  'polygon:uniswap-v4': {
+    positionManagerV4: '0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9',
+    stateViewV4:       '0x5ea1bd7974c8a611cbab0bdcafcb1d9cc9b3ba5a',
+  },
   'polygon:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
@@ -86,6 +103,10 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     positionManagerV3: '0x655C406EBFa14EE2006250925e54ec43AD184f8B',
     factoryV3:         '0x740b1c1de25031C31FF4fC9A62f554A55cdC1baD',
     initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
+  },
+  'avalanche:uniswap-v4': {
+    positionManagerV4: '0xb74b1f14d2754acfcbbe1a221023a5cf50ab8acd',
+    stateViewV4:       '0xc3c9e198c735a4b97e3e683f391ccbdd60b69286',
   },
 
   // ── HYPERLIQUID L1 (HyperEVM, chain ID 999) ─────────────────────────────
