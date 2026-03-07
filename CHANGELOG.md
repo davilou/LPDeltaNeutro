@@ -1,6 +1,108 @@
 # Changelog
 
-## [Unreleased] — 2026-03-06
+## [Unreleased] — 2026-03-07
+
+### Multi-Chain + Multi-DEX Expansion (Phase 1 — EVM)
+
+Expansão da camada LP para suportar múltiplas blockchains EVM e DEXes além de Uniswap na Base Chain, com arquitetura Thin Adapter e stubs Solana-aware para Phase 2.
+
+#### Chains suportadas
+| Chain | ChainId |
+|---|---|
+| Base (existente) | `base` |
+| Ethereum Mainnet | `eth` |
+| BNB Smart Chain | `bsc` |
+| Arbitrum One | `arbitrum` |
+| Polygon | `polygon` |
+| Avalanche C-Chain | `avalanche` |
+| Hyperliquid L1 *(stub)* | `hyperliquid-l1` |
+
+#### DEXes suportados
+| DEX | DexId | Chains |
+|---|---|---|
+| Uniswap V3 | `uniswap-v3` | Base, ETH, Arbitrum, Polygon, Avalanche |
+| Uniswap V4 | `uniswap-v4` | Base, ETH |
+| PancakeSwap V3 | `pancake-v3` | BSC, ETH, Arbitrum, Polygon |
+| PancakeSwap V4 | `pancake-v4` | BSC *(TBD)* |
+| Aerodrome CL | `aerodrome-cl` | Base |
+| ProjectX | `project-x` | Hyperliquid L1 *(stub)* |
+
+#### Arquitetura — Thin Adapter Pattern
+
+A lógica de leitura V3/V4 existente foi extraída em classes base parametrizadas por endereços de contrato:
+
+- `src/lp/types.ts` — `ILPReader`, `IWalletScanner`, `ChainId`, `DexId`, `PositionId = number | string`
+- `src/lp/chainRegistry.ts` — mapa `(ChainId, DexId)` → endereços de contratos (13 pares chain/dex)
+- `src/lp/readers/evmClReader.ts` — `EvmClReader`: base class para DEXes V3-compatíveis (Uniswap V3, PancakeSwap V3, Aerodrome CL)
+- `src/lp/readers/evmV4Reader.ts` — `EvmV4Reader`: base class para DEXes V4-compatíveis
+- `src/lp/readers/solanaReader.ts` — stub Phase 2; lança `Error` com mensagem explicativa
+- `src/lp/scanners/evmScanner.ts` — `EvmScanner`: `IWalletScanner` parametrizado por chain/dex
+- `src/lp/scanners/solanaScanner.ts` — stub Phase 2
+- `src/lp/lpReaderFactory.ts` — `createLPReader(chain, dex): ILPReader`
+- `src/lp/walletScannerFactory.ts` — `createWalletScanner(chain, dex): IWalletScanner`
+
+Backwards-compat: `uniswapReader.ts` e `walletScanner.ts` continuam exportando as classes originais + novos exports.
+
+#### Otimização de RPC
+
+- **Per-chain FallbackProvider pool** (`src/lp/chainProviders.ts`): instância única por chain, lazy-init, compartilhada entre todos os readers/scanners da mesma chain.
+- **Global token cache per chain** (`src/lp/tokenCache.ts`): elimina chamadas duplicadas a `symbol()` e `decimals()` quando múltiplas posições compartilham tokens (ex: USDC).
+- **Multicall3 utility** (`src/utils/multicall.ts`): helper para batching de `eth_call`s via `0xcA11bde05977b3631167028862bE2a173976CA11` (universal em todas as EVMs), controlado por `MULTICALL3_ENABLED`.
+
+#### Dashboard — Scan/Lookup com chain/dex
+
+- Scan e Lookup agora exibem selectors `Chain` e `DEX` antes dos campos de endereço/token ID
+- DEX dropdown popula dinamicamente baseado na chain selecionada
+- Card de posição exibe badge `chain • dex` (ex: `BSC • PancakeSwap V3`)
+
+#### State migration
+
+Posições existentes (sem `chain`/`dex`) recebem defaults automáticos no `loadState()`:
+```
+chain = 'base'
+dex = 'uniswap-v3' ou 'uniswap-v4' (baseado em protocolVersion)
+positionId = tokenId
+```
+
+#### Novas variáveis de ambiente
+
+```env
+# RPCs por chain (aceita múltiplas URLs separadas por vírgula)
+ETH_HTTP_RPC_URL=
+BSC_HTTP_RPC_URL=
+ARB_HTTP_RPC_URL=
+POLYGON_HTTP_RPC_URL=
+AVAX_HTTP_RPC_URL=
+HL_L1_HTTP_RPC_URL=
+
+# Multicall3 (batching de eth_calls, default true)
+MULTICALL3_ENABLED=true
+```
+
+#### Arquivos modificados
+- `src/lp/types.ts` *(novo)*
+- `src/lp/chainRegistry.ts` *(novo)*
+- `src/lp/tokenCache.ts` *(novo)*
+- `src/lp/chainProviders.ts` *(novo)*
+- `src/lp/lpReaderFactory.ts` *(novo)*
+- `src/lp/walletScannerFactory.ts` *(novo)*
+- `src/lp/readers/evmClReader.ts` *(novo)*
+- `src/lp/readers/evmV4Reader.ts` *(novo)*
+- `src/lp/readers/solanaReader.ts` *(novo — stub Phase 2)*
+- `src/lp/scanners/evmScanner.ts` *(novo)*
+- `src/lp/scanners/solanaScanner.ts` *(novo — stub Phase 2)*
+- `src/utils/multicall.ts` *(novo)*
+- `src/lp/uniswapReader.ts` — re-exports adicionados
+- `src/lp/walletScanner.ts` — re-exports adicionados
+- `src/engine/rebalancer.ts` — state migration
+- `src/types.ts` — novos campos opcionais + re-exports
+- `src/config.ts` — novos getters de RPC por chain
+- `src/dashboard/store.ts` — `ActivatePositionRequest` com chain/dex/positionId
+- `src/dashboard/server.ts` — rotas scan/lookup/activate usam factories
+- `src/dashboard/public/index.html` — selectors chain/dex, badge no card
+- `src/index.ts` — usa `createLPReader` no lugar de `UniswapReader`
+
+---
 
 ### Dashboard: Auto Hedge — Balancear extremos do range
 

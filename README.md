@@ -1,6 +1,19 @@
 # APRDeltaNeuto
 
-Bot de hedging delta-neutro para posições Uniswap V3/V4 na Base Chain. Lê LP positions on-chain e executa hedges em perpétuos na Hyperliquid, disparado por movimento de preço do ativo volátil. Inclui dashboard de monitoramento e persistência no Supabase.
+Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains EVM. Lê LP positions on-chain e executa hedges em perpétuos na Hyperliquid, disparado por movimento de preço do ativo volátil. Inclui dashboard de monitoramento e persistência no Supabase.
+
+### Chains e DEXes suportados
+
+| Chain | DEXes |
+|---|---|
+| **Base** | Uniswap V3, Uniswap V4, Aerodrome CL |
+| **Ethereum** | Uniswap V3, Uniswap V4, PancakeSwap V3 |
+| **BNB Smart Chain** | PancakeSwap V3, PancakeSwap V4 |
+| **Arbitrum** | Uniswap V3, PancakeSwap V3 |
+| **Polygon** | Uniswap V3, PancakeSwap V3 |
+| **Avalanche** | Uniswap V3 |
+
+> Hedge sempre via Hyperliquid perps, independente da chain da posição LP.
 
 ---
 
@@ -15,11 +28,21 @@ cp .env.example .env
 Variáveis principais:
 
 ```env
-# RPC (use QuickNode, Alchemy ou outro provider)
+# RPC Base Chain (use QuickNode, Alchemy ou outro provider)
 WS_URL=wss://your-node.base-mainnet.example.com/your-key
 HTTP_RPC_URL=https://mainnet.base.org
 HTTP_RPC_URL_2=https://your-node.base-mainnet.example.com/your-key
 HTTP_RPC_URL_3=https://base-rpc.publicnode.com
+
+# RPCs por chain — aceita múltiplas URLs separadas por vírgula
+ETH_HTTP_RPC_URL=https://mainnet.infura.io/v3/...
+BSC_HTTP_RPC_URL=https://bsc-dataseed.binance.org
+ARB_HTTP_RPC_URL=https://arb1.arbitrum.io/rpc
+POLYGON_HTTP_RPC_URL=https://polygon-rpc.com
+AVAX_HTTP_RPC_URL=https://api.avax.network/ext/bc/C/rpc
+
+# Multicall3 (batching de eth_calls, default true)
+MULTICALL3_ENABLED=true
 
 # Modo (true = sem ordens reais)
 DRY_RUN=true
@@ -109,7 +132,7 @@ O dashboard requer **login via Google**. Cada conta Google tem seu próprio espa
 
 ### Funcionalidades
 
-- Escanear carteira ou buscar posição diretamente pelo NFT token ID
+- Escanear carteira ou buscar posição diretamente pelo NFT token ID — com seletor de chain e DEX
 - Ativar/desativar proteção por posição
 - Monitorar múltiplas posições simultaneamente — cada posição tem seu próprio card de métricas
 - Ajustar parâmetros de estratégia por posição em tempo real (Hedge Ratio, Cooldown, Emergency threshold)
@@ -279,12 +302,27 @@ src/
 ├── config.ts         # Env vars
 ├── types.ts          # Interfaces globais
 ├── auth/             # Google OAuth, sessões, encrypt/decrypt de credenciais HL
-├── lp/               # Leitura on-chain (Uniswap V3 + V4)
+├── lp/               # Leitura on-chain — multi-chain, multi-DEX
+│   ├── types.ts               # ILPReader, IWalletScanner, ChainId, DexId, PositionId
+│   ├── chainRegistry.ts       # Endereços de contrato por (chain, dex)
+│   ├── chainProviders.ts      # FallbackProvider pool por chain (lazy singleton)
+│   ├── tokenCache.ts          # Cache global de symbol/decimals por chain
+│   ├── lpReaderFactory.ts     # createLPReader(chain, dex) → ILPReader
+│   ├── walletScannerFactory.ts # createWalletScanner(chain, dex) → IWalletScanner
+│   ├── readers/
+│   │   ├── evmClReader.ts     # Base class V3-compatible (Uniswap V3, PancakeSwap V3, Aerodrome CL)
+│   │   ├── evmV4Reader.ts     # Base class V4-compatible
+│   │   └── solanaReader.ts    # Stub Phase 2
+│   ├── scanners/
+│   │   ├── evmScanner.ts      # WalletScanner parametrizado por chain/dex
+│   │   └── solanaScanner.ts   # Stub Phase 2
+│   ├── uniswapReader.ts       # Re-export backwards-compat
+│   └── walletScanner.ts       # Re-export backwards-compat
 ├── hedge/            # Cálculo de hedge + execução (Hyperliquid / Mock)
 ├── engine/           # Orquestração (rebalancer)
 ├── pnl/              # Rastreamento de P&L (dados reais da HL API)
 ├── db/               # Persistência Supabase
 ├── backtest/         # Simulação histórica com estratégias
 ├── dashboard/        # Express server + SSE + store de estado
-└── utils/            # logger, fallbackProvider, safety
+└── utils/            # logger, fallbackProvider, safety, multicall
 ```
