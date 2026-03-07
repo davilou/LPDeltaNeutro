@@ -88,9 +88,13 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
 
-  // ── HYPERLIQUID L1 ──────────────────────────────────────────────────────
-  // ProjectX (prjx.com) — addresses TBD, research required before implementing
-  // 'hyperliquid-l1:project-x': { ... },
+  // ── HYPERLIQUID L1 (HyperEVM, chain ID 999) ─────────────────────────────
+  // ProjectX — NonfungiblePositionManager is Uniswap V3-compatible
+  'hyperliquid-l1:project-x': {
+    positionManagerV3: '0xeaD19AE861c29bBb2101E834922B2FEee69B9091',
+    factoryV3:         '0xeAF40318453a81993569B14b898AAC31Df6133fA',
+    // initCodeHashV3 not published — pool address resolved via factory.getPool()
+  },
 };
 
 export function getChainDexAddresses(chain: ChainId, dex: DexId): ChainDexAddresses {

@@ -5,12 +5,13 @@ import { config } from '../config';
 const providers = new Map<ChainId, FallbackProvider>();
 
 const CHAIN_IDS: Partial<Record<ChainId, number>> = {
-  base:      8453,
-  eth:       1,
-  bsc:       56,
-  arbitrum:  42161,
-  polygon:   137,
-  avalanche: 43114,
+  base:            8453,
+  eth:             1,
+  bsc:             56,
+  arbitrum:        42161,
+  polygon:         137,
+  avalanche:       43114,
+  'hyperliquid-l1': 999,
 };
 
 function getRpcUrls(chain: ChainId): string[] {
