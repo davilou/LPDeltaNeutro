@@ -1,6 +1,5 @@
 import { ethers } from 'ethers';
 import { config } from './config';
-import { UniswapReader } from './lp/uniswapReader';
 import { createLPReader } from './lp/lpReaderFactory';
 import type { ChainId, DexId, ILPReader } from './lp/types';
 import { EvmV4Reader } from './lp/readers/evmV4Reader';
