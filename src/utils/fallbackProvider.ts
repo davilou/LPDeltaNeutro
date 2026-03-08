@@ -1,6 +1,14 @@
 import { ethers } from 'ethers';
 import { logger } from './logger';
 
+/** Throw this to signal a logical error that retrying with another RPC cannot fix. */
+export class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableError';
+  }
+}
+
 function isContractRevert(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const code = (err as { code?: string }).code;
@@ -53,8 +61,8 @@ export class FallbackProvider {
       try {
         return await fn(this.providers[this.currentIndex]);
       } catch (err) {
-        // Contract reverts (CALL_EXCEPTION) are deterministic — rotating RPC won't help.
-        // Only rotate on actual network/transport failures.
+        // Logical errors and contract reverts are deterministic — rotating RPC won't help.
+        if (err instanceof NonRetryableError) throw err;
         if (isContractRevert(err)) throw err;
         lastError = err;
         logger.warn(`RPC #${this.currentIndex} failed: ${err}`);

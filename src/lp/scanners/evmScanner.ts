@@ -5,6 +5,7 @@ import { ChainId, DexId, IWalletScanner, PositionId } from '../types';
 import { getChainDexAddresses, ChainDexAddresses } from '../chainRegistry';
 import { getChainProvider } from '../chainProviders';
 import { getTokenCache, KNOWN_TOKENS_BY_CHAIN, seedTokenCache, TokenMeta } from '../tokenCache';
+import { NonRetryableError } from '../../utils/fallbackProvider';
 
 const POSITION_MANAGER_V3_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -182,7 +183,10 @@ export class EvmScanner implements IWalletScanner {
         const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, provider);
         const addr: string = await factory.getPool(token0, token1, fee);
         if (addr !== ethers.ZeroAddress) return addr;
-      } catch { /* fall through to CREATE2 */ }
+      } catch (err) {
+        logger.debug(`[EvmScanner] factory.getPool(${token0}, ${token1}, ${fee}) failed: ${err}`);
+        /* fall through to CREATE2 */
+      }
     }
 
     if (addresses.initCodeHashV3 && addresses.factoryV3) {
@@ -191,7 +195,7 @@ export class EvmScanner implements IWalletScanner {
       return ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3);
     }
 
-    throw new Error(`Cannot resolve pool address for ${token0}/${token1} fee=${fee}: no factory or initCodeHash configured`);
+    throw new NonRetryableError(`Cannot resolve pool address for ${token0}/${token1} fee=${fee}: no factory or initCodeHash configured`);
   }
 
   private async getTokenInfo(provider: ethers.Provider, address: string): Promise<TokenMeta> {
