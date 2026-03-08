@@ -12,6 +12,7 @@ const WRAPPED_NATIVE: Record<string, string> = {
   'polygon':   '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
   'avalanche':        '0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAE',
   'hyperliquid-l1':   '0x5555555555555555555555555555555555555555', // WHYPE
+  'solana':           'So11111111111111111111111111111111111111112', // Wrapped SOL
 };
 
 // DexScreener chain slugs: https://api.dexscreener.com/latest/dex/pools/{chain}/{address}
@@ -23,6 +24,7 @@ const DEX_SCREENER_CHAIN: Record<string, string> = {
   'polygon':          'polygon',
   'avalanche':        'avalanche',
   'hyperliquid-l1':   'hyperevm',
+  'solana':           'solana',
 };
 
 // CoinGecko asset platform IDs
@@ -33,6 +35,7 @@ const COINGECKO_PLATFORM: Record<string, string> = {
   'arbitrum':  'arbitrum-one',
   'polygon':   'polygon-pos',
   'avalanche': 'avalanche',
+  'solana':    'solana',
   // hyperliquid-l1 not yet indexed by CoinGecko
 };
 
