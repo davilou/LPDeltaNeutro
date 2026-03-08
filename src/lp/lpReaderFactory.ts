@@ -1,7 +1,9 @@
 import { ChainId, DexId, ILPReader } from './types';
 import { EvmClReader } from './readers/evmClReader';
 import { EvmV4Reader } from './readers/evmV4Reader';
-import { SolanaReader } from './readers/solanaReader';
+import { OrcaReader }    from './readers/orca/orcaReader';
+import { RaydiumReader }  from './readers/raydium/raydiumReader';
+import { MeteoraReader } from './readers/meteora/meteoraReader';
 import { isChainDexSupported } from './chainRegistry';
 
 const V4_DEXES = new Set<DexId>(['uniswap-v4', 'pancake-v4']);
@@ -13,7 +15,10 @@ const SOLANA_CHAINS = new Set<ChainId>(['solana']);
  */
 export function createLPReader(chain: ChainId, dex: DexId): ILPReader {
   if (SOLANA_CHAINS.has(chain)) {
-    return new SolanaReader();
+    if (dex === 'orca')    return new OrcaReader();
+    if (dex === 'raydium') return new RaydiumReader();
+    if (dex === 'meteora') return new MeteoraReader();
+    throw new Error(`Unsupported Solana dex: ${dex}. Supported: orca, raydium, meteora`);
   }
 
   if (!isChainDexSupported(chain, dex)) {
