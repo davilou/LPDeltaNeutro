@@ -9,7 +9,7 @@ const SOLANA_CHAINS = new Set<ChainId>(['solana']);
  */
 export function createWalletScanner(chain: ChainId, dex: DexId): IWalletScanner {
   if (SOLANA_CHAINS.has(chain)) {
-    return new SolanaScanner();
+    return new SolanaScanner(dex);
   }
   return new EvmScanner(chain, dex);
 }
