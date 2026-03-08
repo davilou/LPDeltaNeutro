@@ -11,17 +11,30 @@
     "analysis": "ts-node src/analysis/run.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@meteora-ag/dlmm": "^1.9.3",
+    "@orca-so/whirlpools-sdk": "^0.20.0",
+    "@raydium-io/raydium-sdk-v2": "^0.2.32-alpha",
+    "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.97.0",
+    "connect-pg-simple": "^10.0.0",
     "dotenv": "^16.4.7",
     "ethers": "^6.13.4",
     "express": "^5.2.1",
+    "express-session": "^1.19.0",
     "hyperliquid": "^1.7.7",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.6",
+    "@types/express-session": "^1.18.2",
     "@types/node": "^22.10.0",
+    "@types/passport": "^1.0.17",
+    "@types/passport-google-oauth20": "^2.0.17",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2"
   }
