@@ -60,6 +60,9 @@ export const config = {
   get polygonHttpRpcUrls(): string[] { return parseRpcList(process.env.POLYGON_HTTP_RPC_URL); },
   get avaxHttpRpcUrls(): string[] { return parseRpcList(process.env.AVAX_HTTP_RPC_URL); },
   get hlL1HttpRpcUrls(): string[] { return parseRpcList(process.env.HL_L1_HTTP_RPC_URL); },
+  get solanaHttpRpcUrl(): string {
+    return process.env.SOLANA_HTTP_RPC_URL || 'https://api.mainnet-beta.solana.com';
+  },
 
   /** Enable Multicall3 batching for EVM reads (default true) */
   multicall3Enabled: optionalEnv('MULTICALL3_ENABLED', 'true').toLowerCase() === 'true',
