@@ -1686,7 +1686,8 @@
             '</div>' +
             (isActive ? '' :
               '<div class="config-panel" id="cfg-' + p.tokenId + '" style="display:none;">' +
-              '<div class="irow"><label>Hedge Ratio (%):</label> <input type="number" step="0.05" id="cfg-ratio-' + p.tokenId + '" value="0.8" class="t-in"></div>' +
+              '<div class="irow"><label>Hedge Ratio (%): <span class="range-mode-toggle" id="hr-toggle-' + p.tokenId + '"><span class="range-mode-btn active" onclick="setHrMode(\'' + p.tokenId + '\',\'manual\',this)">MANUAL</span><span class="range-mode-btn" onclick="setHrMode(\'' + p.tokenId + '\',\'auto\',this)">AUTO</span></span></label><input type="number" step="0.01" id="cfg-ratio-' + p.tokenId + '" value="0.8" class="t-in"></div>' +
+              '<div id="cfg-auto-hint-' + p.tokenId + '" style="display:none;font-size:11px;color:#888;padding:2px 0 4px 0;line-height:1.5;"></div>' +
               '<div class="irow"><label>Cooldown (min):</label> <input type="number" id="cfg-int-' + p.tokenId + '" value="240" class="t-in"></div>' +
               '<div class="irow"><label>Price Move %:</label> <input type="number" step="0.01" id="cfg-ept-' + p.tokenId + '" value="0.15" class="t-in"></div>' +
               '<button class="btn btn-blue" onclick="activatePosition(' + i + ')" style="margin-top:4px;">START PROTECTION</button>' +
@@ -1734,6 +1735,69 @@
           $('scanStatus').textContent = 'Activation request failed (network error).';
         });
       };
+
+      // ── Auto Hedge Ratio calculation for activation form ────────────────
+      var _hrModes = {};
+      var _STABLE_SYMS = ['USDC','USDT','DAI','BUSD','FDUSD','FRAX','LUSD','CRVUSD','PYUSD','USDS','USDE','TUSD'];
+
+      function _tickRangeToUsd(p) {
+        var d0 = p.token0Decimals != null ? p.token0Decimals : 18;
+        var d1 = p.token1Decimals != null ? p.token1Decimals : 18;
+        var decAdj = Math.pow(10, d0 - d1);
+        var rawLo = Math.pow(1.0001, p.tickLower) * decAdj;
+        var rawHi = Math.pow(1.0001, p.tickUpper) * decAdj;
+        // If token0 is a stablecoin, tick price = stablecoin/volatile → invert to get USD price of volatile
+        if (_STABLE_SYMS.indexOf((p.token0Symbol || '').toUpperCase()) >= 0) {
+          return { Pa: 1 / rawHi, Pb: 1 / rawLo };
+        }
+        return { Pa: rawLo, Pb: rawHi };
+      }
+
+      function _calcHedgeRatio(Pa, Pb, P) {
+        if (!(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb || P < Pa || P > Pb) return null;
+        var sPa = Math.sqrt(Pa), sPb = Math.sqrt(Pb), sP = Math.sqrt(P);
+        var denom = sP * (sPb - sP) / sPb + sP - sPa;
+        if (denom <= 0) return null;
+        var L = 1 / denom; // V cancels in the ratio; use V=1
+        var lpValUp = L * (sPb - sPa);
+        var lpValDn = L * (1 / sPa - 1 / sPb) * Pa;
+        var H = (lpValUp - lpValDn) * P / (Pb - Pa);
+        var xTokens = L * (1 / sP - 1 / sPb);
+        if (xTokens <= 0) return null;
+        return Math.max(0, H / (xTokens * P));
+      }
+
+      window.setHrMode = function(tokenId, mode, el) {
+        _hrModes[tokenId] = mode;
+        var toggle = document.getElementById('hr-toggle-' + tokenId);
+        toggle.querySelectorAll('.range-mode-btn').forEach(function(b) { b.classList.remove('active'); });
+        el.classList.add('active');
+        var ratioInput = document.getElementById('cfg-ratio-' + tokenId);
+        var hintEl = document.getElementById('cfg-auto-hint-' + tokenId);
+        if (mode === 'auto') {
+          ratioInput.disabled = true;
+          var p = discoveredPositions.find(function(pos) { return String(pos.tokenId) === String(tokenId); });
+          if (p) {
+            var range = _tickRangeToUsd(p);
+            var ratio = _calcHedgeRatio(range.Pa, range.Pb, p.price);
+            if (ratio !== null) {
+              ratioInput.value = ratio.toFixed(4);
+              hintEl.style.color = '#888';
+              hintEl.innerHTML = 'Pa: $' + range.Pa.toFixed(4) + ' &nbsp;·&nbsp; Pb: $' + range.Pb.toFixed(4) + ' &nbsp;·&nbsp; P: $' + p.price.toFixed(4);
+            } else {
+              ratioInput.value = '';
+              hintEl.style.color = '#f66';
+              hintEl.textContent = 'Preço atual fora do range — não é possível calcular.';
+            }
+            hintEl.style.display = '';
+          }
+        } else {
+          ratioInput.disabled = false;
+          ratioInput.value = '0.8';
+          hintEl.style.display = 'none';
+        }
+      };
+      // ────────────────────────────────────────────────────────────────────
 
       window.switchTab = function (tokenId) {
         activeTokenId = tokenId;
