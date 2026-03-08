@@ -56,7 +56,7 @@ export interface PnlSnapshot {
 }
 
 export interface DiscoveredPosition {
-  tokenId: number;
+  tokenId: PositionId;
   protocolVersion: 'v3' | 'v4';
   token0Address: string;
   token0Symbol: string;
@@ -80,7 +80,7 @@ export interface DiscoveredPosition {
 }
 
 export interface ActivePositionConfig {
-  tokenId: number;
+  tokenId: PositionId;
   protocolVersion: 'v3' | 'v4';
   poolAddress: string;
   activatedAt: number;
@@ -106,7 +106,7 @@ export interface ActivePositionConfig {
 }
 
 export interface HistoricalPosition {
-  tokenId: number;
+  tokenId: PositionId;
   poolAddress: string;
   protocolVersion: 'v3' | 'v4';
   token0Symbol: string;
@@ -142,6 +142,6 @@ export interface PositionState {
 }
 
 export interface BotState {
-  positions: Record<number, PositionState>;
+  positions: Record<string, PositionState>;
   history?: HistoricalPosition[];
 }

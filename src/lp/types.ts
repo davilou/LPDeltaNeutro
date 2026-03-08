@@ -16,7 +16,10 @@ export type DexId =
   | 'pancake-v3'
   | 'pancake-v4'
   | 'aerodrome-cl'
-  | 'project-x';   // HL L1
+  | 'project-x'   // HL L1
+  | 'orca'        // Orca Whirlpool (CLMM)
+  | 'raydium'     // Raydium CLMM
+  | 'meteora';    // Meteora DLMM
 
 /** EVM: NFT tokenId (number). Solana phase 2: position pubkey (string). */
 export type PositionId = number | string;

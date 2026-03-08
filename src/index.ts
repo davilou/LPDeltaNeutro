@@ -1,7 +1,9 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { ethers } from 'ethers';
 import { config } from './config';
 import { createLPReader } from './lp/lpReaderFactory';
-import type { ChainId, DexId, ILPReader } from './lp/types';
+import type { ChainId, DexId, ILPReader, PositionId } from './lp/types';
 import { EvmV4Reader } from './lp/readers/evmV4Reader';
 import { MockExchange } from './hedge/mockExchange';
 import { HyperliquidExchange } from './hedge/hyperliquidExchange';
@@ -12,20 +14,27 @@ import { getStoreForUser, ActivatePositionRequest } from './dashboard/store';
 import { ActivePositionConfig, PnlSnapshot } from './types';
 import { insertClosedPosition, supabaseServiceClient, upsertProtectionActivation, fetchProtectionActivation } from './db/supabase';
 import { loadCredentials as loadDbCredentials } from './auth/userStore';
-import { fetchPoolPrice, poolPriceCache } from './utils/priceApi';
+import { fetchPoolPrice, poolPriceCache, isChainPriceSupported, STABLE_SYMBOLS } from './utils/priceApi';
 import { IHedgeExchange } from './hedge/types';
 import './auth/types';
 
 const BLOCK_TIMEOUT_MS = 5 * 60_000;    // 5min
 const WATCHDOG_INTERVAL_MS = 15_000;   // 15s
-const PRICE_POLL_INTERVAL_MS = 10_000; // 10s
+const PRICE_POLL_INTERVAL_MS = 30_000; // 30s — keep below API rate limits
+const PRICE_POLL_INTER_REQUEST_MS = 500; // delay between pool price requests
 
 interface UserEngineContext {
   rebalancer: Rebalancer;
   exchange: IHedgeExchange;
-  /** Default reader for block-polling; per-position readers are created on demand. */
-  reader: ILPReader;
-  activationsInProgress: Set<number>;
+  /** Reusable readers keyed by "chain:dex" — preserves internal TTL cache across cycles. */
+  readers: Map<string, ILPReader>;
+  activationsInProgress: Set<PositionId>;
+}
+
+function getOrCreateReader(ctx: UserEngineContext, chain: ChainId, dex: DexId): ILPReader {
+  const key = `${chain}:${dex}`;
+  if (!ctx.readers.has(key)) ctx.readers.set(key, createLPReader(chain, dex));
+  return ctx.readers.get(key)!;
 }
 
 const engineContexts = new Map<string, UserEngineContext>();
@@ -77,7 +86,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       const initialHlUsd = await ctx.exchange.getAccountEquity();
 
       const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD']);
-      const HL_SYMBOL_MAP: Record<string, string> = { WETH: 'ETH', WBTC: 'BTC', cbBTC: 'BTC', cbETH: 'ETH', wstETH: 'ETH' };
+      const HL_SYMBOL_MAP: Record<string, string> = { WETH: 'ETH', WBTC: 'BTC', cbBTC: 'BTC', cbETH: 'ETH', wstETH: 'ETH', WHYPE: 'HYPE' };
 
       const t0Symbol = position.token0.symbol;
       const t1Symbol = position.token1.symbol;
@@ -169,7 +178,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
   });
 
   // Position Deactivation event
-  store.on('deactivatePosition', async (tokenId: number) => {
+  store.on('deactivatePosition', async (tokenId: PositionId) => {
     const ps = ctx.rebalancer.fullState.positions[tokenId];
     const hedgeSymbol = ps?.config.hedgeSymbol;
 
@@ -242,7 +251,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
   });
 
   // PnL reset event
-  store.on('resetPnl', ({ tokenId, initialLpUsd, initialHlUsd }: { tokenId: number; initialLpUsd: number; initialHlUsd: number }) => {
+  store.on('resetPnl', ({ tokenId, initialLpUsd, initialHlUsd }: { tokenId: PositionId; initialLpUsd: number; initialHlUsd: number }) => {
     const tracker = ctx.rebalancer.getPnlTracker(tokenId);
     tracker.reinitialize(initialLpUsd, initialHlUsd);
     ctx.rebalancer.saveState();
@@ -257,9 +266,8 @@ async function getOrCreateEngineContext(userId: string): Promise<UserEngineConte
 
   const exchange = await createExchangeForUser(userId);
   const rebalancer = new Rebalancer(exchange, userId);
-  const reader = createLPReader('base', 'uniswap-v3');
 
-  const ctx: UserEngineContext = { rebalancer, exchange, reader, activationsInProgress: new Set() };
+  const ctx: UserEngineContext = { rebalancer, exchange, readers: new Map(), activationsInProgress: new Set() };
   engineContexts.set(userId, ctx);
 
   const store = getStoreForUser(userId);
@@ -340,6 +348,50 @@ async function getOrCreateEngineContext(userId: string): Promise<UserEngineConte
   return ctx;
 }
 
+/**
+ * On startup, restore engine contexts for all users who have active positions in their state file.
+ * Fails explicitly (log error + skip) if Supabase is not configured or credentials are missing —
+ * never falls back to MockExchange for auto-restored users.
+ */
+async function autoRestoreEngineContexts(): Promise<void> {
+  const stateDir = path.resolve(__dirname, '..');
+  let files: string[];
+  try {
+    files = fs.readdirSync(stateDir).filter(f => /^state-[a-z0-9-]+\.json$/.test(f));
+  } catch (err) {
+    logger.error(`[AutoRestore] Cannot read state directory: ${err}`);
+    return;
+  }
+
+  for (const file of files) {
+    const userId = file.replace(/^state-/, '').replace(/\.json$/, '');
+    if (userId === 'default') continue; // handled separately in single-user mode
+
+    try {
+      const raw = fs.readFileSync(path.join(stateDir, file), 'utf-8');
+      const state = JSON.parse(raw) as { positions?: Record<string, unknown> };
+      const positionCount = Object.keys(state?.positions ?? {}).length;
+      if (positionCount === 0) continue;
+
+      if (!supabaseServiceClient) {
+        logger.error(`[AutoRestore] User ${userId} has ${positionCount} active position(s) but Supabase is not configured — cannot restore credentials. User must login.`);
+        continue;
+      }
+
+      const creds = await loadDbCredentials(supabaseServiceClient, userId);
+      if (!creds) {
+        logger.error(`[AutoRestore] User ${userId} has ${positionCount} active position(s) but no HL credentials found in DB — skipping. User must login and set credentials.`);
+        continue;
+      }
+
+      logger.info(`[AutoRestore] Restoring engine context for user ${userId} (${positionCount} position(s))`);
+      await getOrCreateEngineContext(userId);
+    } catch (err) {
+      logger.error(`[AutoRestore] Failed to process ${file}: ${err}`);
+    }
+  }
+}
+
 async function main() {
   logger.info('=== Delta-Neutral LP Bot V2 (Multi-Position, Multi-User) Starting ===');
   logger.info(`Dry run: ${config.dryRun}`);
@@ -393,6 +445,9 @@ async function main() {
   if (!config.googleClientId) {
     logger.info('[Init] Google auth not configured — running in single-user mode');
     await getOrCreateEngineContext('default');
+  } else {
+    // Multi-user mode: restore contexts for users with active positions in state files
+    await autoRestoreEngineContexts();
   }
 
   async function runCycleForUser(userId: string, ctx: UserEngineContext): Promise<void> {
@@ -416,7 +471,7 @@ async function main() {
         logger.info(`[Cycle] User ${userId} — Processing NFT #${tokenId} (${cfg.protocolVersion})...`);
         const cycleChain = (cfg.chain ?? 'base') as ChainId;
         const cycleDex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
-        const cycleReader = createLPReader(cycleChain, cycleDex);
+        const cycleReader = getOrCreateReader(ctx, cycleChain, cycleDex);
         const position = await cycleReader.readPosition(tokenId, cfg.poolAddress);
 
         const v4PoolId = cfg.protocolVersion === 'v4' ? (cycleReader as EvmV4Reader).getV4PoolId(tokenId) : null;
@@ -586,50 +641,82 @@ async function main() {
     if (pricePollRunning || !running) return;
     pricePollRunning = true;
     try {
+      // Collect all valid configs across all users, keyed for dedup by chain+poolAddress
+      interface PollEntry { cfg: ActivePositionConfig; ctx: UserEngineContext; }
+      const poolGroups = new Map<string, PollEntry[]>();
+
       for (const [userId, ctx] of engineContexts.entries()) {
         const store = getStoreForUser(userId);
-        const activeConfigs = store.getAllActiveConfigs();
-        for (const cfg of activeConfigs) {
+        for (const cfg of store.getAllActiveConfigs()) {
           if (
             !cfg.token0Address ||
             !cfg.token1Address ||
             cfg.token0Decimals === undefined ||
             cfg.token1Decimals === undefined
-          ) {
+          ) continue;
+
+          const chain = (cfg.chain ?? 'base') as ChainId;
+          if (!isChainPriceSupported(chain)) {
+            logger.warn(`[PricePoller] NFT #${cfg.tokenId} chain '${chain}' not supported by price APIs — skipping`);
             continue;
           }
 
-          try {
-            const price = await fetchPoolPrice(
-              cfg.poolAddress,
-              cfg.token0Address,
-              cfg.token0Symbol ?? '',
-              cfg.token1Address,
-              cfg.token1Symbol ?? '',
-            );
-            if (price === null) continue;
+          const key = `${chain}:${cfg.poolAddress}`;
+          if (!poolGroups.has(key)) poolGroups.set(key, []);
+          poolGroups.get(key)!.push({ cfg, ctx });
+        }
+      }
 
+      // One price fetch per unique pool; apply result to all tokenIds sharing it
+      let firstPool = true;
+      for (const [, entries] of poolGroups.entries()) {
+        if (!firstPool) await new Promise(r => setTimeout(r, PRICE_POLL_INTER_REQUEST_MS));
+        firstPool = false;
+        const { cfg: rep } = entries[0];
+        const chain = (rep.chain ?? 'base') as ChainId;
+        try {
+          const price = await fetchPoolPrice(
+            rep.poolAddress,
+            rep.token0Address!,
+            rep.token0Symbol ?? '',
+            rep.token1Address!,
+            rep.token1Symbol ?? '',
+            chain,
+          );
+          if (price === null) {
+            logger.info(`[PricePoller] No price for pool ${rep.poolAddress.slice(0, 10)}... (${chain})`);
+            continue;
+          }
+
+          for (const { cfg, ctx } of entries) {
             poolPriceCache.set(cfg.tokenId, { price, updatedAt: Date.now() });
-            priceLogger.info(`NFT #${cfg.tokenId} price $${price.toFixed(4)}`);
+
+            // Convert Uniswap ratio (token1/token0) to USD price of the hedged token for display
+            const t0Stable = STABLE_SYMBOLS.has(cfg.token0Symbol ?? '');
+            const t1Stable = STABLE_SYMBOLS.has(cfg.token1Symbol ?? '');
+            let displayUsd: number | null = null;
+            if (cfg.hedgeToken === 'token0' && t1Stable) displayUsd = price;
+            else if (cfg.hedgeToken === 'token1' && t0Stable) displayUsd = 1 / price;
+            const displayStr = displayUsd !== null ? `$${displayUsd.toFixed(2)}` : `ratio ${price.toFixed(8)}`;
+            priceLogger.info(`NFT #${cfg.tokenId} ${cfg.hedgeSymbol ?? ''} ${displayStr}`);
 
             if (cfg.tickLower !== undefined && cfg.tickUpper !== undefined) {
-              const decimalAdj = cfg.token0Decimals - cfg.token1Decimals;
+              const decimalAdj = cfg.token0Decimals! - cfg.token1Decimals!;
               const rawPrice = price / Math.pow(10, decimalAdj);
               const tickCurrent = Math.round(Math.log(rawPrice) / Math.log(1.0001));
               const outOfRange = tickCurrent < cfg.tickLower || tickCurrent >= cfg.tickUpper;
 
               if (outOfRange && ctx.rebalancer.fullState.positions[cfg.tokenId]) {
                 logger.warn(`[PricePoller] NFT #${cfg.tokenId} out of range (tick ${tickCurrent}), triggering immediate cycle`);
-                const pollChain = (cfg.chain ?? 'base') as ChainId;
                 const pollDex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
-                const pollReader = createLPReader(pollChain, pollDex);
+                const pollReader = getOrCreateReader(ctx, chain, pollDex);
                 const position = await pollReader.readPosition(cfg.tokenId, cfg.poolAddress);
                 await ctx.rebalancer.cycle(cfg.tokenId, position);
               }
             }
-          } catch (err) {
-            logger.error(`[PricePoller] Error for NFT #${cfg.tokenId}: ${err}`);
           }
+        } catch (err) {
+          logger.error(`[PricePoller] Error for pool ${rep.poolAddress} (${chain}): ${err}`);
         }
       }
     } finally {

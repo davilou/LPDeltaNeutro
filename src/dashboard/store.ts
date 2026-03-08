@@ -3,7 +3,7 @@ import { DiscoveredPosition, ActivePositionConfig, HistoricalPosition } from '..
 import type { ChainId, DexId, PositionId } from '../lp/types';
 
 export interface DashboardData {
-  tokenId: number;
+  tokenId: PositionId;
   timestamp: number;
   token0Amount: number;
   token0Symbol: string;
@@ -42,7 +42,7 @@ export interface DashboardData {
 }
 
 export interface RebalanceEvent {
-  tokenId: number;
+  tokenId: PositionId;
   timestamp: number;
   fromSize: number;
   toSize: number;
@@ -62,7 +62,7 @@ export interface RebalanceEvent {
 }
 
 export interface ActivatePositionRequest {
-  tokenId: number;
+  tokenId: PositionId;
   protocolVersion: 'v3' | 'v4';
   poolAddress: string;
   token0Symbol: string;
@@ -81,7 +81,7 @@ export interface ActivatePositionRequest {
 
 export interface ActivationResult {
   success: boolean;
-  tokenId: number;
+  tokenId: PositionId;
   error?: string;
   initialLpUsd?: number;
   initialHlUsd?: number;
@@ -96,12 +96,12 @@ const MAX_HISTORY = 200;
 const MAX_REBALANCES = 50;
 
 class DashboardStore extends EventEmitter {
-  private currentMap: Record<number, DashboardData> = {};
-  private historyMap: Record<number, DashboardData[]> = {};
-  private rebalanceEventsMap: Record<number, RebalanceEvent[]> = {};
+  private currentMap: Record<string, DashboardData> = {};
+  private historyMap: Record<string, DashboardData[]> = {};
+  private rebalanceEventsMap: Record<string, RebalanceEvent[]> = {};
   private startTime = Date.now();
   private discoveredPositions: DiscoveredPosition[] = [];
-  private activePositions: Record<number, ActivePositionConfig> = {};
+  private activePositions: Record<string, ActivePositionConfig> = {};
   private credentialsWallet: string | null = null;
   private positionHistory: HistoricalPosition[] = [];
 
@@ -138,7 +138,7 @@ class DashboardStore extends EventEmitter {
     return this.discoveredPositions;
   }
 
-  setActivePositionConfig(tokenId: number, cfg: ActivePositionConfig | null): void {
+  setActivePositionConfig(tokenId: PositionId, cfg: ActivePositionConfig | null): void {
     if (cfg) {
       this.activePositions[tokenId] = cfg;
     } else {
@@ -146,11 +146,11 @@ class DashboardStore extends EventEmitter {
     }
   }
 
-  getActivePositionConfig(tokenId: number): ActivePositionConfig | null {
+  getActivePositionConfig(tokenId: PositionId): ActivePositionConfig | null {
     return this.activePositions[tokenId] || null;
   }
 
-  getAllActivePositions(): Record<number, ActivePositionConfig> {
+  getAllActivePositions(): Record<string, ActivePositionConfig> {
     return this.activePositions;
   }
 
@@ -166,11 +166,11 @@ class DashboardStore extends EventEmitter {
     this.emit('activationComplete', result);
   }
 
-  requestDeactivation(tokenId: number): void {
+  requestDeactivation(tokenId: PositionId): void {
     this.emit('deactivatePosition', tokenId);
   }
 
-  requestConfigUpdate(tokenId: number, cfg: Partial<ActivePositionConfig>): void {
+  requestConfigUpdate(tokenId: PositionId, cfg: Partial<ActivePositionConfig>): void {
     if (this.activePositions[tokenId]) {
       this.activePositions[tokenId] = { ...this.activePositions[tokenId], ...cfg };
       this.emit('configUpdated', this.activePositions[tokenId]);
@@ -190,7 +190,7 @@ class DashboardStore extends EventEmitter {
     this.emit('saveCredentials', req);
   }
 
-  requestResetPnl(tokenId: number, initialLpUsd: number, initialHlUsd: number): void {
+  requestResetPnl(tokenId: PositionId, initialLpUsd: number, initialHlUsd: number): void {
     this.emit('resetPnl', { tokenId, initialLpUsd, initialHlUsd });
   }
 
@@ -206,11 +206,11 @@ class DashboardStore extends EventEmitter {
     return this.positionHistory;
   }
 
-  getCurrentData(tokenId: number): DashboardData | null {
+  getCurrentData(tokenId: PositionId): DashboardData | null {
     return this.currentMap[tokenId] ?? null;
   }
 
-  getState(): { dataMap: Record<number, DashboardData>; uptime: number; activePositions: Record<number, ActivePositionConfig>; credentials: { isSet: boolean; walletAddress: string | null }; positionHistory: HistoricalPosition[] } {
+  getState(): { dataMap: Record<string, DashboardData>; uptime: number; activePositions: Record<string, ActivePositionConfig>; credentials: { isSet: boolean; walletAddress: string | null }; positionHistory: HistoricalPosition[] } {
     return {
       dataMap: this.currentMap,
       uptime: Date.now() - this.startTime,
@@ -220,11 +220,11 @@ class DashboardStore extends EventEmitter {
     };
   }
 
-  getHistory(tokenId: number): DashboardData[] {
+  getHistory(tokenId: PositionId): DashboardData[] {
     return this.historyMap[tokenId] || [];
   }
 
-  getRebalanceEvents(tokenId: number): RebalanceEvent[] {
+  getRebalanceEvents(tokenId: PositionId): RebalanceEvent[] {
     return this.rebalanceEventsMap[tokenId] || [];
   }
 

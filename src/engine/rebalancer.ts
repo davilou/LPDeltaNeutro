@@ -1,5 +1,5 @@
 import { config } from '../config';
-import { ActivePositionConfig, BotState, HedgeState, HistoricalPosition, LPPosition, PnlSnapshot, PositionState } from '../types';
+import { ActivePositionConfig, BotState, HedgeState, HistoricalPosition, LPPosition, PnlSnapshot, PositionState, PositionId } from '../types';
 import { FillResult, HlIsolatedPnl, IHedgeExchange } from '../hedge/types';
 import { calculateHedge, HedgeTarget } from '../hedge/hedgeCalculator';
 import { insertRebalance } from '../db/supabase';
@@ -13,8 +13,8 @@ import path from 'path';
 export class Rebalancer {
   private state: BotState;
   private exchange: IHedgeExchange;
-  private lastRangeStatusMap: Record<number, string> = {};
-  private pnlTrackers: Record<number, PnlTracker> = {};
+  private lastRangeStatusMap: Record<string, string> = {};
+  private pnlTrackers: Record<string, PnlTracker> = {};
   private readonly userId: string;
   private readonly stateFile: string;
 
@@ -26,8 +26,7 @@ export class Rebalancer {
 
     // Restore PnlTrackers for all persisted positions
     for (const [tokenIdStr, posState] of Object.entries(this.state.positions)) {
-      const tokenId = Number(tokenIdStr);
-      this.pnlTrackers[tokenId] = new PnlTracker(posState.pnl);
+      this.pnlTrackers[tokenIdStr] = new PnlTracker(posState.pnl);
     }
   }
 
@@ -99,7 +98,7 @@ export class Rebalancer {
     return { positions: {} };
   }
 
-  getPnlTracker(tokenId: number): PnlTracker {
+  getPnlTracker(tokenId: PositionId): PnlTracker {
     if (!this.pnlTrackers[tokenId]) {
       this.pnlTrackers[tokenId] = new PnlTracker();
     }
@@ -133,7 +132,7 @@ export class Rebalancer {
     logger.info(`[Rebalancer] Position NFT #${tokenId} activated with hedgeSymbol=${hedgeSymbol}, hedgeRatio=${cfg.hedgeRatio ?? 1.0}`);
   }
 
-  updateConfig(tokenId: number, cfg: ActivePositionConfig): void {
+  updateConfig(tokenId: PositionId, cfg: ActivePositionConfig): void {
     if (this.state.positions[tokenId]) {
       this.state.positions[tokenId].config = cfg;
       this.saveState();
@@ -141,7 +140,7 @@ export class Rebalancer {
     }
   }
 
-  deactivatePosition(tokenId: number): void {
+  deactivatePosition(tokenId: PositionId): void {
     if (this.state.positions[tokenId]) {
       delete this.state.positions[tokenId];
       delete this.pnlTrackers[tokenId];
@@ -158,7 +157,7 @@ export class Rebalancer {
     return this.state.history ?? [];
   }
 
-  archivePosition(tokenId: number, finalPnl: PnlSnapshot): HistoricalPosition {
+  archivePosition(tokenId: PositionId, finalPnl: PnlSnapshot): HistoricalPosition {
     const ps = this.state.positions[tokenId];
     if (!ps) throw new Error(`[Rebalancer] archivePosition: no state for tokenId ${tokenId}`);
 
@@ -198,9 +197,8 @@ export class Rebalancer {
     try {
       // Persist PnL state for all positions
       for (const [tokenIdStr, posState] of Object.entries(this.state.positions)) {
-        const tokenId = Number(tokenIdStr);
-        if (this.pnlTrackers[tokenId]) {
-          posState.pnl = this.pnlTrackers[tokenId].getStateForPersist();
+        if (this.pnlTrackers[tokenIdStr]) {
+          posState.pnl = this.pnlTrackers[tokenIdStr].getStateForPersist();
         }
       }
       fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2));
@@ -210,7 +208,7 @@ export class Rebalancer {
     }
   }
 
-  async cycle(tokenId: number, position: LPPosition): Promise<void> {
+  async cycle(tokenId: PositionId, position: LPPosition): Promise<void> {
     const ps = this.state.positions[tokenId];
     if (!ps) {
       logger.warn(`[Rebalancer] No state for tokenId ${tokenId} — skipping cycle`);
@@ -587,7 +585,7 @@ export class Rebalancer {
   }
 
   private checkEmergencyPriceMovement(
-    tokenId: number,
+    tokenId: PositionId,
     currentPrice: number,
     lastRebalancePrice: number,
     threshold: number
@@ -604,7 +602,7 @@ export class Rebalancer {
 
 
   private checkTimeRebalance(
-    tokenId: number,
+    tokenId: PositionId,
     ps: PositionState,
     intervalMin: number
   ): string | null {
@@ -620,7 +618,7 @@ export class Rebalancer {
     return reason;
   }
 
-  private logTimeUntilNextRebalance(tokenId: number, ps: PositionState, intervalMin: number): void {
+  private logTimeUntilNextRebalance(tokenId: PositionId, ps: PositionState, intervalMin: number): void {
     const elapsedMs = Date.now() - ps.lastRebalanceTimestamp;
     const remainingMs = intervalMin * 60 * 1000 - elapsedMs;
     if (remainingMs > 0) {
