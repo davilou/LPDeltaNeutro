@@ -180,33 +180,48 @@ export class EvmScanner implements IWalletScanner {
     const pmAddr = addresses.positionManagerV4;
     const svAddr = addresses.stateViewV4;
 
-    // Round 1: ERC721 Transfer events where to = wallet — chunked eth_getLogs
-    // Public RPCs limit eth_getLogs to 2k–50k blocks per request; chunk to stay within limits.
+    // Round 1: ERC721 Transfer events where to = wallet — parallel chunked eth_getLogs
+    // Public RPCs limit eth_getLogs to 2k–50k blocks per request; chunk to 9k blocks and
+    // fetch LOG_CONCURRENCY chunks in parallel to keep total scan time under ~10s.
     const LOG_CHUNK_SIZE = 9_000;
+    const LOG_CONCURRENCY = 10;
     const transferTopic = ethers.id('Transfer(address,address,uint256)');
     const paddedWallet = ethers.zeroPadValue(walletAddress.toLowerCase(), 32);
 
     const currentBlock = await fallback.call(async (p) => p.getBlockNumber());
     const deployBlock = V4_DEPLOY_BLOCKS[this.chain] ?? 0;
 
-    const tokenIdSet = new Set<number>();
-    const pmIface = new ethers.Interface(POSITION_MANAGER_V4_ABI);
-
+    // Build all chunk ranges upfront
+    const chunks: Array<{ from: number; to: number }> = [];
     for (let from = deployBlock; from <= currentBlock; from += LOG_CHUNK_SIZE) {
-      const to = Math.min(from + LOG_CHUNK_SIZE - 1, currentBlock);
-      const logs = await fallback.call(async (p) =>
-        p.getLogs({
-          address: pmAddr,
-          topics: [transferTopic, null, paddedWallet],
-          fromBlock: from,
-          toBlock: to,
-        })
+      chunks.push({ from, to: Math.min(from + LOG_CHUNK_SIZE - 1, currentBlock) });
+    }
+
+    const tokenIdSet = new Set<number>();
+
+    // Fetch chunks in parallel batches of LOG_CONCURRENCY
+    for (let i = 0; i < chunks.length; i += LOG_CONCURRENCY) {
+      const batch = chunks.slice(i, i + LOG_CONCURRENCY);
+      const batchResults = await Promise.all(
+        batch.map(({ from, to }) =>
+          fallback.call(async (p) =>
+            p.getLogs({
+              address: pmAddr,
+              topics: [transferTopic, null, paddedWallet],
+              fromBlock: from,
+              toBlock: to,
+            })
+          ).catch(err => {
+            logger.warn(`[EvmScanner][${this.chain}:${this.dex}] getLogs chunk ${from}-${to} failed: ${err}`);
+            return [];
+          })
+        )
       );
-      for (const log of logs) {
-        try {
-          const parsed = pmIface.parseLog({ topics: log.topics as string[], data: log.data });
-          if (parsed?.name === 'Transfer') tokenIdSet.add(Number(parsed.args.tokenId));
-        } catch { /* ignore unparseable logs */ }
+      for (const logs of batchResults) {
+        for (const log of logs) {
+          // Transfer(from, to, tokenId) — tokenId is topics[3] (3rd indexed param)
+          if (log.topics[3]) tokenIdSet.add(Number(BigInt(log.topics[3])));
+        }
       }
     }
 
