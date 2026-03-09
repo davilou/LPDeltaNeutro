@@ -3,14 +3,16 @@ import { DiscoveredPosition } from '../../types';
 import { logger } from '../../utils/logger';
 import { ChainId, DexId, IWalletScanner, PositionId } from '../types';
 import { getChainDexAddresses, ChainDexAddresses } from '../chainRegistry';
-import { getChainProvider } from '../chainProviders';
+import { getLpProvider } from '../chainProviders';
 import { getTokenCache, KNOWN_TOKENS_BY_CHAIN, seedTokenCache, TokenMeta } from '../tokenCache';
 import { NonRetryableError } from '../../utils/fallbackProvider';
+import { multicall3, buildCall3, decodeCall3Result } from '../../utils/multicall';
 
 const POSITION_MANAGER_V3_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)',
   'function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
+  'function factory() view returns (address)',
 ];
 
 const FACTORY_V3_ABI = [
@@ -37,6 +39,8 @@ function chunk<T>(arr: T[], size: number): T[][] {
 export class EvmScanner implements IWalletScanner {
   private readonly chain: ChainId;
   private readonly dex: DexId;
+  /** Cache: positionManager address → factory address resolved via pm.factory() */
+  private readonly _pmFactoryCache = new Map<string, string>();
 
   constructor(chain: ChainId, dex: DexId) {
     this.chain = chain;
@@ -58,7 +62,7 @@ export class EvmScanner implements IWalletScanner {
     if (!addresses.positionManagerV3) return null;
 
     try {
-      const pos = await getChainProvider(this.chain).call(async (provider) => {
+      const pos = await getLpProvider(this.chain).call(async (provider) => {
         const pm = new ethers.Contract(addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, provider);
         return pm.positions(tokenId);
       });
@@ -69,7 +73,7 @@ export class EvmScanner implements IWalletScanner {
       const t1Addr = pos.token1.toLowerCase();
       const fee = Number(pos.fee);
 
-      const { t0, t1, poolAddr, tickCurrent } = await getChainProvider(this.chain).call(async (provider) => {
+      const { t0, t1, poolAddr, tickCurrent } = await getLpProvider(this.chain).call(async (provider) => {
         const [t0Info, t1Info] = await Promise.all([
           this.getTokenInfo(provider, t0Addr),
           this.getTokenInfo(provider, t1Addr),
@@ -96,8 +100,9 @@ export class EvmScanner implements IWalletScanner {
   private async scanV3(walletAddress: string): Promise<DiscoveredPosition[]> {
     const addresses = getChainDexAddresses(this.chain, this.dex);
     if (!addresses.positionManagerV3) return [];
-    const fallback = getChainProvider(this.chain);
+    const fallback = getLpProvider(this.chain);
 
+    // Round 1: balanceOf — 1 RPC call
     const balance: bigint = await fallback.call(async (p) => {
       const pm = new ethers.Contract(addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, p);
       return pm.balanceOf(walletAddress);
@@ -107,67 +112,169 @@ export class EvmScanner implements IWalletScanner {
 
     logger.info(`[EvmScanner][${this.chain}:${this.dex}] ${walletAddress} owns ${count} NFTs`);
 
-    const tokenIds: bigint[] = [];
-    const indexChunks = chunk(Array.from({ length: count }, (_, i) => i), 5);
-    for (const batch of indexChunks) {
-      const results = await Promise.allSettled(
-        batch.map(i => fallback.call(async (p) => {
-          const pm = new ethers.Contract(addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, p);
-          return pm.tokenOfOwnerByIndex(walletAddress, i);
-        }))
+    // Round 2: tokenOfOwnerByIndex[0..n-1] — 1 multicall
+    const tokenIds: bigint[] = await fallback.call(async (p) => {
+      const pm = new ethers.Contract(addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, p);
+      const calls = Array.from({ length: count }, (_, i) =>
+        buildCall3(pm, 'tokenOfOwnerByIndex', [walletAddress, i]),
       );
-      for (const r of results) {
-        if (r.status === 'fulfilled') tokenIds.push(r.value as bigint);
-        else logger.warn(`[EvmScanner] tokenOfOwnerByIndex failed: ${r.reason}`);
+      const results = await multicall3(p, calls);
+      return results
+        .map(r => decodeCall3Result<bigint>(pm, 'tokenOfOwnerByIndex', r))
+        .filter((v): v is bigint => v !== null);
+    });
+
+    // Round 3: positions(tokenId) for all tokenIds — 1 multicall
+    interface PosData {
+      tokenId: bigint;
+      token0: string;
+      token1: string;
+      fee: number;
+      tickLower: number;
+      tickUpper: number;
+      liquidity: bigint;
+    }
+    const livePositions: PosData[] = await fallback.call(async (p) => {
+      const pm = new ethers.Contract(addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, p);
+      const calls = tokenIds.map(id => buildCall3(pm, 'positions', [id]));
+      const results = await multicall3(p, calls);
+      const out: PosData[] = [];
+      for (let i = 0; i < tokenIds.length; i++) {
+        const raw = decodeCall3Result<ethers.Result>(pm, 'positions', results[i]);
+        if (!raw) continue;
+        const liquidity = BigInt(raw.liquidity);
+        if (liquidity === 0n) continue;
+        out.push({
+          tokenId: tokenIds[i],
+          token0: String(raw.token0).toLowerCase(),
+          token1: String(raw.token1).toLowerCase(),
+          fee: Number(raw.fee),
+          tickLower: Number(raw.tickLower),
+          tickUpper: Number(raw.tickUpper),
+          liquidity,
+        });
       }
-      await new Promise(r => setTimeout(r, 100));
+      return out;
+    });
+
+    if (livePositions.length === 0) return [];
+
+    // Round 4: token ERC20 info for unknown tokens + factory.getPool for unique pools — 1 multicall
+    const tokenAddrs = new Set<string>();
+    for (const p of livePositions) { tokenAddrs.add(p.token0); tokenAddrs.add(p.token1); }
+    const unknownTokens = [...tokenAddrs].filter(a => !getTokenCache(this.chain).has(a));
+
+    // Unique (t0, t1, fee) pool tuples — use canonical ordering
+    type PoolKey = `${string}:${string}:${number}`;
+    const poolKeyMap = new Map<PoolKey, { t0: string; t1: string; fee: number }>();
+    for (const p of livePositions) {
+      const [tA, tB] = p.token0 < p.token1 ? [p.token0, p.token1] : [p.token1, p.token0];
+      const key: PoolKey = `${tA}:${tB}:${p.fee}`;
+      if (!poolKeyMap.has(key)) poolKeyMap.set(key, { t0: tA, t1: tB, fee: p.fee });
     }
 
-    const discovered: DiscoveredPosition[] = [];
-    for (const batch of chunk(tokenIds, 2)) {
-      const posResults = await Promise.allSettled(
-        batch.map(id => fallback.call(async (p) => {
-          const pm = new ethers.Contract(addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, p);
-          return pm.positions(id);
-        }))
-      );
+    const poolAddrs = new Map<PoolKey, string>(); // key → pool address
+    await fallback.call(async (p) => {
+      const tokenCalls = unknownTokens.flatMap(addr => {
+        const c = new ethers.Contract(addr, ERC20_ABI, p);
+        return [
+          buildCall3(c, 'symbol', []),
+          buildCall3(c, 'decimals', []),
+        ];
+      });
 
-      for (let i = 0; i < batch.length; i++) {
-        const tokenId = Number(batch[i]);
-        const r = posResults[i];
-        if (r.status === 'rejected') { logger.warn(`[EvmScanner] NFT #${tokenId}: positions() failed`); continue; }
-        const pos = r.value;
-        if (BigInt(pos.liquidity) === 0n) continue;
+      // Factory calls — use CREATE2 if initCodeHash available, else call factory
+      const poolKeys = [...poolKeyMap.entries()];
+      type FactoryCallInfo = { key: PoolKey; callIdx: number } | null;
+      const factoryCalls: FactoryCallInfo[] = [];
+      const extraCalls: ReturnType<typeof buildCall3>[] = [];
 
-        const t0Addr = pos.token0.toLowerCase();
-        const t1Addr = pos.token1.toLowerCase();
-        const fee = Number(pos.fee);
-
-        try {
-          const { t0, t1, poolAddr, tickCurrent } = await fallback.call(async (provider) => {
-            const [t0Info, t1Info] = await Promise.all([
-              this.getTokenInfo(provider, t0Addr),
-              this.getTokenInfo(provider, t1Addr),
-            ]);
-            const addr = await this.resolvePoolAddress(provider, addresses, pos.token0, pos.token1, fee);
-            const pool = new ethers.Contract(addr, POOL_V3_ABI, provider);
-            const slot0 = await pool.slot0();
-            return { t0: t0Info, t1: t1Info, poolAddr: addr, tickCurrent: Number(slot0.tick) };
-          });
-
-          const dp = this.buildDiscoveredPosition(
-            tokenId, pos.token0, t0, pos.token1, t1, fee,
-            Number(pos.tickLower), Number(pos.tickUpper), tickCurrent,
-            BigInt(pos.liquidity), poolAddr,
-          );
-          if (dp.estimatedUsd >= 10 || dp.estimatedUsd === 0) discovered.push(dp);
-        } catch (err) {
-          logger.info(`[EvmScanner] NFT #${tokenId}: skipped (${err})`);
+      for (const [key, { t0, t1, fee }] of poolKeys) {
+        if (addresses.initCodeHashV3 && addresses.factoryV3) {
+          // CREATE2 derivation — no RPC needed
+          const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [t0, t1, fee]);
+          poolAddrs.set(key, ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3));
+          factoryCalls.push(null);
+        } else if (addresses.factoryV3) {
+          const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, p);
+          extraCalls.push(buildCall3(factory, 'getPool', [t0, t1, fee]));
+          factoryCalls.push({ key, callIdx: tokenCalls.length + extraCalls.length - 1 });
+        } else {
+          factoryCalls.push(null);
         }
       }
-      await new Promise(r => setTimeout(r, 100));
-    }
 
+      const allCalls = [...tokenCalls, ...extraCalls];
+      const results = allCalls.length > 0 ? await multicall3(p, allCalls) : [];
+
+      // Parse token info
+      const cache = getTokenCache(this.chain);
+      for (let i = 0; i < unknownTokens.length; i++) {
+        const c = new ethers.Contract(unknownTokens[i], ERC20_ABI, p);
+        const sym = decodeCall3Result<string>(c, 'symbol', results[i * 2]);
+        const dec = decodeCall3Result<bigint>(c, 'decimals', results[i * 2 + 1]);
+        cache.set(unknownTokens[i], {
+          symbol: sym ?? 'UNKNOWN',
+          decimals: dec !== null ? Number(dec) : 18,
+        });
+      }
+
+      // Parse pool addresses from factory calls
+      if (addresses.factoryV3) {
+        const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, p);
+        for (const fc of factoryCalls) {
+          if (!fc) continue;
+          const addr = decodeCall3Result<string>(factory, 'getPool', results[fc.callIdx]);
+          if (addr && addr !== ethers.ZeroAddress) {
+            poolAddrs.set(fc.key, addr);
+          }
+        }
+      }
+    });
+
+    // Get canonical pool address for a position
+    const getPoolAddr = (pos: PosData): string | null => {
+      const [tA, tB] = pos.token0 < pos.token1 ? [pos.token0, pos.token1] : [pos.token1, pos.token0];
+      const key: PoolKey = `${tA}:${tB}:${pos.fee}`;
+      return poolAddrs.get(key) ?? null;
+    };
+
+    // Filter positions where pool address was resolved
+    const positionsWithPools = livePositions.filter(pos => getPoolAddr(pos) !== null);
+    if (positionsWithPools.length === 0) return [];
+
+    // Round 5: slot0 for all live pools — 1 multicall
+    const uniquePoolAddrs = [...new Set(positionsWithPools.map(pos => getPoolAddr(pos)!))];
+    const tickByPool = new Map<string, number>();
+    await fallback.call(async (p) => {
+      const calls = uniquePoolAddrs.map(addr => {
+        const pool = new ethers.Contract(addr, POOL_V3_ABI, p);
+        return buildCall3(pool, 'slot0', []);
+      });
+      const results = await multicall3(p, calls);
+      for (let i = 0; i < uniquePoolAddrs.length; i++) {
+        const pool = new ethers.Contract(uniquePoolAddrs[i], POOL_V3_ABI, p);
+        const decoded = decodeCall3Result<ethers.Result>(pool, 'slot0', results[i]);
+        if (decoded) tickByPool.set(uniquePoolAddrs[i], Number(decoded.tick));
+      }
+    });
+
+    // Build DiscoveredPosition list
+    const cache = getTokenCache(this.chain);
+    const discovered: DiscoveredPosition[] = [];
+    for (const pos of positionsWithPools) {
+      const poolAddr = getPoolAddr(pos)!;
+      const tickCurrent = tickByPool.get(poolAddr);
+      if (tickCurrent === undefined) continue;
+      const t0 = cache.get(pos.token0) ?? { symbol: 'UNKNOWN', decimals: 18 };
+      const t1 = cache.get(pos.token1) ?? { symbol: 'UNKNOWN', decimals: 18 };
+      const dp = this.buildDiscoveredPosition(
+        Number(pos.tokenId), pos.token0, t0, pos.token1, t1, pos.fee,
+        pos.tickLower, pos.tickUpper, tickCurrent, pos.liquidity, poolAddr,
+      );
+      if (dp.estimatedUsd >= 10 || dp.estimatedUsd === 0) discovered.push(dp);
+    }
+    logger.info(`[EvmScanner][${this.chain}:${this.dex}] Found ${discovered.length} active positions (${count} NFTs total)`);
     return discovered;
   }
 
@@ -178,6 +285,7 @@ export class EvmScanner implements IWalletScanner {
     token1: string,
     fee: number,
   ): Promise<string> {
+    // 1. Try the configured factory address
     if (addresses.factoryV3) {
       try {
         const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, provider);
@@ -185,14 +293,49 @@ export class EvmScanner implements IWalletScanner {
         if (addr !== ethers.ZeroAddress) return addr;
       } catch (err) {
         logger.debug(`[EvmScanner] factory.getPool(${token0}, ${token1}, ${fee}) failed: ${err}`);
-        /* fall through to CREATE2 */
+        /* fall through */
       }
     }
 
+    // 2. CREATE2 derivation (when initCodeHash is known)
     if (addresses.initCodeHashV3 && addresses.factoryV3) {
       const [tA, tB] = token0.toLowerCase() < token1.toLowerCase() ? [token0, token1] : [token1, token0];
       const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [tA, tB, fee]);
       return ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3);
+    }
+
+    // 3. Fallback: read the factory address directly from the PositionManager's immutable factory()
+    //    (every Uniswap V3-compatible PM exposes this). Useful when the configured factoryV3 is
+    //    wrong or missing (e.g. ProjectX on HyperEVM).
+    if (addresses.positionManagerV3) {
+      const pmAddr = addresses.positionManagerV3.toLowerCase();
+      let resolvedFactory = this._pmFactoryCache.get(pmAddr);
+      if (!resolvedFactory) {
+        try {
+          const pm = new ethers.Contract(addresses.positionManagerV3, POSITION_MANAGER_V3_ABI, provider);
+          const f: string = await pm.factory();
+          if (f && f !== ethers.ZeroAddress) {
+            resolvedFactory = f;
+            this._pmFactoryCache.set(pmAddr, f);
+            logger.info(
+              `[EvmScanner][${this.chain}:${this.dex}] PM factory resolved: ${f}` +
+              ` — consider adding factoryV3: '${f}' to chainRegistry for ${this.chain}:${this.dex}`
+            );
+          }
+        } catch (err) {
+          logger.debug(`[EvmScanner] pm.factory() failed: ${err}`);
+        }
+      }
+      if (resolvedFactory) {
+        try {
+          const factory = new ethers.Contract(resolvedFactory, FACTORY_V3_ABI, provider);
+          const addr: string = await factory.getPool(token0, token1, fee);
+          if (addr !== ethers.ZeroAddress) return addr;
+          logger.debug(`[EvmScanner] pm-resolved factory.getPool returned ZeroAddress for ${token0}/${token1} fee=${fee}`);
+        } catch (err) {
+          logger.debug(`[EvmScanner] pm-resolved factory.getPool failed: ${err}`);
+        }
+      }
     }
 
     throw new NonRetryableError(`Cannot resolve pool address for ${token0}/${token1} fee=${fee}: no factory or initCodeHash configured`);
