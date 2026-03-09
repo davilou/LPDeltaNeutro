@@ -20,6 +20,8 @@ export interface ClosedPositionRecord {
   final_virtual_pnl_pct: number | null;
   final_unrealized_pnl_usd: number | null;
   final_realized_pnl_usd: number | null;
+  price_lower_usd?: number | null;
+  price_upper_usd?: number | null;
 }
 
 export interface ProtectionActivationRecord {

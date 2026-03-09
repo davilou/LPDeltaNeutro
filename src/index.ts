@@ -263,6 +263,8 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         final_virtual_pnl_pct: archived.finalVirtualPnlPercent,
         final_unrealized_pnl_usd: archived.finalUnrealizedPnlUsd,
         final_realized_pnl_usd: archived.finalRealizedPnlUsd,
+        price_lower_usd: archived.priceLowerUsd ?? null,
+        price_upper_usd: archived.priceUpperUsd ?? null,
       });
     } catch (err) {
       logger.error(`[Deactivation] Failed to archive position NFT #${tokenId}: ${err}`);

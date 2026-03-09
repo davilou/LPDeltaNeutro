@@ -313,6 +313,8 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
         finalVirtualPnlPercent: r.final_virtual_pnl_pct ?? 0,
         finalUnrealizedPnlUsd: r.final_unrealized_pnl_usd ?? 0,
         finalRealizedPnlUsd: r.final_realized_pnl_usd ?? 0,
+        priceLowerUsd: r.price_lower_usd ?? undefined,
+        priceUpperUsd: r.price_upper_usd ?? undefined,
       }));
       res.json(history);
     } else {
