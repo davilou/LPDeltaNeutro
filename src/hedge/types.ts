@@ -6,10 +6,18 @@ export interface FillResult {
   avgPx: number;
 }
 
+export interface HlIsolatedPnl {
+  unrealizedPnlUsd: number;
+  realizedPnlUsd: number;
+  cumulativeFundingUsd: number;
+  cumulativeFeesUsd: number;
+}
+
 export interface IHedgeExchange {
   getPosition(symbol: string): Promise<HedgeState>;
   setPosition(symbol: string, size: number, notionalUsd: number): Promise<FillResult | null>;
   closePosition(symbol: string): Promise<FillResult | null>;
   getFundingRate(symbol: string): Promise<number>;
   getAccountEquity(): Promise<number>;
+  getIsolatedPnl(symbol: string, sinceTimestamp: number): Promise<HlIsolatedPnl>;
 }

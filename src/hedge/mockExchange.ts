@@ -1,5 +1,5 @@
 import { HedgeState } from '../types';
-import { FillResult, IHedgeExchange } from './types';
+import { FillResult, HlIsolatedPnl, IHedgeExchange } from './types';
 import { logger } from '../utils/logger';
 
 export class MockExchange implements IHedgeExchange {
@@ -69,6 +69,10 @@ export class MockExchange implements IHedgeExchange {
   async getFundingRate(symbol: string): Promise<number> {
     logger.info(`[MOCK] Funding rate for ${symbol}: ${(this.mockFundingRate * 100).toFixed(2)}%`);
     return this.mockFundingRate;
+  }
+
+  async getIsolatedPnl(_symbol: string, _sinceTimestamp: number): Promise<HlIsolatedPnl> {
+    return { unrealizedPnlUsd: 0, realizedPnlUsd: 0, cumulativeFundingUsd: 0, cumulativeFeesUsd: 0 };
   }
 
   setMockFundingRate(rate: number): void {
