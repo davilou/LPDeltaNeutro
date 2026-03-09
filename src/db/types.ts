@@ -22,6 +22,7 @@ export interface ClosedPositionRecord {
   final_realized_pnl_usd: number | null;
   price_lower_usd?: number | null;
   price_upper_usd?: number | null;
+  activation_id?: string | null;
 }
 
 export interface ProtectionActivationRecord {
@@ -91,4 +92,5 @@ export interface RebalanceRecord {
   // Contadores
   daily_count: number;
   hedge_ratio: number;
+  activation_id?: string | null;
 }

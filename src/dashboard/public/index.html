@@ -2158,9 +2158,9 @@
           '</td></tr>';
       }
 
-      window.toggleRebalancePanel = function (tokenId, colSpan, since, until) {
-        // cacheKey diferencia ativações distintas do mesmo NFT
-        var cacheKey = since ? (tokenId + '_' + since) : String(tokenId);
+      window.toggleRebalancePanel = function (tokenId, colSpan, activationId) {
+        // cacheKey = activationId quando disponível, senão tokenId (fallback para posições antigas)
+        var cacheKey = activationId || String(tokenId);
         var wasOpen = !!rebalanceExpanded[tokenId];
         var existing = document.getElementById('rp-' + tokenId);
 
@@ -2201,9 +2201,9 @@
           '<td colspan="' + colSpan + '" style="padding:8px 12px;background:var(--bg2);color:var(--tx-dim);font-size:0.75rem;">Carregando rebalances...</td></tr>';
         row.parentNode.insertBefore(tmp.firstChild, row.nextSibling);
 
-        var url = '/api/rebalances?tokenId=' + tokenId;
-        if (since) url += '&since=' + encodeURIComponent(since);
-        if (until) url += '&until=' + encodeURIComponent(until);
+        var url = activationId
+          ? '/api/rebalances?activationId=' + encodeURIComponent(activationId)
+          : '/api/rebalances?tokenId=' + tokenId;
         fetch(url)
           .then(function (r) { return r.json(); })
           .then(function (data) { rebalanceCache[cacheKey] = data; insertPanel(data); })
@@ -2251,8 +2251,7 @@
               ' <span style="font-size:0.72rem;">(' + pnlPctSign + fmt(pnlPct, 2) + '%)</span></span>'
             : '--';
           var isExpA = !!rebalanceExpanded[tid];
-          var activeSince = cfg.activatedAt ? new Date(cfg.activatedAt).toISOString() : '';
-          var activeOnclick = tid + ', 12' + (activeSince ? ', \'' + activeSince + '\'' : '');
+          var activeOnclick = tid + ', 12' + (cfg.activationId ? ', \'' + cfg.activationId + '\'' : '');
           return '<tr id="active-row-' + tid + '" style="cursor:pointer;" onclick="toggleRebalancePanel(' + activeOnclick + ')">' +
             '<td>' + tid + ' <span style="font-size:0.65rem;color:var(--tx-dim);">' + (isExpA ? '▲' : '▼') + '</span></td>' +
             '<td>' + pool + '</td>' +
@@ -2390,9 +2389,7 @@
           var unrealColor = unreal >= 0 ? 'var(--green)' : 'var(--red)';
           var realizColor = realiz >= 0 ? 'var(--green)' : 'var(--red)';
           var isExp = !!rebalanceExpanded[h.tokenId];
-          var sinceIso = h.activatedAt ? new Date(h.activatedAt).toISOString() : '';
-          var untilIso = h.deactivatedAt ? new Date(h.deactivatedAt).toISOString() : '';
-          var onclickArgs = h.tokenId + ', 11' + (sinceIso ? ', \'' + sinceIso + '\', \'' + untilIso + '\'' : '');
+          var onclickArgs = h.tokenId + ', 11' + (h.activationId ? ', \'' + h.activationId + '\'' : '');
           return '<tr id="hist-row-' + h.tokenId + '" style="cursor:pointer;' + (isExp ? 'background:var(--bg2);' : '') + '" onclick="toggleRebalancePanel(' + onclickArgs + ')">' +
             '<td>' + h.tokenId + ' <span style="font-size:0.65rem;color:var(--tx-dim);">' + (isExp ? '▲' : '▼') + '</span></td>' +
             '<td>' + pool + '</td>' +

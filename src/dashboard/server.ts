@@ -141,13 +141,11 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     const userId = req.session.userId!;
     if (config.supabaseUrl && config.supabaseKey) {
       const qTokenId = req.query.tokenId ? parseInt(req.query.tokenId as string) : undefined;
-      const since = req.query.since as string | undefined;
-      const until = req.query.until as string | undefined;
+      const activationId = req.query.activationId as string | undefined;
       const records = await fetchRebalances(
         userId !== 'default' ? userId : undefined,
         !isNaN(qTokenId ?? NaN) ? qTokenId : undefined,
-        since,
-        until,
+        activationId,
       );
       res.json(records);
       return;
@@ -319,6 +317,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
         finalRealizedPnlUsd: r.final_realized_pnl_usd ?? 0,
         priceLowerUsd: r.price_lower_usd ?? undefined,
         priceUpperUsd: r.price_upper_usd ?? undefined,
+        activationId: r.activation_id ?? undefined,
       }));
       res.json(history);
     } else {

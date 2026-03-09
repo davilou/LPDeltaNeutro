@@ -103,6 +103,7 @@ export interface ActivePositionConfig {
   chain?: ChainId;           // default 'base' for existing positions
   dex?: DexId;               // default 'uniswap-v3' for existing positions
   positionId?: PositionId;   // alias for tokenId; number for EVM
+  activationId?: string;     // UUID gerado em cada ativação — linka rebalances e closed_position
 }
 
 export interface HistoricalPosition {
@@ -128,6 +129,7 @@ export interface HistoricalPosition {
   finalRealizedPnlUsd: number;
   priceLowerUsd?: number;
   priceUpperUsd?: number;
+  activationId?: string;
 }
 
 export interface PositionState {

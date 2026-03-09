@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { config } from './config';
 import { createLPReader } from './lp/lpReaderFactory';
 import type { ChainId, DexId, ILPReader, PositionId } from './lp/types';
@@ -105,6 +106,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         protocolVersion: activReq.protocolVersion,
         poolAddress: activReq.poolAddress,
         activatedAt: Date.now(),
+        activationId: randomUUID(),
         hedgeSymbol,
         hedgeToken,
         protectionType: activReq.protectionType || 'delta-neutral',
@@ -265,6 +267,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         final_realized_pnl_usd: archived.finalRealizedPnlUsd,
         price_lower_usd: archived.priceLowerUsd ?? null,
         price_upper_usd: archived.priceUpperUsd ?? null,
+        activation_id: archived.activationId ?? null,
       });
     } catch (err) {
       logger.error(`[Deactivation] Failed to archive position NFT #${tokenId}: ${err}`);

@@ -197,6 +197,7 @@ export class Rebalancer {
       finalRealizedPnlUsd: finalPnl.realizedVirtualPnlUsd,
       priceLowerUsd,
       priceUpperUsd,
+      activationId: cfg.activationId,
     };
 
     if (!this.state.history) this.state.history = [];
@@ -562,6 +563,7 @@ export class Rebalancer {
       pnl_hl_fees_usd: pnl.cumulativeHlFeesUsd,
       daily_count: ps.dailyRebalanceCount,
       hedge_ratio: hedgeRatio,
+      activation_id: cfg.activationId ?? null,
     });
 
     logger.info(
