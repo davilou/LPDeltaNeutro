@@ -22,16 +22,6 @@ function parseRpcList(raw: string | undefined): string[] {
 
 export const config = {
   // RPC
-  /** WebSocket URL for blocks */
-  get wsUrl(): string {
-    const custom = process.env.WS_URL;
-    if (custom) return custom;
-    // Fallback to legacy Alchemy structure
-    const base = process.env.ALCHEMY_WS_URL || 'wss://base-mainnet.g.alchemy.com/v2/';
-    const key = process.env.ALCHEMY_API_KEY || '';
-    return `${base}${key}`;
-  },
-
   /** Ordered list of HTTP RPC URLs — first that works wins */
   get httpRpcUrls(): string[] {
     const urls: string[] = [];

@@ -658,9 +658,9 @@ async function main() {
     logger.info('No positions configured — skipping initial cycle. Use dashboard to activate positions.');
   }
 
-  const rebalanceIntervalMs = config.cycleIntervalMin * 60_000;
-  logger.info(`[Cycle] Rebalance cycle every ${config.cycleIntervalMin}min (price poller handles out-of-range + emergency)`);
-  setInterval(runCycleForAllUsers, rebalanceIntervalMs);
+  const cycleIntervalMs = config.cycleIntervalMin * 60_000;
+  logger.info(`[Cycle] Heavy cycle every ${config.cycleIntervalMin}min (price poller handles out-of-range + emergency)`);
+  setInterval(runCycleForAllUsers, cycleIntervalMs);
 
   // Price poller
   let pricePollRunning = false;
