@@ -566,6 +566,15 @@ async function main() {
     reader.refreshFees?.(tokenId);
     const position = await reader.readPosition(tokenId, cfg.poolAddress);
 
+    if (position.liquidity === 0n) {
+      logger.warn(`[LpRead] NFT #${tokenId} liquidity is 0 — LP position closed. Auto-deactivating...`);
+      reader.invalidateCache(tokenId);
+      if (!ctx.deactivationsInProgress.has(tokenId)) {
+        store.requestDeactivation(tokenId);
+      }
+      return;
+    }
+
     const current = store.getCurrentData(tokenId);
     if (!current) return;
 
@@ -587,20 +596,67 @@ async function main() {
       : position.tokensOwed0 + position.tokensOwed1 * volatilePriceUsd;
     const netLpFees = Math.max(0, rawFeesUsd - (ps.pnl?.initialLpFeesUsd ?? 0));
 
-    store.update({
-      ...current,
-      timestamp: Date.now(),
-      token0Amount: position.token0.amountFormatted,
-      token0Symbol: position.token0.symbol,
-      token1Amount: position.token1.amountFormatted,
-      token1Symbol: position.token1.symbol,
-      totalPositionUsd: token0Usd + token1Usd,
-      rangeStatus: position.rangeStatus,
-      price: volatilePriceUsd,
-      lpFeesUsd: netLpFees,
-    });
+    const totalLpUsd = token0Usd + token1Usd;
 
-    logger.info(`[LpRead] NFT #${tokenId} lp=$${(token0Usd + token1Usd).toFixed(2)} fees=$${netLpFees.toFixed(4)}`);
+    if (cfg.hedgeSymbol) {
+      const sinceTs = ps.pnl?.initialTimestamp ?? Date.now();
+      const [hlEquity, currentHedge, isolatedPnl] = await Promise.all([
+        ctx.exchange.getAccountEquity(),
+        ctx.exchange.getPosition(cfg.hedgeSymbol),
+        ctx.exchange.getIsolatedPnl(cfg.hedgeSymbol, sinceTs),
+      ]);
+      const hlPnl: HlIsolatedPnl = { ...isolatedPnl, unrealizedPnlUsd: currentHedge.unrealizedPnlUsd ?? 0 };
+      const tracker = ctx.rebalancer.getPnlTracker(tokenId);
+      const pnl = tracker.compute(totalLpUsd + rawFeesUsd, hlEquity, rawFeesUsd, hlPnl);
+
+      store.update({
+        ...current,
+        timestamp: Date.now(),
+        token0Amount: position.token0.amountFormatted,
+        token0Symbol: position.token0.symbol,
+        token1Amount: position.token1.amountFormatted,
+        token1Symbol: position.token1.symbol,
+        totalPositionUsd: totalLpUsd,
+        rangeStatus: position.rangeStatus,
+        price: volatilePriceUsd,
+        lpFeesUsd: netLpFees,
+        hedgeSize: currentHedge.size,
+        hedgeNotionalUsd: currentHedge.notionalUsd,
+        hedgeSide: currentHedge.side,
+        hlEquity,
+        unrealizedPnlUsd: pnl.unrealizedVirtualPnlUsd,
+        realizedPnlUsd: pnl.realizedVirtualPnlUsd,
+        lpPnlUsd: pnl.lpPnlUsd,
+        pnlTotalUsd: pnl.virtualPnlUsd,
+        pnlTotalPercent: pnl.virtualPnlPercent,
+        accountPnlUsd: pnl.accountPnlUsd,
+        accountPnlPercent: pnl.accountPnlPercent,
+        cumulativeFundingUsd: pnl.cumulativeFundingUsd,
+        cumulativeHlFeesUsd: pnl.cumulativeHlFeesUsd,
+        initialTotalUsd: pnl.initialTotalUsd,
+        currentTotalUsd: pnl.currentTotalUsd,
+      });
+
+      logger.info(
+        `[LpRead] NFT #${tokenId} lp=$${totalLpUsd.toFixed(2)} fees=$${netLpFees.toFixed(4)} ` +
+        `unrealized=$${pnl.unrealizedVirtualPnlUsd.toFixed(2)} realized=$${pnl.realizedVirtualPnlUsd.toFixed(2)}`
+      );
+    } else {
+      store.update({
+        ...current,
+        timestamp: Date.now(),
+        token0Amount: position.token0.amountFormatted,
+        token0Symbol: position.token0.symbol,
+        token1Amount: position.token1.amountFormatted,
+        token1Symbol: position.token1.symbol,
+        totalPositionUsd: totalLpUsd,
+        rangeStatus: position.rangeStatus,
+        price: volatilePriceUsd,
+        lpFeesUsd: netLpFees,
+      });
+
+      logger.info(`[LpRead] NFT #${tokenId} lp=$${totalLpUsd.toFixed(2)} fees=$${netLpFees.toFixed(4)}`);
+    }
   }
 
   async function runLpReadForUser(userId: string, ctx: UserEngineContext): Promise<void> {
