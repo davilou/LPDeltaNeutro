@@ -180,27 +180,34 @@ export class EvmScanner implements IWalletScanner {
     const pmAddr = addresses.positionManagerV4;
     const svAddr = addresses.stateViewV4;
 
-    // Round 1: ERC721 Transfer events where to = wallet — eth_getLogs
+    // Round 1: ERC721 Transfer events where to = wallet — chunked eth_getLogs
+    // Public RPCs limit eth_getLogs to 2k–50k blocks per request; chunk to stay within limits.
+    const LOG_CHUNK_SIZE = 9_000;
     const transferTopic = ethers.id('Transfer(address,address,uint256)');
     const paddedWallet = ethers.zeroPadValue(walletAddress.toLowerCase(), 32);
 
-    const logs = await fallback.call(async (p) =>
-      p.getLogs({
-        address: pmAddr,
-        topics: [transferTopic, null, paddedWallet],
-        fromBlock: V4_DEPLOY_BLOCKS[this.chain] ?? 0,
-        toBlock: 'latest',
-      })
-    );
+    const currentBlock = await fallback.call(async (p) => p.getBlockNumber());
+    const deployBlock = V4_DEPLOY_BLOCKS[this.chain] ?? 0;
 
-    // Collect unique tokenIds from Transfer-in events
-    const pmIface = new ethers.Interface(POSITION_MANAGER_V4_ABI);
     const tokenIdSet = new Set<number>();
-    for (const log of logs) {
-      try {
-        const parsed = pmIface.parseLog({ topics: log.topics as string[], data: log.data });
-        if (parsed?.name === 'Transfer') tokenIdSet.add(Number(parsed.args.tokenId));
-      } catch { /* ignore unparseable logs */ }
+    const pmIface = new ethers.Interface(POSITION_MANAGER_V4_ABI);
+
+    for (let from = deployBlock; from <= currentBlock; from += LOG_CHUNK_SIZE) {
+      const to = Math.min(from + LOG_CHUNK_SIZE - 1, currentBlock);
+      const logs = await fallback.call(async (p) =>
+        p.getLogs({
+          address: pmAddr,
+          topics: [transferTopic, null, paddedWallet],
+          fromBlock: from,
+          toBlock: to,
+        })
+      );
+      for (const log of logs) {
+        try {
+          const parsed = pmIface.parseLog({ topics: log.topics as string[], data: log.data });
+          if (parsed?.name === 'Transfer') tokenIdSet.add(Number(parsed.args.tokenId));
+        } catch { /* ignore unparseable logs */ }
+      }
     }
 
     const tokenIds = [...tokenIdSet];
