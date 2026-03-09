@@ -2158,10 +2158,14 @@
           '</td></tr>';
       }
 
-      window.toggleRebalancePanel = function (tokenId, colSpan) {
-        rebalanceExpanded[tokenId] = !rebalanceExpanded[tokenId];
+      window.toggleRebalancePanel = function (tokenId, colSpan, since, until) {
+        // cacheKey diferencia ativações distintas do mesmo NFT
+        var cacheKey = since ? (tokenId + '_' + since) : String(tokenId);
+        var wasOpen = !!rebalanceExpanded[tokenId];
         var existing = document.getElementById('rp-' + tokenId);
-        if (!rebalanceExpanded[tokenId]) {
+
+        if (wasOpen) {
+          rebalanceExpanded[tokenId] = false;
           if (existing) existing.parentNode.removeChild(existing);
           var rowEl = document.getElementById('hist-row-' + tokenId) || document.getElementById('active-row-' + tokenId);
           if (rowEl) {
@@ -2171,6 +2175,8 @@
           }
           return;
         }
+
+        rebalanceExpanded[tokenId] = cacheKey;
         var row = document.getElementById('hist-row-' + tokenId) ||
                   document.getElementById('active-row-' + tokenId);
         if (!row) return;
@@ -2187,7 +2193,7 @@
           row.parentNode.insertBefore(panelRow, row.nextSibling);
         }
 
-        if (rebalanceCache[tokenId]) { insertPanel(rebalanceCache[tokenId]); return; }
+        if (rebalanceCache[cacheKey]) { insertPanel(rebalanceCache[cacheKey]); return; }
 
         // Loading placeholder
         var tmp = document.createElement('tbody');
@@ -2195,9 +2201,12 @@
           '<td colspan="' + colSpan + '" style="padding:8px 12px;background:var(--bg2);color:var(--tx-dim);font-size:0.75rem;">Carregando rebalances...</td></tr>';
         row.parentNode.insertBefore(tmp.firstChild, row.nextSibling);
 
-        fetch('/api/rebalances?tokenId=' + tokenId)
+        var url = '/api/rebalances?tokenId=' + tokenId;
+        if (since) url += '&since=' + encodeURIComponent(since);
+        if (until) url += '&until=' + encodeURIComponent(until);
+        fetch(url)
           .then(function (r) { return r.json(); })
-          .then(function (data) { rebalanceCache[tokenId] = data; insertPanel(data); })
+          .then(function (data) { rebalanceCache[cacheKey] = data; insertPanel(data); })
           .catch(function () { insertPanel([]); });
       };
 
@@ -2242,7 +2251,9 @@
               ' <span style="font-size:0.72rem;">(' + pnlPctSign + fmt(pnlPct, 2) + '%)</span></span>'
             : '--';
           var isExpA = !!rebalanceExpanded[tid];
-          return '<tr id="active-row-' + tid + '" style="cursor:pointer;" onclick="toggleRebalancePanel(' + tid + ', 12)">' +
+          var activeSince = cfg.activatedAt ? new Date(cfg.activatedAt).toISOString() : '';
+          var activeOnclick = tid + ', 12' + (activeSince ? ', \'' + activeSince + '\'' : '');
+          return '<tr id="active-row-' + tid + '" style="cursor:pointer;" onclick="toggleRebalancePanel(' + activeOnclick + ')">' +
             '<td>' + tid + ' <span style="font-size:0.65rem;color:var(--tx-dim);">' + (isExpA ? '▲' : '▼') + '</span></td>' +
             '<td>' + pool + '</td>' +
             '<td style="font-size:0.72rem;color:var(--tx-dim);">' + range + '</td>' +
@@ -2266,11 +2277,12 @@
           '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
         // Re-inserir painéis expandidos que o rebuild apagou
         Object.keys(rebalanceExpanded).forEach(function (tid) {
-          if (!rebalanceExpanded[tid] || !rebalanceCache[tid]) return;
+          var cacheKey = rebalanceExpanded[tid];
+          if (!cacheKey || !rebalanceCache[cacheKey]) return;
           var row = document.getElementById('active-row-' + tid);
           if (!row) return;
           var tmp2 = document.createElement('tbody');
-          tmp2.innerHTML = renderRebalancesPanel(+tid, rebalanceCache[tid]);
+          tmp2.innerHTML = renderRebalancesPanel(+tid, rebalanceCache[cacheKey]);
           var panelRow = tmp2.firstChild;
           if (panelRow && panelRow.firstChild) panelRow.firstChild.setAttribute('colspan', '12');
           row.parentNode.insertBefore(panelRow, row.nextSibling);
@@ -2378,7 +2390,10 @@
           var unrealColor = unreal >= 0 ? 'var(--green)' : 'var(--red)';
           var realizColor = realiz >= 0 ? 'var(--green)' : 'var(--red)';
           var isExp = !!rebalanceExpanded[h.tokenId];
-          return '<tr id="hist-row-' + h.tokenId + '" style="cursor:pointer;' + (isExp ? 'background:var(--bg2);' : '') + '" onclick="toggleRebalancePanel(' + h.tokenId + ', 11)">' +
+          var sinceIso = h.activatedAt ? new Date(h.activatedAt).toISOString() : '';
+          var untilIso = h.deactivatedAt ? new Date(h.deactivatedAt).toISOString() : '';
+          var onclickArgs = h.tokenId + ', 11' + (sinceIso ? ', \'' + sinceIso + '\', \'' + untilIso + '\'' : '');
+          return '<tr id="hist-row-' + h.tokenId + '" style="cursor:pointer;' + (isExp ? 'background:var(--bg2);' : '') + '" onclick="toggleRebalancePanel(' + onclickArgs + ')">' +
             '<td>' + h.tokenId + ' <span style="font-size:0.65rem;color:var(--tx-dim);">' + (isExp ? '▲' : '▼') + '</span></td>' +
             '<td>' + pool + '</td>' +
             '<td style="font-size:0.72rem;color:var(--tx-dim);">' + range + '</td>' +
@@ -2395,11 +2410,12 @@
         }).join('');
         // Re-inserir painéis expandidos que o rebuild apagou
         Object.keys(rebalanceExpanded).forEach(function (tid) {
-          if (!rebalanceExpanded[tid] || !rebalanceCache[tid]) return;
+          var cacheKey = rebalanceExpanded[tid];
+          if (!cacheKey || !rebalanceCache[cacheKey]) return;
           var row = document.getElementById('hist-row-' + tid);
           if (!row) return;
           var tmp2 = document.createElement('tbody');
-          tmp2.innerHTML = renderRebalancesPanel(+tid, rebalanceCache[tid]);
+          tmp2.innerHTML = renderRebalancesPanel(+tid, rebalanceCache[cacheKey]);
           var panelRow = tmp2.firstChild;
           if (panelRow && panelRow.firstChild) panelRow.firstChild.setAttribute('colspan', '11');
           row.parentNode.insertBefore(panelRow, row.nextSibling);

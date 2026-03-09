@@ -141,9 +141,13 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     const userId = req.session.userId!;
     if (config.supabaseUrl && config.supabaseKey) {
       const qTokenId = req.query.tokenId ? parseInt(req.query.tokenId as string) : undefined;
+      const since = req.query.since as string | undefined;
+      const until = req.query.until as string | undefined;
       const records = await fetchRebalances(
         userId !== 'default' ? userId : undefined,
         !isNaN(qTokenId ?? NaN) ? qTokenId : undefined,
+        since,
+        until,
       );
       res.json(records);
       return;

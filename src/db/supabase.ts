@@ -75,7 +75,7 @@ export async function fetchClosedPositions(userId?: string): Promise<ClosedPosit
   }
 }
 
-export async function fetchRebalances(userId?: string, tokenId?: number, limit = 100): Promise<RebalanceRecord[]> {
+export async function fetchRebalances(userId?: string, tokenId?: number, sinceIso?: string, untilIso?: string, limit = 100): Promise<RebalanceRecord[]> {
   if (!client) return [];
 
   try {
@@ -87,6 +87,8 @@ export async function fetchRebalances(userId?: string, tokenId?: number, limit =
 
     if (userId) query = query.eq('user_id', userId);
     if (tokenId !== undefined) query = query.eq('token_id', tokenId);
+    if (sinceIso) query = query.gte('timestamp', sinceIso);
+    if (untilIso) query = query.lte('timestamp', untilIso);
 
     const { data, error } = await query;
     if (error) {
