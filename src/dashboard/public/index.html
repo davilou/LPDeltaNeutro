@@ -2163,9 +2163,12 @@
         var existing = document.getElementById('rp-' + tokenId);
         if (!rebalanceExpanded[tokenId]) {
           if (existing) existing.parentNode.removeChild(existing);
-          // refresh to update arrow indicator
-          renderHistory();
-          renderActivePositionsInHistory();
+          var rowEl = document.getElementById('hist-row-' + tokenId) || document.getElementById('active-row-' + tokenId);
+          if (rowEl) {
+            var spanEl = rowEl.querySelector('td:first-child span');
+            if (spanEl) spanEl.textContent = '▼';
+            rowEl.style.background = '';
+          }
           return;
         }
         var row = document.getElementById('hist-row-' + tokenId) ||
@@ -2261,6 +2264,17 @@
           '<th>NFT#</th><th>Pool</th><th>Range ($)</th><th>Status</th><th>Duration</th>' +
           '<th>LP Value</th><th>LP Fees</th><th>Funding</th><th>HL Fees</th><th>Unrealized</th><th>Realized</th><th>P&L</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+        // Re-inserir painéis expandidos que o rebuild apagou
+        Object.keys(rebalanceExpanded).forEach(function (tid) {
+          if (!rebalanceExpanded[tid] || !rebalanceCache[tid]) return;
+          var row = document.getElementById('active-row-' + tid);
+          if (!row) return;
+          var tmp2 = document.createElement('tbody');
+          tmp2.innerHTML = renderRebalancesPanel(+tid, rebalanceCache[tid]);
+          var panelRow = tmp2.firstChild;
+          if (panelRow && panelRow.firstChild) panelRow.firstChild.setAttribute('colspan', '12');
+          row.parentNode.insertBefore(panelRow, row.nextSibling);
+        });
       }
 
       function renderHistory() {
@@ -2379,6 +2393,17 @@
             ' <span style="font-size:0.72rem;">(' + netPctSign + fmt(netPct, 2) + '%)</span></td>' +
             '</tr>';
         }).join('');
+        // Re-inserir painéis expandidos que o rebuild apagou
+        Object.keys(rebalanceExpanded).forEach(function (tid) {
+          if (!rebalanceExpanded[tid] || !rebalanceCache[tid]) return;
+          var row = document.getElementById('hist-row-' + tid);
+          if (!row) return;
+          var tmp2 = document.createElement('tbody');
+          tmp2.innerHTML = renderRebalancesPanel(+tid, rebalanceCache[tid]);
+          var panelRow = tmp2.firstChild;
+          if (panelRow && panelRow.firstChild) panelRow.firstChild.setAttribute('colspan', '11');
+          row.parentNode.insertBefore(panelRow, row.nextSibling);
+        });
       }
 
       // Pre-fetch history on load
