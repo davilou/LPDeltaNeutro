@@ -1,7 +1,7 @@
 # CLAUDE.md — APRDeltaNeuto
 
 ## Projeto
-Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains EVM. Lê LP positions on-chain (Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL, e outros) e executa hedges em perpétuos na Hyperliquid. Inclui dashboard de monitoramento e módulo de backtesting.
+Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains (Base, Ethereum, BSC, Arbitrum, Polygon, Avalanche, HyperEVM). Lê LP positions on-chain (Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL e outros) e executa hedges em perpétuos na Hyperliquid. Inclui dashboard de monitoramento e módulo de backtesting.
 
 ## Stack
 - **Runtime**: Node.js + TypeScript (strict, ES2022, CommonJS)
@@ -211,20 +211,100 @@ npx pm2 logs apr-delta-neuto     # logs em tempo real
 
 ## Como adicionar nova Chain/DEX
 1. `src/lp/chainRegistry.ts` — adicionar `'chain:dex': { positionManagerV3, factoryV3, ... }`
-2. `src/lp/chainProviders.ts` — adicionar chain ID em `CHAIN_IDS` (obrigatório para staticNetwork)
-3. `.env` — adicionar `CHAIN_HTTP_RPC_URL=url1,url2,...`
+2. `src/lp/chainProviders.ts` — adicionar chain ID em `CHAIN_IDS` (obrigatório para staticNetwork) + entry em `getRpcUrls` e `getLpFreeRpcUrls`
+3. `.env` — adicionar `CHAIN_HTTP_RPC_URL=url1,url2,...` e `LP_FREE_CHAIN_RPC_URL=url1,url2,...`
 4. `src/dashboard/public/index.html` — adicionar dex em `DEX_OPTIONS_BY_CHAIN`
+5. `src/utils/priceApi.ts` — adicionar chain em `DEX_SCREENER_CHAIN`, `COINGECKO_PLATFORM` e `WRAPPED_NATIVE`
+6. `src/config.ts` — adicionar `lpFreeChainRpcUrls` getter
 
 Sem `initCodeHashV3`? Pool resolvido via `factory.getPool()` — CREATE2 é fallback opcional.
+
+## Ciclos de Execução
+
+Três loops independentes rodam em paralelo:
+
+### Ciclo LP+PnL (RPCs Gratuitos + HL API)
+Roda a cada `LP_READ_INTERVAL_MIN` minutos (default 5), staggerado `LP_READ_INTER_USER_DELAY_MS` ms entre usuários.
+
+Operações: `refreshFees()` + `readPosition()` via `getLpProvider()` → `getPosition()` + `getAccountEquity()` + `getIsolatedPnl()` via HL API → `pnlTracker.compute()` → atualiza dashboard completo (LP amounts, fees, range status, P&L, unrealized/realized).
+
+Se `liquidity === 0n`: detecta posição fechada → dispara deactivation.
+
+### Ciclo de Rebalance (Timer)
+Roda a cada `CYCLE_INTERVAL_MIN` minutos (default 720 = 12h) via `setInterval`.
+
+Operações: `readPosition()` + decisão de hedge via `rebalancer.cycle()`. Chama HL API para ajuste de posição perp se necessário.
+
+### Price Poller (DexScreener)
+Roda a cada 30s via DexScreener (sem RPC).
+
+Detecta out-of-range (via tick) ou emergency price movement → dispara `rebalancer.cycle()` imediato, bypassando o timer de 12h.
+
+### RPCs
+- **LP reads**: sempre via `getLpProvider(chain)` → usa `LP_FREE_*_RPC_URL` se configurado para a chain, senão faz fallback para o provider principal daquela chain (ex: `HTTP_RPC_URL` para Base, `ETH_HTTP_RPC_URL` para ETH, etc.).
+- **WebSocket**: removido. Alchemy permanece apenas como fallback HTTP RPC (configurado em `HTTP_RPC_URL`).
+- Cada chain tem seu próprio pool de RPCs configurável via `*_HTTP_RPC_URL` e `LP_FREE_*_RPC_URL`.
+
+## RPCs Públicos Gratuitos (LP_FREE_*_RPC_URL)
+
+A plataforma é multichain. Configurar RPCs gratuitos para cada chain ativa reduz dependência do provider principal (Alchemy ou similar) e aumenta resiliência.
+
+```env
+# Base
+LP_FREE_BASE_RPC_URL=https://base.publicnode.com,https://base.drpc.org,https://1rpc.io/base
+
+# Ethereum
+LP_FREE_ETH_RPC_URL=https://eth.publicnode.com,https://ethereum.drpc.org,https://1rpc.io/eth
+
+# BNB Chain
+LP_FREE_BSC_RPC_URL=https://bsc.publicnode.com,https://bsc.drpc.org,https://1rpc.io/bnb
+
+# Arbitrum
+LP_FREE_ARB_RPC_URL=https://arbitrum.publicnode.com,https://arbitrum.drpc.org,https://1rpc.io/arb
+
+# Polygon
+LP_FREE_POLYGON_RPC_URL=https://polygon.publicnode.com,https://polygon.drpc.org,https://1rpc.io/matic
+
+# Avalanche C-Chain
+LP_FREE_AVAX_RPC_URL=https://avalanche.publicnode.com/ext/bc/C/rpc,https://avalanche.drpc.org
+
+# HyperEVM (Hyperliquid L1)
+LP_FREE_HL_L1_RPC_URL=https://rpc.hyperliquid.xyz/evm
+```
+
+Provedores de referência (sem API key):
+- **PublicNode** — `*.publicnode.com` — alta disponibilidade, sem rate limit agressivo
+- **DRPC** — `*.drpc.org` — suporte amplo de chains
+- **1RPC** — `1rpc.io/*` — privacy-focused, sem logs
 
 ## Gotchas
 - **ethers v6 staticNetwork**: sempre passar `chainId` ao `new FallbackProvider(urls, chainId)`. Sem isso: spam "JsonRpcProvider failed to detect network; retry in 1s" em RPCs lentos. Chain IDs ficam em `CHAIN_IDS` em `src/lp/chainProviders.ts`.
 - **Circular import em `lp/types.ts`**: usar `import type { LPPosition }` (não value import). Value import cria circular CommonJS require em runtime. Nunca mudar para import de valor.
 
 ## Limitações conhecidas (multi-chain)
-- `createLPReader()` em `index.ts` cria instância nova a cada ciclo → cache TTL interno ineficaz
 - `EvmScanner.scanWallet()` só escaneia V3 (ERC721Enumerable) — V4 requer event log scan (não implementado)
 - `walletScannerFactory` não valida `isChainDexSupported` antes de construir `EvmScanner`
+
+## Price API (`src/utils/priceApi.ts`)
+Busca preço externo por pool (DexScreener + CoinGecko fallback), com suporte multi-chain.
+
+- **Endpoint correto**: `/latest/dex/pairs/{chain}/{address}` (não `/pools/`)
+- **V4 pool IDs** são hashes de 32 bytes (66 chars) — DexScreener não os indexa; skip direto para fallback por token
+- **DexScreener slugs**: base→`base`, eth→`ethereum`, bsc→`bsc`, arbitrum→`arbitrum`, polygon→`polygon`, avalanche→`avalanche`, hyperliquid-l1→`hyperevm`
+- **Rate limit DexScreener**: 300 req/min para `/pairs/` e `/tokens/`
+- `fetchPoolPrice()` retorna ratio Uniswap (token1/token0) — para USD do hedge token: `hedgeToken='token0'` e token1 stable → USD = price; `hedgeToken='token1'` e token0 stable → USD = 1/price
+- `isChainPriceSupported(chain)` — checar antes de fetch (evita requests para chains não mapeadas)
+- Price poller agrupa por `chain:poolAddress` — 1 fetch por pool única, independente de quantos tokenIds compartilham
+
+## Auto-restore de Engine Contexts
+`autoRestoreEngineContexts()` em `index.ts` — chamada no startup (modo multi-user apenas).
+Escaneia `state-{userId}.json` no root, cria contexto para cada usuário com posições ativas.
+**Falha explícita** (log error + skip) se Supabase não configurado ou credenciais ausentes — nunca cai para MockExchange.
+Posições são monitoradas e rebalanceadas independente de login ativo no dashboard.
+
+## Reader Lifecycle
+`UserEngineContext.readers` é um `Map<"chain:dex", ILPReader>` — usar `getOrCreateReader(ctx, chain, dex)` para obter ou criar readers.
+Nunca chamar `createLPReader()` diretamente no loop de ciclo — destrói o cache TTL interno do reader.
 
 ## Diretrizes para Respostas
 - Responder diretamente com código quando a solicitação for clara.
