@@ -138,6 +138,10 @@ O dashboard (`src/dashboard/`) é um servidor Express com SSE para atualizaçõe
 - **P&L Isolado**: exibe LP P&L, LP Fees, Unrealized, Realized, Funding e HL Fees — todos com dados reais da HL API.
 - **Strategy Config**: cada card de posição tem seus próprios inputs de configuração e botões de ação (UPDATE STRATEGY, RESET P&L BASE, DEACTIVATE PROTECTION) — funções globais `updatePositionConfig(tokenId)`, `deactivatePosition(tokenId)`, `resetPositionPnl(tokenId)`.
 - **Hedge Calculator** (aba CALCULATOR): simulador client-side de cenários LP + hedge. Inputs: Pool Value, Current Price, Range Min/Max (USD ou % do preço), Hedge Size (% da exposição volátil), APR. Tabela de 9 linhas ordenada de +15% a −15% com range boundaries inseridos dinamicamente. Toggle `MANUAL | AUTO` no campo Hedge Size: modo AUTO calcula analiticamente o % que iguala P&L nos extremos do range (`H = (lpPnlUp − lpPnlDown) × P / (Pb − Pa)`); estado em `hedgeModeState` dentro do IIFE da calculadora.
+- **HISTORY tab**: tabela de closed positions usa `HistoricalPosition` (inclui `priceLowerUsd?`/`priceUpperUsd?` calculados em `archivePosition()` via fórmula de tick). Posições ativas exibidas via `renderActivePositionsInHistory()`. `/api/rebalances?tokenId=N` retorna rebalances filtrados por NFT (Supabase ou in-memory).
+- **`HistoricalPosition`** (`src/types.ts`): campos `priceLowerUsd?`/`priceUpperUsd?` — calculados em `archivePosition()` se `token0Decimals`/`token1Decimals`/`hedgeToken` estiverem no config. Fórmula: `raw = 1.0001^tick × 10^(dec0-dec1)`; invertido se `hedgeToken='token1'`.
+- **`RebalanceEvent`** (`src/dashboard/store.ts`): campos `fundingUsd?`/`realizedPnlUsd?` — populados do `PnlSnapshot` do ciclo no momento do rebalance.
+- **`fetchRebalances`** (`src/db/supabase.ts`): assinatura `(userId?, tokenId?, limit)` — filtra Supabase por ambos.
 
 ## Multi-Chain LP Layer
 
@@ -280,9 +284,13 @@ Provedores de referência (sem API key):
 ## Gotchas
 - **ethers v6 staticNetwork**: sempre passar `chainId` ao `new FallbackProvider(urls, chainId)`. Sem isso: spam "JsonRpcProvider failed to detect network; retry in 1s" em RPCs lentos. Chain IDs ficam em `CHAIN_IDS` em `src/lp/chainProviders.ts`.
 - **Circular import em `lp/types.ts`**: usar `import type { LPPosition }` (não value import). Value import cria circular CommonJS require em runtime. Nunca mudar para import de valor.
+- **Supabase `rebalances` table**: requer colunas `pnl_realized_usd NUMERIC` e `pnl_funding_usd NUMERIC` (adicionadas em 2026-03-09). Sem elas, `fetchRebalances()` retorna zeros nesses campos.
 
 ## Limitações conhecidas (multi-chain)
-- `EvmScanner.scanWallet()` só escaneia V3 (ERC721Enumerable) — V4 requer event log scan (não implementado)
+- `EvmScanner.scanV3()` usa Multicall3 — ≤5 RPC round trips independente do número de NFTs
+- `EvmScanner.scanV4()` usa eventos ERC721 Transfer no PositionManager + Multicall3 (3 rounds: logs → liquidity+ownerOf+poolInfo → tokenInfo+slot0)
+- `V4_DEPLOY_BLOCKS` em `evmScanner.ts` define o bloco inicial de scan por chain — atualizar se novos contratos V4 forem adicionados
+- `EvmScanner.scanV3()` só escaneia V3 (ERC721Enumerable) — compatível com NonfungiblePositionManager V3-compat
 - `walletScannerFactory` não valida `isChainDexSupported` antes de construir `EvmScanner`
 
 ## Price API (`src/utils/priceApi.ts`)
