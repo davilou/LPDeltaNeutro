@@ -1065,12 +1065,14 @@
                 <tr>
                   <th>NFT#</th>
                   <th>Pool</th>
-                  <th>Range (ticks)</th>
+                  <th>Range ($)</th>
                   <th>Duration</th>
                   <th>Initial LP</th>
                   <th>LP Fees</th>
                   <th>Funding</th>
                   <th>HL Fees</th>
+                  <th>Unrealized</th>
+                  <th>Realized</th>
                   <th>Net P&L</th>
                 </tr>
               </thead>
@@ -2079,6 +2081,8 @@
 
       // ── HISTORY ──────────────────────────────────────────────
       var positionHistory = [];
+      var rebalanceCache = {}; // tokenId -> array de rebalances (lazy loaded)
+      var rebalanceExpanded = {}; // tokenId -> boolean
 
       function fetchHistory() {
         fetch('/api/position-history')
@@ -2101,6 +2105,98 @@
         var m = Math.floor((s % 3600) / 60);
         return h + 'h ' + m + 'm';
       }
+
+      function renderRebalancesPanel(tokenId, rows) {
+        if (!rows || rows.length === 0) {
+          return '<tr class="rebalance-panel-row" id="rp-' + tokenId + '">' +
+            '<td colspan="12" style="padding:8px 12px;background:var(--bg2);color:var(--tx-dim);font-size:0.75rem;">Nenhum rebalance registrado.</td></tr>';
+        }
+        var header = '<tr style="background:var(--bg2);">' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Time</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Action</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Size (from→to)</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Avg Price</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Fee</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Funding acum.</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Realized PnL</th>' +
+          '<th style="padding:4px 8px;font-size:0.7rem;color:var(--tx-dim);">Trigger</th></tr>';
+        var dataRows = rows.map(function (r) {
+          var ts = r.timestamp;
+          var timeStr = ts ? new Date(typeof ts === 'number' ? ts : ts).toLocaleString() : '--';
+          var action = r.action || '--';
+          var fromSz = r.from_size != null ? r.from_size : (r.fromSize != null ? r.fromSize : null);
+          var toSz = r.to_size != null ? r.to_size : (r.toSize != null ? r.toSize : null);
+          var sizeStr = (fromSz != null && toSz != null) ? fmt(fromSz, 4) + ' → ' + fmt(toSz, 4) : '--';
+          var avgPx = r.avg_px != null ? r.avg_px : (r.avgPx != null ? r.avgPx : null);
+          var avgPxStr = avgPx != null ? '$' + fmt(avgPx, 4) : '--';
+          var feeUsd = r.fee_usd != null ? r.fee_usd : (r.feeUsd != null ? r.feeUsd : null);
+          var feeStr = feeUsd != null ? '-$' + fmt(feeUsd, 4) : '--';
+          var fundUsd = r.pnl_funding_usd != null ? r.pnl_funding_usd : (r.fundingUsd != null ? r.fundingUsd : null);
+          var fundColor = fundUsd == null ? 'var(--tx)' : fundUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var fundStr = fundUsd != null ? (fundUsd >= 0 ? '+' : '') + '$' + fmt(Math.abs(fundUsd), 2) : '--';
+          var realUsd = r.pnl_realized_usd != null ? r.pnl_realized_usd : (r.realizedPnlUsd != null ? r.realizedPnlUsd : null);
+          var realColor = realUsd == null ? 'var(--tx)' : realUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var realStr = realUsd != null ? (realUsd >= 0 ? '+' : '') + '$' + fmt(Math.abs(realUsd), 2) : '--';
+          var trigger = r.trigger_reason || (r.triggerReason || '--');
+          var isEmerg = r.is_emergency || r.isEmergency;
+          var trigColor = isEmerg ? 'var(--red)' : 'var(--tx-dim)';
+          return '<tr style="background:var(--bg2);border-top:1px solid var(--border);">' +
+            '<td style="padding:4px 8px;font-size:0.72rem;">' + timeStr + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;">' + action + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;">' + sizeStr + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;">' + avgPxStr + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;color:var(--red);">' + feeStr + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;color:' + fundColor + ';">' + fundStr + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;color:' + realColor + ';">' + realStr + '</td>' +
+            '<td style="padding:4px 8px;font-size:0.72rem;color:' + trigColor + ';">' + trigger + '</td>' +
+            '</tr>';
+        }).join('');
+        return '<tr class="rebalance-panel-row" id="rp-' + tokenId + '">' +
+          '<td colspan="12" style="padding:0;background:var(--bg2);">' +
+          '<table style="width:100%;border-collapse:collapse;">' +
+          '<thead>' + header + '</thead><tbody>' + dataRows + '</tbody></table>' +
+          '</td></tr>';
+      }
+
+      window.toggleRebalancePanel = function (tokenId, colSpan) {
+        rebalanceExpanded[tokenId] = !rebalanceExpanded[tokenId];
+        var existing = document.getElementById('rp-' + tokenId);
+        if (!rebalanceExpanded[tokenId]) {
+          if (existing) existing.parentNode.removeChild(existing);
+          // refresh to update arrow indicator
+          renderHistory();
+          renderActivePositionsInHistory();
+          return;
+        }
+        var row = document.getElementById('hist-row-' + tokenId) ||
+                  document.getElementById('active-row-' + tokenId);
+        if (!row) return;
+
+        function insertPanel(rows) {
+          var ex2 = document.getElementById('rp-' + tokenId);
+          if (ex2) ex2.parentNode.removeChild(ex2);
+          var tmp = document.createElement('tbody');
+          tmp.innerHTML = renderRebalancesPanel(tokenId, rows);
+          var panelRow = tmp.firstChild;
+          if (panelRow && panelRow.firstChild) {
+            panelRow.firstChild.setAttribute('colspan', String(colSpan));
+          }
+          row.parentNode.insertBefore(panelRow, row.nextSibling);
+        }
+
+        if (rebalanceCache[tokenId]) { insertPanel(rebalanceCache[tokenId]); return; }
+
+        // Loading placeholder
+        var tmp = document.createElement('tbody');
+        tmp.innerHTML = '<tr class="rebalance-panel-row" id="rp-' + tokenId + '">' +
+          '<td colspan="' + colSpan + '" style="padding:8px 12px;background:var(--bg2);color:var(--tx-dim);font-size:0.75rem;">Carregando rebalances...</td></tr>';
+        row.parentNode.insertBefore(tmp.firstChild, row.nextSibling);
+
+        fetch('/api/rebalances?tokenId=' + tokenId)
+          .then(function (r) { return r.json(); })
+          .then(function (data) { rebalanceCache[tokenId] = data; insertPanel(data); })
+          .catch(function () { insertPanel([]); });
+      };
 
       function renderActivePositionsInHistory() {
         var el = $('active-in-history');
@@ -2127,6 +2223,12 @@
           var funding = d && d.cumulativeFundingUsd != null
             ? (d.cumulativeFundingUsd >= 0 ? '+' : '') + fmtUsd(d.cumulativeFundingUsd) : '--';
           var hlFees = d && d.cumulativeHlFeesUsd != null ? '-' + fmtUsd(d.cumulativeHlFeesUsd) : '--';
+          var unrealUsd = d && d.unrealizedPnlUsd != null ? d.unrealizedPnlUsd : null;
+          var realizUsd = d && d.realizedPnlUsd != null ? d.realizedPnlUsd : null;
+          var unrealColor = unrealUsd == null ? 'var(--tx)' : unrealUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var realizColor2 = realizUsd == null ? 'var(--tx)' : realizUsd >= 0 ? 'var(--green)' : 'var(--red)';
+          var unrealCell = unrealUsd != null ? '<span style="color:' + unrealColor + ';">' + (unrealUsd >= 0 ? '+' : '') + fmtUsd(unrealUsd) + '</span>' : '--';
+          var realizCell = realizUsd != null ? '<span style="color:' + realizColor2 + ';">' + (realizUsd >= 0 ? '+' : '') + fmtUsd(realizUsd) + '</span>' : '--';
           var pnlUsd = d && d.pnlTotalUsd != null ? d.pnlTotalUsd : null;
           var pnlPct = d && d.pnlTotalPercent != null ? d.pnlTotalPercent : null;
           var pnlColor = pnlUsd == null ? 'var(--tx)' : pnlUsd >= 0 ? 'var(--green)' : 'var(--red)';
@@ -2136,8 +2238,9 @@
             ? '<span style="color:' + pnlColor + ';">' + pnlSign + fmtUsd(pnlUsd) +
               ' <span style="font-size:0.72rem;">(' + pnlPctSign + fmt(pnlPct, 2) + '%)</span></span>'
             : '--';
-          return '<tr>' +
-            '<td>' + tid + '</td>' +
+          var isExpA = !!rebalanceExpanded[tid];
+          return '<tr id="active-row-' + tid + '" style="cursor:pointer;" onclick="toggleRebalancePanel(' + tid + ', 12)">' +
+            '<td>' + tid + ' <span style="font-size:0.65rem;color:var(--tx-dim);">' + (isExpA ? '▲' : '▼') + '</span></td>' +
             '<td>' + pool + '</td>' +
             '<td style="font-size:0.72rem;color:var(--tx-dim);">' + range + '</td>' +
             '<td>' + status + '</td>' +
@@ -2146,6 +2249,8 @@
             '<td style="color:var(--green);">' + lpFees + '</td>' +
             '<td>' + funding + '</td>' +
             '<td>' + hlFees + '</td>' +
+            '<td>' + unrealCell + '</td>' +
+            '<td>' + realizCell + '</td>' +
             '<td>' + pnlCell + '</td>' +
             '</tr>';
         }).join('');
@@ -2154,7 +2259,7 @@
           '<div class="tbl-title">● ACTIVE POSITIONS (' + tokenIds.length + ')</div>' +
           '<div style="overflow-x:auto;"><table><thead><tr>' +
           '<th>NFT#</th><th>Pool</th><th>Range ($)</th><th>Status</th><th>Duration</th>' +
-          '<th>LP Value</th><th>LP Fees</th><th>Funding</th><th>HL Fees</th><th>P&L</th>' +
+          '<th>LP Value</th><th>LP Fees</th><th>Funding</th><th>HL Fees</th><th>Unrealized</th><th>Realized</th><th>P&L</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
       }
 
@@ -2234,7 +2339,7 @@
 
         var tbody = $('historyBody');
         if (positionHistory.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Nenhuma posição encerrada ainda.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Nenhuma posição encerrada ainda.</td></tr>';
           return;
         }
         tbody.innerHTML = positionHistory.map(function (h) {
@@ -2254,8 +2359,13 @@
           var fundUsd = h.finalCumulativeFundingUsd || 0;
           var fundColor = fundUsd >= 0 ? 'var(--green)' : 'var(--red)';
           var fundSign = fundUsd >= 0 ? '+' : '';
-          return '<tr>' +
-            '<td>' + h.tokenId + '</td>' +
+          var unreal = h.finalUnrealizedPnlUsd || 0;
+          var realiz = h.finalRealizedPnlUsd || 0;
+          var unrealColor = unreal >= 0 ? 'var(--green)' : 'var(--red)';
+          var realizColor = realiz >= 0 ? 'var(--green)' : 'var(--red)';
+          var isExp = !!rebalanceExpanded[h.tokenId];
+          return '<tr id="hist-row-' + h.tokenId + '" style="cursor:pointer;' + (isExp ? 'background:var(--bg2);' : '') + '" onclick="toggleRebalancePanel(' + h.tokenId + ', 11)">' +
+            '<td>' + h.tokenId + ' <span style="font-size:0.65rem;color:var(--tx-dim);">' + (isExp ? '▲' : '▼') + '</span></td>' +
             '<td>' + pool + '</td>' +
             '<td style="font-size:0.72rem;color:var(--tx-dim);">' + range + '</td>' +
             '<td>' + dur + '</td>' +
@@ -2263,6 +2373,8 @@
             '<td style="color:var(--green);">+' + fmtUsd(h.finalLpFeesUsd || 0) + '</td>' +
             '<td style="color:' + fundColor + ';">' + fundSign + fmtUsd(fundUsd) + '</td>' +
             '<td style="color:var(--red);">-' + fmtUsd(Math.abs(h.finalCumulativeHlFeesUsd || 0)) + '</td>' +
+            '<td style="color:' + unrealColor + ';">' + (unreal >= 0 ? '+' : '') + fmtUsd(unreal) + '</td>' +
+            '<td style="color:' + realizColor + ';">' + (realiz >= 0 ? '+' : '') + fmtUsd(realiz) + '</td>' +
             '<td style="color:' + netColor + ';">' + netSign + fmtUsd(netUsd) +
             ' <span style="font-size:0.72rem;">(' + netPctSign + fmt(netPct, 2) + '%)</span></td>' +
             '</tr>';
