@@ -30,11 +30,7 @@ const ERC20_ABI = [
 
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD', 'BUSD']);
 
-function chunk<T>(arr: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
-  return chunks;
-}
+const MIN_POSITION_USD = 10;
 
 export class EvmScanner implements IWalletScanner {
   private readonly chain: ChainId;
@@ -184,10 +180,11 @@ export class EvmScanner implements IWalletScanner {
       });
 
       // Factory calls — use CREATE2 if initCodeHash available, else call factory
+      // Declared inside the callback so each retry starts fresh (no index doubling on retry).
       const poolKeys = [...poolKeyMap.entries()];
       type FactoryCallInfo = { key: PoolKey; callIdx: number } | null;
-      const factoryCalls: FactoryCallInfo[] = [];
       const extraCalls: ReturnType<typeof buildCall3>[] = [];
+      const factoryCalls: FactoryCallInfo[] = [];
 
       for (const [key, { t0, t1, fee }] of poolKeys) {
         if (addresses.initCodeHashV3 && addresses.factoryV3) {
@@ -197,8 +194,9 @@ export class EvmScanner implements IWalletScanner {
           factoryCalls.push(null);
         } else if (addresses.factoryV3) {
           const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, p);
+          const callIdx = tokenCalls.length + extraCalls.length; // index of the call we're about to add
           extraCalls.push(buildCall3(factory, 'getPool', [t0, t1, fee]));
-          factoryCalls.push({ key, callIdx: tokenCalls.length + extraCalls.length - 1 });
+          factoryCalls.push({ key, callIdx });
         } else {
           factoryCalls.push(null);
         }
@@ -241,6 +239,10 @@ export class EvmScanner implements IWalletScanner {
 
     // Filter positions where pool address was resolved
     const positionsWithPools = livePositions.filter(pos => getPoolAddr(pos) !== null);
+    const skipped = livePositions.length - positionsWithPools.length;
+    if (skipped > 0) {
+      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] ${skipped} position(s) skipped — pool address could not be resolved`);
+    }
     if (positionsWithPools.length === 0) return [];
 
     // Round 5: slot0 for all live pools — 1 multicall
@@ -272,7 +274,7 @@ export class EvmScanner implements IWalletScanner {
         Number(pos.tokenId), pos.token0, t0, pos.token1, t1, pos.fee,
         pos.tickLower, pos.tickUpper, tickCurrent, pos.liquidity, poolAddr,
       );
-      if (dp.estimatedUsd >= 10 || dp.estimatedUsd === 0) discovered.push(dp);
+      if (dp.estimatedUsd >= MIN_POSITION_USD || dp.estimatedUsd === 0) discovered.push(dp);
     }
     logger.info(`[EvmScanner][${this.chain}:${this.dex}] Found ${discovered.length} active positions (${count} NFTs total)`);
     return discovered;
