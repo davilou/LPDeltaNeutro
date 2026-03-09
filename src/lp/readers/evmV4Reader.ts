@@ -4,7 +4,7 @@ import { logger } from '../../utils/logger';
 import { getCachedPrice } from '../../utils/priceApi';
 import { ChainId, DexId, ILPReader, PositionId } from '../types';
 import { ChainDexAddresses, getChainDexAddresses } from '../chainRegistry';
-import { getChainProvider } from '../chainProviders';
+import { getLpProvider } from '../chainProviders';
 import { getTokenCache, TokenMeta, KNOWN_TOKENS_BY_CHAIN, seedTokenCache } from '../tokenCache';
 import { config } from '../../config';
 
@@ -60,7 +60,7 @@ export class EvmV4Reader implements ILPReader {
 
   async readPosition(id: PositionId, _poolAddress: string): Promise<LPPosition> {
     const tokenId = Number(id);
-    const fallback = getChainProvider(this.chain);
+    const fallback = getLpProvider(this.chain);
 
     return fallback.call(async (provider) => {
       const pmAddress = this.addresses.positionManagerV4!;
@@ -195,7 +195,7 @@ export class EvmV4Reader implements ILPReader {
   }
 
   async getBlockOrSlot(): Promise<number> {
-    return getChainProvider(this.chain).call(p => p.getBlockNumber());
+    return getLpProvider(this.chain).call(p => p.getBlockNumber());
   }
 
   /** Returns the cached V4 pool ID (bytes32) for this tokenId, or null if not yet cached. */
