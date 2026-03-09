@@ -162,6 +162,18 @@ export class Rebalancer {
     if (!ps) throw new Error(`[Rebalancer] archivePosition: no state for tokenId ${tokenId}`);
 
     const cfg = ps.config;
+    // Compute USD range from ticks (same formula as rebalancer cycle)
+    const token0Dec = cfg.token0Decimals ?? 18;
+    const token1Dec = cfg.token1Decimals ?? 6;
+    const decimalAdj = Math.pow(10, token0Dec - token1Dec);
+    const rawLo = Math.pow(1.0001, cfg.tickLower ?? 0) * decimalAdj;
+    const rawHi = Math.pow(1.0001, cfg.tickUpper ?? 0) * decimalAdj;
+    const priceLowerUsd = (cfg.token0Decimals != null && cfg.token1Decimals != null)
+      ? (cfg.hedgeToken === 'token1' ? 1 / rawHi : rawLo)
+      : undefined;
+    const priceUpperUsd = (cfg.token0Decimals != null && cfg.token1Decimals != null)
+      ? (cfg.hedgeToken === 'token1' ? 1 / rawLo : rawHi)
+      : undefined;
     const record: HistoricalPosition = {
       tokenId: cfg.tokenId,
       poolAddress: cfg.poolAddress,
@@ -183,6 +195,8 @@ export class Rebalancer {
       finalVirtualPnlPercent: finalPnl.virtualPnlPercent,
       finalUnrealizedPnlUsd: finalPnl.unrealizedVirtualPnlUsd,
       finalRealizedPnlUsd: finalPnl.realizedVirtualPnlUsd,
+      priceLowerUsd,
+      priceUpperUsd,
     };
 
     if (!this.state.history) this.state.history = [];
@@ -490,6 +504,8 @@ export class Rebalancer {
       token0Symbol: position.token0.symbol,
       token1Symbol: position.token1.symbol,
       isEmergency,
+      fundingUsd: pnl.cumulativeFundingUsd,
+      realizedPnlUsd: pnl.realizedVirtualPnlUsd,
     };
     getStoreForUser(this.userId).addRebalanceEvent(event);
 

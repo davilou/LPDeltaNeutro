@@ -140,7 +140,11 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
   app.get('/api/rebalances', async (req, res) => {
     const userId = req.session.userId!;
     if (config.supabaseUrl && config.supabaseKey) {
-      const records = await fetchRebalances(userId !== 'default' ? userId : undefined);
+      const qTokenId = req.query.tokenId ? parseInt(req.query.tokenId as string) : undefined;
+      const records = await fetchRebalances(
+        userId !== 'default' ? userId : undefined,
+        !isNaN(qTokenId ?? NaN) ? qTokenId : undefined,
+      );
       res.json(records);
       return;
     }
@@ -167,10 +171,13 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       chain?: string;
       dex?: string;
     };
-    if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
+    const isEvmAddr     = /^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? '');
+    const isSolanaAddr  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress ?? '');
+    if (!walletAddress || (!isEvmAddr && !isSolanaAddr)) {
       res.status(400).json({ error: 'Invalid wallet address' });
       return;
     }
+    logger.info(`[Dashboard] scan-wallet chain=${chain} dex=${dex} addr=${walletAddress}`);
     try {
       const scanner = createWalletScanner(chain as ChainId, dex as DexId);
       const positions = await scanner.scanWallet(walletAddress);
@@ -266,6 +273,17 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     }
     const store = getStoreForUser(req.session.userId!);
     store.requestDeactivation(tokenId);
+    res.json({ success: true });
+  });
+
+  app.post('/api/refresh-lp', (req, res) => {
+    const { tokenId } = req.body;
+    if (typeof tokenId !== 'number') {
+      res.status(400).json({ error: 'tokenId required' });
+      return;
+    }
+    const store = getStoreForUser(req.session.userId!);
+    store.requestLpRefresh(tokenId);
     res.json({ success: true });
   });
 

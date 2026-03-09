@@ -75,17 +75,18 @@ export async function fetchClosedPositions(userId?: string): Promise<ClosedPosit
   }
 }
 
-export async function fetchRebalances(userId?: string, limit = 100): Promise<RebalanceRecord[]> {
+export async function fetchRebalances(userId?: string, tokenId?: number, limit = 100): Promise<RebalanceRecord[]> {
   if (!client) return [];
 
   try {
     let query = client
       .from('rebalances')
-      .select('token_id, timestamp, coin, action, avg_px, executed_sz, trade_value_usd, fee_usd, trigger_reason, is_emergency, from_size, to_size, from_notional, to_notional, token0_symbol, token1_symbol, range_status, price')
+      .select('token_id, timestamp, coin, action, avg_px, executed_sz, trade_value_usd, fee_usd, trigger_reason, is_emergency, from_size, to_size, from_notional, to_notional, token0_symbol, token1_symbol, range_status, price, pnl_realized_usd, pnl_funding_usd')
       .order('timestamp', { ascending: false })
       .limit(limit);
 
     if (userId) query = query.eq('user_id', userId);
+    if (tokenId !== undefined) query = query.eq('token_id', tokenId);
 
     const { data, error } = await query;
     if (error) {

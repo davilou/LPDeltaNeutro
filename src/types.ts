@@ -126,6 +126,8 @@ export interface HistoricalPosition {
   finalVirtualPnlPercent: number;
   finalUnrealizedPnlUsd: number;
   finalRealizedPnlUsd: number;
+  priceLowerUsd?: number;
+  priceUpperUsd?: number;
 }
 
 export interface PositionState {

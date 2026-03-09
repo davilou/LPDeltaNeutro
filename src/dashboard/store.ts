@@ -59,6 +59,8 @@ export interface RebalanceEvent {
   token0Symbol?: string;
   token1Symbol?: string;
   isEmergency?: boolean;
+  fundingUsd?: number;
+  realizedPnlUsd?: number;
 }
 
 export interface ActivatePositionRequest {
@@ -192,6 +194,10 @@ class DashboardStore extends EventEmitter {
 
   requestResetPnl(tokenId: PositionId, initialLpUsd: number, initialHlUsd: number): void {
     this.emit('resetPnl', { tokenId, initialLpUsd, initialHlUsd });
+  }
+
+  requestLpRefresh(tokenId: PositionId): void {
+    this.emit('refreshLpData', tokenId);
   }
 
   setPositionHistory(h: HistoricalPosition[]): void {
