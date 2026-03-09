@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ethers } from 'ethers';
 import { config } from './config';
 import { createLPReader } from './lp/lpReaderFactory';
 import type { ChainId, DexId, ILPReader, PositionId } from './lp/types';
@@ -14,12 +13,10 @@ import { getStoreForUser, ActivatePositionRequest } from './dashboard/store';
 import { ActivePositionConfig, PnlSnapshot } from './types';
 import { insertClosedPosition, supabaseServiceClient, upsertProtectionActivation, fetchProtectionActivation } from './db/supabase';
 import { loadCredentials as loadDbCredentials } from './auth/userStore';
-import { fetchPoolPrice, poolPriceCache, isChainPriceSupported, STABLE_SYMBOLS } from './utils/priceApi';
-import { IHedgeExchange } from './hedge/types';
+import { fetchPoolPrice, poolPriceCache, getCachedPrice, isChainPriceSupported, STABLE_SYMBOLS } from './utils/priceApi';
+import { IHedgeExchange, HlIsolatedPnl } from './hedge/types';
 import './auth/types';
 
-const BLOCK_TIMEOUT_MS = 5 * 60_000;    // 5min
-const WATCHDOG_INTERVAL_MS = 15_000;   // 15s
 const PRICE_POLL_INTERVAL_MS = 30_000; // 30s — keep below API rate limits
 const PRICE_POLL_INTER_REQUEST_MS = 500; // delay between pool price requests
 
@@ -29,6 +26,7 @@ interface UserEngineContext {
   /** Reusable readers keyed by "chain:dex" — preserves internal TTL cache across cycles. */
   readers: Map<string, ILPReader>;
   activationsInProgress: Set<PositionId>;
+  deactivationsInProgress: Set<PositionId>;
 }
 
 function getOrCreateReader(ctx: UserEngineContext, chain: ChainId, dex: DexId): ILPReader {
@@ -179,54 +177,95 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
 
   // Position Deactivation event
   store.on('deactivatePosition', async (tokenId: PositionId) => {
+    // Guard against concurrent deactivation of the same position (e.g. multiple cycles detecting liquidity=0)
+    if (ctx.deactivationsInProgress.has(tokenId)) return;
+    ctx.deactivationsInProgress.add(tokenId);
+
     const ps = ctx.rebalancer.fullState.positions[tokenId];
     const hedgeSymbol = ps?.config.hedgeSymbol;
 
+    // Determine finalPnl:
+    // - If a live cycle ran (totalPositionUsd > 0), the store has real data → use it.
+    // - Otherwise (e.g. after restart, store only has stub zeros), query exchange APIs
+    //   with LP value = 0 (position is burned) to compute real P&L.
     const lastData = store.getCurrentData(tokenId);
-    if (lastData) {
-      const finalPnl: PnlSnapshot = {
-        initialTotalUsd: lastData.initialTotalUsd ?? 0,
-        currentTotalUsd: lastData.currentTotalUsd ?? 0,
-        lpFeesUsd: lastData.lpFeesUsd ?? 0,
-        cumulativeFundingUsd: lastData.cumulativeFundingUsd ?? 0,
-        cumulativeHlFeesUsd: lastData.cumulativeHlFeesUsd ?? 0,
-        accountPnlUsd: lastData.accountPnlUsd ?? 0,
-        accountPnlPercent: lastData.accountPnlPercent ?? 0,
-        virtualPnlUsd: lastData.pnlTotalUsd ?? 0,
-        virtualPnlPercent: lastData.pnlTotalPercent ?? 0,
-        unrealizedVirtualPnlUsd: lastData.unrealizedPnlUsd ?? 0,
-        realizedVirtualPnlUsd: lastData.realizedPnlUsd ?? 0,
-        lpPnlUsd: lastData.lpPnlUsd ?? 0,
+    const hasRealStoreData = !!(lastData && lastData.totalPositionUsd > 0);
+
+    let finalPnl: PnlSnapshot;
+    if (hasRealStoreData) {
+      finalPnl = {
+        initialTotalUsd: lastData!.initialTotalUsd ?? 0,
+        currentTotalUsd: lastData!.currentTotalUsd ?? 0,
+        lpFeesUsd: lastData!.lpFeesUsd ?? 0,
+        cumulativeFundingUsd: lastData!.cumulativeFundingUsd ?? 0,
+        cumulativeHlFeesUsd: lastData!.cumulativeHlFeesUsd ?? 0,
+        accountPnlUsd: lastData!.accountPnlUsd ?? 0,
+        accountPnlPercent: lastData!.accountPnlPercent ?? 0,
+        virtualPnlUsd: lastData!.pnlTotalUsd ?? 0,
+        virtualPnlPercent: lastData!.pnlTotalPercent ?? 0,
+        unrealizedVirtualPnlUsd: lastData!.unrealizedPnlUsd ?? 0,
+        realizedVirtualPnlUsd: lastData!.realizedPnlUsd ?? 0,
+        lpPnlUsd: lastData!.lpPnlUsd ?? 0,
       };
+    } else if (ps && hedgeSymbol) {
+      logger.info(`[Deactivation] NFT #${tokenId}: store data is stale (post-restart), fetching real P&L from exchange`);
       try {
-        const archived = ctx.rebalancer.archivePosition(tokenId, finalPnl);
-        store.addPositionToHistory(archived);
-        void insertClosedPosition({
-          user_id: userId !== 'default' ? userId : undefined,
-          token_id: archived.tokenId,
-          pool_address: archived.poolAddress,
-          protocol_version: archived.protocolVersion,
-          token0_symbol: archived.token0Symbol,
-          token1_symbol: archived.token1Symbol,
-          fee: archived.fee,
-          tick_lower: archived.tickLower,
-          tick_upper: archived.tickUpper,
-          hedge_symbol: archived.hedgeSymbol,
-          activated_at: new Date(archived.activatedAt).toISOString(),
-          deactivated_at: new Date(archived.deactivatedAt).toISOString(),
-          initial_lp_usd: archived.initialLpUsd,
-          initial_hl_usd: archived.initialHlUsd,
-          final_lp_fees_usd: archived.finalLpFeesUsd,
-          final_cumulative_funding_usd: archived.finalCumulativeFundingUsd,
-          final_cumulative_hl_fees_usd: archived.finalCumulativeHlFeesUsd,
-          final_virtual_pnl_usd: archived.finalVirtualPnlUsd,
-          final_virtual_pnl_pct: archived.finalVirtualPnlPercent,
-          final_unrealized_pnl_usd: archived.finalUnrealizedPnlUsd,
-          final_realized_pnl_usd: archived.finalRealizedPnlUsd,
-        });
-      } catch (err) {
-        logger.error(`[Deactivation] Failed to archive position NFT #${tokenId}: ${err}`);
+        const tracker = ctx.rebalancer.getPnlTracker(tokenId);
+        const sinceTs = ps.pnl?.initialTimestamp ?? Date.now();
+        const [hlEquity, currentHedge, isolatedPnl] = await Promise.all([
+          ctx.exchange.getAccountEquity(),
+          ctx.exchange.getPosition(hedgeSymbol),
+          ctx.exchange.getIsolatedPnl(hedgeSymbol, sinceTs),
+        ]);
+        const hlPnl: HlIsolatedPnl = { ...isolatedPnl, unrealizedPnlUsd: currentHedge.unrealizedPnlUsd ?? 0 };
+        // LP value is 0 because the NFT has been burned; LP fees also 0 (collected on burn)
+        finalPnl = tracker.compute(0, hlEquity, 0, hlPnl);
+      } catch (pnlErr) {
+        logger.error(`[Deactivation] Could not fetch real P&L for NFT #${tokenId}: ${pnlErr}`);
+        finalPnl = {
+          initialTotalUsd: 0, currentTotalUsd: 0, lpFeesUsd: 0, cumulativeFundingUsd: 0,
+          cumulativeHlFeesUsd: 0, accountPnlUsd: 0, accountPnlPercent: 0,
+          virtualPnlUsd: 0, virtualPnlPercent: 0, unrealizedVirtualPnlUsd: 0,
+          realizedVirtualPnlUsd: 0, lpPnlUsd: 0,
+        };
       }
+    } else {
+      finalPnl = {
+        initialTotalUsd: 0, currentTotalUsd: 0, lpFeesUsd: 0, cumulativeFundingUsd: 0,
+        cumulativeHlFeesUsd: 0, accountPnlUsd: 0, accountPnlPercent: 0,
+        virtualPnlUsd: 0, virtualPnlPercent: 0, unrealizedVirtualPnlUsd: 0,
+        realizedVirtualPnlUsd: 0, lpPnlUsd: 0,
+      };
+    }
+
+    try {
+      const archived = ctx.rebalancer.archivePosition(tokenId, finalPnl);
+      store.addPositionToHistory(archived);
+      void insertClosedPosition({
+        user_id: userId !== 'default' ? userId : undefined,
+        token_id: archived.tokenId,
+        pool_address: archived.poolAddress,
+        protocol_version: archived.protocolVersion,
+        token0_symbol: archived.token0Symbol,
+        token1_symbol: archived.token1Symbol,
+        fee: archived.fee,
+        tick_lower: archived.tickLower,
+        tick_upper: archived.tickUpper,
+        hedge_symbol: archived.hedgeSymbol,
+        activated_at: new Date(archived.activatedAt).toISOString(),
+        deactivated_at: new Date(archived.deactivatedAt).toISOString(),
+        initial_lp_usd: archived.initialLpUsd,
+        initial_hl_usd: archived.initialHlUsd,
+        final_lp_fees_usd: archived.finalLpFeesUsd,
+        final_cumulative_funding_usd: archived.finalCumulativeFundingUsd,
+        final_cumulative_hl_fees_usd: archived.finalCumulativeHlFeesUsd,
+        final_virtual_pnl_usd: archived.finalVirtualPnlUsd,
+        final_virtual_pnl_pct: archived.finalVirtualPnlPercent,
+        final_unrealized_pnl_usd: archived.finalUnrealizedPnlUsd,
+        final_realized_pnl_usd: archived.finalRealizedPnlUsd,
+      });
+    } catch (err) {
+      logger.error(`[Deactivation] Failed to archive position NFT #${tokenId}: ${err}`);
     }
 
     ctx.rebalancer.deactivatePosition(tokenId);
@@ -235,18 +274,27 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
 
     try {
       if (hedgeSymbol) {
-        const currentHedge = await ctx.exchange.getPosition(hedgeSymbol);
-        if (currentHedge.size > 0) {
-          logger.info(`[Activation] NFT #${tokenId}: closing full HL position of ${currentHedge.size.toFixed(4)} ${hedgeSymbol}`);
-          await ctx.exchange.closePosition(hedgeSymbol);
+        // Only close the HL position if no other active position shares the same hedgeSymbol.
+        // Closing blindly would kill the hedge of a sibling position (e.g. new LP opened in same market).
+        const otherUsesSymbol = Object.values(ctx.rebalancer.fullState.positions)
+          .some(pos => pos.config.hedgeSymbol === hedgeSymbol);
+        if (otherUsesSymbol) {
+          logger.warn(`[Deactivation] NFT #${tokenId}: skipping HL close — symbol ${hedgeSymbol} also used by another active position`);
         } else {
-          logger.info(`[Activation] NFT #${tokenId}: no open HL position to close`);
+          const currentHedge = await ctx.exchange.getPosition(hedgeSymbol);
+          if (currentHedge.size > 0) {
+            logger.info(`[Activation] NFT #${tokenId}: closing full HL position of ${currentHedge.size.toFixed(4)} ${hedgeSymbol}`);
+            await ctx.exchange.closePosition(hedgeSymbol);
+          } else {
+            logger.info(`[Activation] NFT #${tokenId}: no open HL position to close`);
+          }
         }
       }
     } catch (err) {
       logger.error(`[Activation] Error closing hedge during deactivation for NFT #${tokenId}: ${err}`);
     }
 
+    ctx.deactivationsInProgress.delete(tokenId);
     logger.info(`[Activation] NFT #${tokenId} deactivation complete`);
   });
 
@@ -267,7 +315,7 @@ async function getOrCreateEngineContext(userId: string): Promise<UserEngineConte
   const exchange = await createExchangeForUser(userId);
   const rebalancer = new Rebalancer(exchange, userId);
 
-  const ctx: UserEngineContext = { rebalancer, exchange, readers: new Map(), activationsInProgress: new Set() };
+  const ctx: UserEngineContext = { rebalancer, exchange, readers: new Map(), activationsInProgress: new Set(), deactivationsInProgress: new Set() };
   engineContexts.set(userId, ctx);
 
   const store = getStoreForUser(userId);
@@ -395,12 +443,8 @@ async function autoRestoreEngineContexts(): Promise<void> {
 async function main() {
   logger.info('=== Delta-Neutral LP Bot V2 (Multi-Position, Multi-User) Starting ===');
   logger.info(`Dry run: ${config.dryRun}`);
-  logger.info(`Block throttle: every ${config.blockThrottle} blocks`);
 
   let running = true;
-  let blockCount = 0;
-  let lastBlockTime = Date.now();
-  let activeWs: ethers.WebSocketProvider | null = null;
 
   const shutdown = () => {
     if (!running) return;
@@ -492,7 +536,9 @@ async function main() {
         if (position.liquidity === 0n) {
           logger.warn(`[Cycle] NFT #${tokenId} liquidity is 0 — LP position closed. Auto-deactivating...`);
           cycleReader.invalidateCache(tokenId);
-          store.requestDeactivation(tokenId);
+          if (!ctx.deactivationsInProgress.has(tokenId)) {
+            store.requestDeactivation(tokenId);
+          }
           continue;
         }
 
@@ -503,122 +549,102 @@ async function main() {
     }
   }
 
-  async function runCycleForAllUsers(): Promise<void> {
-    for (const [userId, ctx] of engineContexts.entries()) {
-      await runCycleForUser(userId, ctx);
-    }
-  }
+  const cyclesInProgress = new Set<string>();
 
-  let wsReconnectDelay = 5_000;
-  function connectWebSocket(): void {
-    if (!running) return;
+  // ── LP Read Cycle (RPCs gratuitos, sem Alchemy) ─────────────────────────────
 
-    if (activeWs) {
-      try { (activeWs as unknown as { destroy(): void }).destroy(); } catch { }
-      activeWs = null;
-    }
+  async function runLpReadForToken(userId: string, ctx: UserEngineContext, tokenId: number): Promise<void> {
+    const store = getStoreForUser(userId);
+    const ps = ctx.rebalancer.fullState.positions[tokenId];
+    if (!ps) return;
+    const cfg = ps.config;
 
-    let ws: ethers.WebSocketProvider;
-    try {
-      ws = new ethers.WebSocketProvider(config.wsUrl);
-    } catch (err) {
-      logger.error(`WebSocket connect failed: ${err} — retrying in ${wsReconnectDelay / 1000}s`);
-      setTimeout(connectWebSocket, wsReconnectDelay);
-      wsReconnectDelay = Math.min(wsReconnectDelay * 2, 60_000);
-      return;
-    }
+    const chain = (cfg.chain ?? 'base') as ChainId;
+    const dex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
+    const reader = getOrCreateReader(ctx, chain, dex);
 
-    activeWs = ws;
+    reader.refreshFees?.(tokenId);
+    const position = await reader.readPosition(tokenId, cfg.poolAddress);
 
-    const stabilityTimer = setTimeout(() => {
-      if (activeWs === ws) wsReconnectDelay = 5_000;
-    }, 30_000);
+    const current = store.getCurrentData(tokenId);
+    if (!current) return;
 
-    const rawWs = (ws as unknown as Record<string, unknown>)._websocket ?? (ws as unknown as Record<string, unknown>).websocket;
-    if (rawWs && typeof rawWs === 'object' && 'on' in rawWs) {
-      const rws = rawWs as { on(event: string, cb: (...args: unknown[]) => void): void };
-      rws.on('close', (code: unknown, reason: unknown) => {
-        clearTimeout(stabilityTimer);
-        if (!running || activeWs !== ws) return;
-        const reasonStr = reason instanceof Buffer ? reason.toString() : 'no reason';
-        logger.warn(`WebSocket closed (code: ${code}, reason: ${reasonStr}) — reconnecting in ${wsReconnectDelay / 1000}s...`);
-        activeWs = null;
-        setTimeout(connectWebSocket, wsReconnectDelay);
-        wsReconnectDelay = Math.min(wsReconnectDelay * 2, 60_000);
-      });
-      rws.on('error', (err: unknown) => {
-        if (!running || activeWs !== ws) return;
-        const msg = err instanceof Error ? err.message : JSON.stringify(err);
-        logger.warn(`WebSocket error: ${msg}`);
-      });
-    }
+    const hedgeToken = cfg.hedgeToken ?? 'token1';
+    const cachedPrice = getCachedPrice(tokenId);
+    const volatilePriceUsd = cachedPrice !== null
+      ? (hedgeToken === 'token1' ? 1 / cachedPrice : cachedPrice)
+      : current.price;
 
-    ws.on('block', async (blockNumber: number) => {
-      if (!running || activeWs !== ws) return;
+    const token0Usd = hedgeToken === 'token0'
+      ? position.token0.amountFormatted * position.price
+      : position.token0.amountFormatted;
+    const token1Usd = hedgeToken === 'token1'
+      ? position.token1.amountFormatted * volatilePriceUsd
+      : position.token1.amountFormatted;
 
-      lastBlockTime = Date.now();
-      blockCount++;
+    const rawFeesUsd = hedgeToken === 'token0'
+      ? position.tokensOwed0 * position.price + position.tokensOwed1
+      : position.tokensOwed0 + position.tokensOwed1 * volatilePriceUsd;
+    const netLpFees = Math.max(0, rawFeesUsd - (ps.pnl?.initialLpFeesUsd ?? 0));
 
-      if (blockCount !== 1 && blockCount % config.blockThrottle !== 0) return;
-
-      const hasAnyPositions = [...engineContexts.values()].some(
-        ctx => Object.keys(ctx.rebalancer.fullState.positions).length > 0
-      );
-
-      if (!hasAnyPositions) {
-        logger.info(`Block ${blockNumber}: no active positions — awaiting dashboard activation`);
-        return;
-      }
-
-      logger.info(`--- Block ${blockNumber} (cycle #${Math.floor(blockCount / config.blockThrottle)}) ---`);
-      await runCycleForAllUsers();
+    store.update({
+      ...current,
+      timestamp: Date.now(),
+      token0Amount: position.token0.amountFormatted,
+      token0Symbol: position.token0.symbol,
+      token1Amount: position.token1.amountFormatted,
+      token1Symbol: position.token1.symbol,
+      totalPositionUsd: token0Usd + token1Usd,
+      rangeStatus: position.rangeStatus,
+      price: volatilePriceUsd,
+      lpFeesUsd: netLpFees,
     });
 
-    logger.info('WebSocket connected');
+    logger.info(`[LpRead] NFT #${tokenId} lp=$${(token0Usd + token1Usd).toFixed(2)} fees=$${netLpFees.toFixed(4)}`);
   }
 
-  // Watchdog & Polling Fallback
-  let lastPolledBlock = 0;
-  const reader0 = createLPReader('base', 'uniswap-v3'); // shared reader for block polling only
-  const watchdog = setInterval(async () => {
-    if (!running) {
-      clearInterval(watchdog);
-      return;
-    }
-
-    const elapsed = Date.now() - lastBlockTime;
-
-    if (elapsed > 60_000 || !activeWs) {
+  async function runLpReadForUser(userId: string, ctx: UserEngineContext): Promise<void> {
+    const tokenIds = Object.keys(ctx.rebalancer.fullState.positions).map(Number);
+    for (const tokenId of tokenIds) {
       try {
-        const block = await reader0.getBlockOrSlot();
-        if (block > lastPolledBlock) {
-          const diff = lastPolledBlock === 0 ? 1 : block - lastPolledBlock;
-          lastPolledBlock = block;
-          lastBlockTime = Date.now();
-          logger.info(`[Polling] New blocks detected: ${block} (+${diff})`);
-
-          blockCount += diff;
-          const lastThrottleCount = Math.floor((blockCount - diff) / config.blockThrottle);
-          const currentThrottleCount = Math.floor(blockCount / config.blockThrottle);
-
-          if (blockCount === diff || currentThrottleCount > lastThrottleCount) {
-            await runCycleForAllUsers();
-          }
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.warn(`[Polling] New block check failed: ${msg}`);
+        await runLpReadForToken(userId, ctx, tokenId);
+      } catch (err) {
+        logger.error(`[LpRead] NFT #${tokenId}: ${err}`);
       }
     }
+  }
 
-    if (elapsed > BLOCK_TIMEOUT_MS) {
-      logger.warn(`No blocks for ${BLOCK_TIMEOUT_MS / 1000}s — forcing WebSocket reconnect...`);
-      if (activeWs) try { (activeWs as unknown as { destroy(): void }).destroy(); } catch { }
-      activeWs = null;
-      lastBlockTime = Date.now();
-      connectWebSocket();
+  let lpReadInProgress = false;
+  async function runLpReadForAllUsers(): Promise<void> {
+    if (lpReadInProgress) {
+      logger.warn('[LpRead] Previous LP read still in progress, skipping');
+      return;
     }
-  }, WATCHDOG_INTERVAL_MS);
+    lpReadInProgress = true;
+    try {
+      let first = true;
+      for (const [userId, ctx] of engineContexts.entries()) {
+        if (!first) await new Promise(r => setTimeout(r, config.lpReadInterUserDelayMs));
+        first = false;
+        await runLpReadForUser(userId, ctx);
+      }
+    } finally {
+      lpReadInProgress = false;
+    }
+  }
+
+  // ── Main Cycle ───────────────────────────────────────────────────────────────
+
+  async function runCycleForAllUsers(): Promise<void> {
+    for (const [userId, ctx] of engineContexts.entries()) {
+      if (cyclesInProgress.has(userId)) {
+        logger.warn(`[Cycle] User ${userId} — cycle already in progress, skipping`);
+        continue;
+      }
+      cyclesInProgress.add(userId);
+      runCycleForUser(userId, ctx).finally(() => cyclesInProgress.delete(userId));
+    }
+  }
 
   // Initial cycles for all users with active positions
   if (engineContexts.size > 0) {
@@ -632,8 +658,9 @@ async function main() {
     logger.info('No positions configured — skipping initial cycle. Use dashboard to activate positions.');
   }
 
-  connectWebSocket();
-  logger.info('Listening for new blocks...');
+  const rebalanceIntervalMs = config.cycleIntervalMin * 60_000;
+  logger.info(`[Cycle] Rebalance cycle every ${config.cycleIntervalMin}min (price poller handles out-of-range + emergency)`);
+  setInterval(runCycleForAllUsers, rebalanceIntervalMs);
 
   // Price poller
   let pricePollRunning = false;
@@ -642,7 +669,7 @@ async function main() {
     pricePollRunning = true;
     try {
       // Collect all valid configs across all users, keyed for dedup by chain+poolAddress
-      interface PollEntry { cfg: ActivePositionConfig; ctx: UserEngineContext; }
+      interface PollEntry { cfg: ActivePositionConfig; ctx: UserEngineContext; userId: string; }
       const poolGroups = new Map<string, PollEntry[]>();
 
       for (const [userId, ctx] of engineContexts.entries()) {
@@ -663,7 +690,7 @@ async function main() {
 
           const key = `${chain}:${cfg.poolAddress}`;
           if (!poolGroups.has(key)) poolGroups.set(key, []);
-          poolGroups.get(key)!.push({ cfg, ctx });
+          poolGroups.get(key)!.push({ cfg, ctx, userId });
         }
       }
 
@@ -688,7 +715,7 @@ async function main() {
             continue;
           }
 
-          for (const { cfg, ctx } of entries) {
+          for (const { cfg, ctx, userId } of entries) {
             poolPriceCache.set(cfg.tokenId, { price, updatedAt: Date.now() });
 
             // Convert Uniswap ratio (token1/token0) to USD price of the hedged token for display
@@ -700,18 +727,45 @@ async function main() {
             const displayStr = displayUsd !== null ? `$${displayUsd.toFixed(2)}` : `ratio ${price.toFixed(8)}`;
             priceLogger.info(`NFT #${cfg.tokenId} ${cfg.hedgeSymbol ?? ''} ${displayStr}`);
 
+            if (!ctx.rebalancer.fullState.positions[cfg.tokenId]) continue;
+
+            let triggerReason: string | null = null;
+
+            // Out-of-range check (requires tick config)
             if (cfg.tickLower !== undefined && cfg.tickUpper !== undefined) {
               const decimalAdj = cfg.token0Decimals! - cfg.token1Decimals!;
               const rawPrice = price / Math.pow(10, decimalAdj);
               const tickCurrent = Math.round(Math.log(rawPrice) / Math.log(1.0001));
-              const outOfRange = tickCurrent < cfg.tickLower || tickCurrent >= cfg.tickUpper;
+              if (tickCurrent < cfg.tickLower || tickCurrent >= cfg.tickUpper) {
+                triggerReason = `out of range (tick ${tickCurrent})`;
+              }
+            }
 
-              if (outOfRange && ctx.rebalancer.fullState.positions[cfg.tokenId]) {
-                logger.warn(`[PricePoller] NFT #${cfg.tokenId} out of range (tick ${tickCurrent}), triggering immediate cycle`);
+            // Emergency price movement check
+            if (!triggerReason) {
+              const ps = ctx.rebalancer.fullState.positions[cfg.tokenId];
+              const lastRebalancePrice = ps.lastRebalancePrice ?? 0;
+              const emergThreshold = cfg.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold;
+              if (lastRebalancePrice > 0) {
+                const movement = Math.abs(price - lastRebalancePrice) / lastRebalancePrice;
+                if (movement > emergThreshold) {
+                  triggerReason = `emergency: price moved ${(movement * 100).toFixed(2)}% from $${lastRebalancePrice.toFixed(4)}`;
+                }
+              }
+            }
+
+            if (triggerReason) {
+              if (cyclesInProgress.has(userId)) {
+                logger.warn(`[PricePoller] NFT #${cfg.tokenId} ${triggerReason} — cycle skipped (main cycle in progress)`);
+              } else {
+                logger.warn(`[PricePoller] NFT #${cfg.tokenId} ${triggerReason} — triggering immediate cycle`);
+                cyclesInProgress.add(userId);
                 const pollDex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
                 const pollReader = getOrCreateReader(ctx, chain, pollDex);
-                const position = await pollReader.readPosition(cfg.tokenId, cfg.poolAddress);
-                await ctx.rebalancer.cycle(cfg.tokenId, position);
+                pollReader.readPosition(cfg.tokenId, cfg.poolAddress)
+                  .then(position => ctx.rebalancer.cycle(cfg.tokenId, position))
+                  .catch(err => logger.error(`[PricePoller] Cycle error for NFT #${cfg.tokenId}: ${err}`))
+                  .finally(() => cyclesInProgress.delete(userId));
               }
             }
           }
@@ -723,6 +777,11 @@ async function main() {
       pricePollRunning = false;
     }
   }, PRICE_POLL_INTERVAL_MS);
+
+  // LP Read Cycle — usa LP_FREE_*_RPC_URL (sem Alchemy), stagger entre usuários
+  const lpReadIntervalMs = config.lpReadIntervalMin * 60_000;
+  logger.info(`[LpRead] Cycle every ${config.lpReadIntervalMin}min, ${config.lpReadInterUserDelayMs / 1000}s delay between users`);
+  setInterval(runLpReadForAllUsers, lpReadIntervalMs);
 }
 
 main().catch((err) => {

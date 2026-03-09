@@ -60,8 +60,29 @@ export const config = {
   get polygonHttpRpcUrls(): string[] { return parseRpcList(process.env.POLYGON_HTTP_RPC_URL); },
   get avaxHttpRpcUrls(): string[] { return parseRpcList(process.env.AVAX_HTTP_RPC_URL); },
   get hlL1HttpRpcUrls(): string[] { return parseRpcList(process.env.HL_L1_HTTP_RPC_URL); },
+
+  /**
+   * RPCs gratuitos dedicados a leituras de LP (positions, collect.staticCall).
+   * Se não configurados, o fallback é o provider principal (Alchemy).
+   * Formato: URL1,URL2,...
+   */
+  get lpFreeBaseRpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_BASE_RPC_URL); },
+  get lpFreeEthRpcUrls(): string[]  { return parseRpcList(process.env.LP_FREE_ETH_RPC_URL); },
+  get lpFreeBscRpcUrls(): string[]  { return parseRpcList(process.env.LP_FREE_BSC_RPC_URL); },
+  get lpFreeArbRpcUrls(): string[]  { return parseRpcList(process.env.LP_FREE_ARB_RPC_URL); },
+  get lpFreePolygonRpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_POLYGON_RPC_URL); },
+  get lpFreeAvaxRpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_AVAX_RPC_URL); },
+  get lpFreeHlL1RpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_HL_L1_RPC_URL); },
+
+  /** Intervalo do ciclo de leitura de LP via RPCs gratuitos (minutos). Default: 5. */
+  lpReadIntervalMin: numEnv('LP_READ_INTERVAL_MIN', 5),
+  /** Delay entre usuários no ciclo de LP para evitar rate-limit (ms). Default: 5000. */
+  lpReadInterUserDelayMs: numEnv('LP_READ_INTER_USER_DELAY_MS', 5000),
   get solanaHttpRpcUrl(): string {
-    return process.env.SOLANA_HTTP_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    if (process.env.SOLANA_HTTP_RPC_URL) return process.env.SOLANA_HTTP_RPC_URL;
+    const alchKey = process.env.ALCHEMY_API_KEY;
+    if (alchKey) return `https://solana-mainnet.g.alchemy.com/v2/${alchKey}`;
+    return 'https://api.mainnet-beta.solana.com';
   },
 
   /** Enable Multicall3 batching for EVM reads (default true) */
@@ -78,7 +99,8 @@ export const config = {
   // Gatilho por movimento de preço: dispara rebalance quando o preço se move X% desde o último rebalance
   // Emergency: movimento de preço maior, bypassa cooldown
   emergencyPriceMovementThreshold: numEnv('EMERGENCY_PRICE_MOVEMENT_THRESHOLD', 0.15),
-  blockThrottle: numEnv('BLOCK_THROTTLE', 10),
+  /** Intervalo do ciclo pesado (minutos). Default: 30. */
+  cycleIntervalMin: numEnv('CYCLE_INTERVAL_MIN', 30),
   positionCacheRefreshCycles: numEnv('POSITION_CACHE_REFRESH_CYCLES', 60),
 
   // Hyperliquid credentials (required when DRY_RUN=false)
