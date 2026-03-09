@@ -31,6 +31,7 @@ const ERC20_ABI = [
 const POSITION_MANAGER_V4_ABI = [
   'function getPoolAndPositionInfo(uint256 tokenId) view returns (tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bytes32 info)',
   'function getPositionLiquidity(uint256 tokenId) view returns (uint128 liquidity)',
+  'function ownerOf(uint256 tokenId) view returns (address)',
   'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
 ];
 
@@ -41,6 +42,18 @@ const STATE_VIEW_V4_ABI = [
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD', 'BUSD']);
 
 const MIN_POSITION_USD = 10;
+
+// Approximate block at which Uniswap V4 PositionManager was deployed per chain.
+// Used as fromBlock in Transfer event scans to stay within RPC range limits.
+const V4_DEPLOY_BLOCKS: Partial<Record<ChainId, number>> = {
+  'base':           23_000_000,
+  'eth':            21_500_000,
+  'bsc':            45_000_000,
+  'arbitrum':      290_000_000,
+  'polygon':        65_000_000,
+  'avalanche':      54_000_000,
+  'hyperliquid-l1': 0,
+};
 
 export class EvmScanner implements IWalletScanner {
   private readonly chain: ChainId;
@@ -124,9 +137,9 @@ export class EvmScanner implements IWalletScanner {
 
         const { poolKey, info } = await pm.getPoolAndPositionInfo(tokenId);
         const infoBig = BigInt(info as string);
-        const rawTickLower = Number((infoBig >> 8n) & 0xFFFFFFn);
+        const rawTickLower = Number(infoBig & 0xFFFFFFn);
         const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
-        const rawTickUpper = Number((infoBig >> 32n) & 0xFFFFFFn);
+        const rawTickUpper = Number((infoBig >> 24n) & 0xFFFFFFn);
         const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
 
         const poolId = ethers.keccak256(
@@ -175,7 +188,7 @@ export class EvmScanner implements IWalletScanner {
       p.getLogs({
         address: pmAddr,
         topics: [transferTopic, null, paddedWallet],
-        fromBlock: 0,
+        fromBlock: V4_DEPLOY_BLOCKS[this.chain] ?? 0,
         toBlock: 'latest',
       })
     );
@@ -213,27 +226,31 @@ export class EvmScanner implements IWalletScanner {
       const calls = tokenIds.flatMap(id => [
         buildCall3(pm, 'getPositionLiquidity', [id]),
         buildCall3(pm, 'getPoolAndPositionInfo', [id]),
+        buildCall3(pm, 'ownerOf', [id]),
       ]);
       const results = await multicall3(p, calls);
       const out: V4PosData[] = [];
 
       for (let i = 0; i < tokenIds.length; i++) {
-        const liquidityResult = results[i * 2];
-        const infoResult = results[i * 2 + 1];
-        if (!liquidityResult.success || !infoResult.success) continue;
+        const liquidityResult = results[i * 3];
+        const infoResult     = results[i * 3 + 1];
+        const ownerResult    = results[i * 3 + 2];
 
-        const liquidity = BigInt(
-          pm.interface.decodeFunctionResult('getPositionLiquidity', liquidityResult.returnData)[0],
-        );
+        const liquidity = decodeCall3Result<bigint>(pm, 'getPositionLiquidity', liquidityResult) ?? 0n;
         if (liquidity === 0n) continue;
+
+        const owner = decodeCall3Result<string>(pm, 'ownerOf', ownerResult);
+        if (!owner || owner.toLowerCase() !== walletAddress.toLowerCase()) continue;
+
+        if (!infoResult.success) continue;
 
         const decoded = pm.interface.decodeFunctionResult('getPoolAndPositionInfo', infoResult.returnData);
         const poolKey = decoded[0];
         const infoBig = BigInt(decoded[1]);
 
-        const rawTickLower = Number((infoBig >> 8n) & 0xFFFFFFn);
+        const rawTickLower = Number(infoBig & 0xFFFFFFn);
         const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
-        const rawTickUpper = Number((infoBig >> 32n) & 0xFFFFFFn);
+        const rawTickUpper = Number((infoBig >> 24n) & 0xFFFFFFn);
         const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
 
         const poolId = ethers.keccak256(
