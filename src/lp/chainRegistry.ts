@@ -5,6 +5,7 @@ export interface ChainDexAddresses {
   factoryV3?: string;
   initCodeHashV3?: string;
   positionManagerV4?: string;
+  poolManagerV4?: string;
   stateViewV4?: string;
 }
 
@@ -22,6 +23,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'base:uniswap-v4': {
     positionManagerV4: '0x7c5f5a4bbd8fd63184577525326123b519429bdc',
+    poolManagerV4:     '0x498581ff718922c3f8e6a244956af099b2652b2b',
     stateViewV4:       '0xa3c0c9b65bad0b08107aa264b0f3db444b867a71',
   },
   'base:aerodrome-cl': {
@@ -38,6 +40,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'eth:uniswap-v4': {
     positionManagerV4: '0x7C0f70Bff9B6aD84E2Ac21D4DC74FB4a5fFF86c',
+    poolManagerV4:     '0x000000000004444c5dc75cB358380D2e3dE08A90',
     stateViewV4:       '0x7ffe42c4a5deea5b0fec41c94c136cf115597227',
   },
   'eth:pancake-v3': {
@@ -56,6 +59,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'bsc:uniswap-v4': {
     positionManagerV4: '0x7a4a5c919ae2541aed11041a1aeee68f1287f95b',
+    poolManagerV4:     '0x28e2Ea090877bF75740558f6BFB36a5ffeEB8e97',
     stateViewV4:       '0xd13dd3d6e93f276fafc9db9e6bb47c1180aee0c4',
   },
   'bsc:pancake-v3': {
@@ -74,6 +78,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'arbitrum:uniswap-v4': {
     positionManagerV4: '0xd88f38f930b7952f2db2432cb002e7abbf3dd869',
+    poolManagerV4:     '0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32',
     stateViewV4:       '0x76fd297e2d437cd7f76d50f01afe6160f86e9990',
   },
   'arbitrum:pancake-v3': {
@@ -90,6 +95,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'polygon:uniswap-v4': {
     positionManagerV4: '0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9',
+    poolManagerV4:     '0x67366782805870060151383F4BbFF9B05dF34e60',
     stateViewV4:       '0x5ea1bd7974c8a611cbab0bdcafcb1d9cc9b3ba5a',
   },
   'polygon:pancake-v3': {
@@ -106,6 +112,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'avalanche:uniswap-v4': {
     positionManagerV4: '0xb74b1f14d2754acfcbbe1a221023a5cf50ab8acd',
+    poolManagerV4:     '0x06380C0a08AA5b7Fa2E2DFC4063CCBD68cDCE3ca',
     stateViewV4:       '0xc3c9e198c735a4b97e3e683f391ccbdd60b69286',
   },
 

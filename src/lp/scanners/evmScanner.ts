@@ -43,8 +43,8 @@ const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD'
 
 const MIN_POSITION_USD = 10;
 
-// Approximate block at which Uniswap V4 PositionManager was deployed per chain.
-// Used as fromBlock in Transfer event scans to stay within RPC range limits.
+// Approximate block at which Uniswap V4 contracts were deployed per chain.
+// Used as fromBlock in ModifyLiquidity event scans to avoid scanning from genesis.
 const V4_DEPLOY_BLOCKS: Partial<Record<ChainId, number>> = {
   'base':           23_000_000,
   'eth':            21_500_000,
@@ -176,135 +176,145 @@ export class EvmScanner implements IWalletScanner {
   private async scanV4(walletAddress: string): Promise<DiscoveredPosition[]> {
     const addresses = getChainDexAddresses(this.chain, this.dex);
     if (!addresses.positionManagerV4 || !addresses.stateViewV4) return [];
+    if (!addresses.poolManagerV4) {
+      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] poolManagerV4 not configured — V4 scan skipped. Add poolManagerV4 to chainRegistry.`);
+      return [];
+    }
+
     const fallback = getLpProvider(this.chain);
     const pmAddr = addresses.positionManagerV4;
     const svAddr = addresses.stateViewV4;
+    const poolMgrAddr = addresses.poolManagerV4;
 
-    // Round 1: ERC721 Transfer events where to = wallet — parallel chunked eth_getLogs
-    // Public RPCs limit eth_getLogs to 2k–50k blocks per request; chunk to 9k blocks and
-    // fetch LOG_CONCURRENCY chunks in parallel to keep total scan time under ~10s.
+    // Round 1: PoolManager.ModifyLiquidity events where sender = positionManagerV4
+    // Signature: ModifyLiquidity(bytes32 indexed id, address indexed sender,
+    //                            int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)
+    // - sender (topic[2]) = positionManagerV4 for all NFT-managed positions
+    // - salt = bytes32(tokenId) — encodes which NFT was modified
+    // - liquidityDelta: positive on mint/increase, negative on decrease/burn
+    // Summing liquidityDelta per tokenId gives current liquidity — far fewer events than Transfer.
     const LOG_CHUNK_SIZE = 9_000;
     const LOG_CONCURRENCY = 10;
-    const transferTopic = ethers.id('Transfer(address,address,uint256)');
-    const paddedWallet = ethers.zeroPadValue(walletAddress.toLowerCase(), 32);
+    const modifyTopic = ethers.id('ModifyLiquidity(bytes32,address,int24,int24,int256,bytes32)');
+    const paddedPm = ethers.zeroPadValue(pmAddr.toLowerCase(), 32);
 
     const currentBlock = await fallback.call(async (p) => p.getBlockNumber());
     const deployBlock = V4_DEPLOY_BLOCKS[this.chain] ?? 0;
 
-    // Build all chunk ranges upfront
     const chunks: Array<{ from: number; to: number }> = [];
     for (let from = deployBlock; from <= currentBlock; from += LOG_CHUNK_SIZE) {
       chunks.push({ from, to: Math.min(from + LOG_CHUNK_SIZE - 1, currentBlock) });
     }
 
-    const tokenIdSet = new Set<number>();
+    // Per-tokenId accumulated data from events
+    interface EventData { poolId: string; tickLower: number; tickUpper: number; liquidity: bigint; }
+    const tokenMap = new Map<number, EventData>();
 
-    // Fetch chunks in parallel batches of LOG_CONCURRENCY
+    const mlIface = new ethers.Interface([
+      'event ModifyLiquidity(bytes32 indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)',
+    ]);
+
     for (let i = 0; i < chunks.length; i += LOG_CONCURRENCY) {
       const batch = chunks.slice(i, i + LOG_CONCURRENCY);
       const batchResults = await Promise.all(
         batch.map(({ from, to }) =>
           fallback.call(async (p) =>
             p.getLogs({
-              address: pmAddr,
-              topics: [transferTopic, null, paddedWallet],
+              address: poolMgrAddr,
+              topics: [modifyTopic, null, paddedPm],
               fromBlock: from,
               toBlock: to,
             })
           ).catch(err => {
-            logger.warn(`[EvmScanner][${this.chain}:${this.dex}] getLogs chunk ${from}-${to} failed: ${err}`);
+            logger.warn(`[EvmScanner][${this.chain}:${this.dex}] ModifyLiquidity chunk ${from}-${to} failed: ${err}`);
             return [];
           })
         )
       );
       for (const logs of batchResults) {
         for (const log of logs) {
-          // Transfer(from, to, tokenId) — tokenId is topics[3] (3rd indexed param)
-          if (log.topics[3]) tokenIdSet.add(Number(BigInt(log.topics[3])));
+          try {
+            const parsed = mlIface.parseLog({ topics: log.topics as string[], data: log.data });
+            if (!parsed) continue;
+            const tokenId = Number(BigInt(parsed.args.salt as string));
+            const poolId = log.topics[1] as string;
+            const liquidityDelta = parsed.args.liquidityDelta as bigint;
+            const tickLower = Number(parsed.args.tickLower);
+            const tickUpper = Number(parsed.args.tickUpper);
+            const existing = tokenMap.get(tokenId);
+            if (existing) {
+              existing.liquidity = existing.liquidity + liquidityDelta;
+            } else {
+              tokenMap.set(tokenId, { poolId, tickLower, tickUpper, liquidity: liquidityDelta });
+            }
+          } catch { /* skip unparseable log */ }
         }
       }
     }
 
-    const tokenIds = [...tokenIdSet];
-    if (tokenIds.length === 0) return [];
-    logger.info(`[EvmScanner][${this.chain}:${this.dex}] Found ${tokenIds.length} Transfer-in events for ${walletAddress}`);
+    // Filter to tokenIds with positive net liquidity
+    const liveTokenIds = [...tokenMap.entries()]
+      .filter(([, d]) => d.liquidity > 0n)
+      .map(([id]) => id);
 
-    // Round 2: batch getPositionLiquidity + getPoolAndPositionInfo — 1 multicall
+    if (liveTokenIds.length === 0) return [];
+    logger.info(`[EvmScanner][${this.chain}:${this.dex}] Found ${liveTokenIds.length} live V4 positions from events`);
+
+    // Round 2: ownerOf + getPoolAndPositionInfo for all live tokenIds — 1 multicall
     interface V4PosData {
       tokenId: number;
-      currency0: string;
-      currency1: string;
-      fee: number;
-      tickSpacing: number;
-      hooks: string;
+      poolId: string;
       tickLower: number;
       tickUpper: number;
       liquidity: bigint;
-      poolId: string;
+      currency0: string;
+      currency1: string;
+      fee: number;
     }
 
-    const livePositions: V4PosData[] = await fallback.call(async (p) => {
+    const ownedPositions: V4PosData[] = await fallback.call(async (p) => {
       const pm = new ethers.Contract(pmAddr, POSITION_MANAGER_V4_ABI, p);
-      const calls = tokenIds.flatMap(id => [
-        buildCall3(pm, 'getPositionLiquidity', [id]),
-        buildCall3(pm, 'getPoolAndPositionInfo', [id]),
+      const calls = liveTokenIds.flatMap(id => [
         buildCall3(pm, 'ownerOf', [id]),
+        buildCall3(pm, 'getPoolAndPositionInfo', [id]),
       ]);
       const results = await multicall3(p, calls);
       const out: V4PosData[] = [];
 
-      for (let i = 0; i < tokenIds.length; i++) {
-        const liquidityResult = results[i * 3];
-        const infoResult     = results[i * 3 + 1];
-        const ownerResult    = results[i * 3 + 2];
-
-        const liquidity = decodeCall3Result<bigint>(pm, 'getPositionLiquidity', liquidityResult) ?? 0n;
-        if (liquidity === 0n) continue;
+      for (let i = 0; i < liveTokenIds.length; i++) {
+        const ownerResult = results[i * 2];
+        const infoResult  = results[i * 2 + 1];
 
         const owner = decodeCall3Result<string>(pm, 'ownerOf', ownerResult);
         if (!owner || owner.toLowerCase() !== walletAddress.toLowerCase()) continue;
 
         if (!infoResult.success) continue;
-
         const decoded = pm.interface.decodeFunctionResult('getPoolAndPositionInfo', infoResult.returnData);
         const poolKey = decoded[0];
-        const infoBig = BigInt(decoded[1]);
 
-        const rawTickLower = Number(infoBig & 0xFFFFFFn);
-        const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
-        const rawTickUpper = Number((infoBig >> 24n) & 0xFFFFFFn);
-        const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
-
-        const poolId = ethers.keccak256(
-          ethers.AbiCoder.defaultAbiCoder().encode(
-            ['address', 'address', 'uint24', 'int24', 'address'],
-            [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
-          )
-        );
-
+        const tokenId = liveTokenIds[i];
+        const data = tokenMap.get(tokenId)!;
         out.push({
-          tokenId: tokenIds[i],
+          tokenId,
+          poolId: data.poolId,
+          tickLower: data.tickLower,
+          tickUpper: data.tickUpper,
+          liquidity: data.liquidity,
           currency0: String(poolKey.currency0).toLowerCase(),
           currency1: String(poolKey.currency1).toLowerCase(),
           fee: Number(poolKey.fee),
-          tickSpacing: Number(poolKey.tickSpacing),
-          hooks: String(poolKey.hooks),
-          tickLower,
-          tickUpper,
-          liquidity,
-          poolId,
         });
       }
       return out;
     });
 
-    if (livePositions.length === 0) return [];
+    if (ownedPositions.length === 0) return [];
 
     // Round 3: token info for unknown tokens + slot0 for unique pools — 1 multicall
     const tokenAddrs = new Set<string>();
-    for (const pos of livePositions) { tokenAddrs.add(pos.currency0); tokenAddrs.add(pos.currency1); }
+    for (const pos of ownedPositions) { tokenAddrs.add(pos.currency0); tokenAddrs.add(pos.currency1); }
     const unknownTokens = [...tokenAddrs].filter(a => !getTokenCache(this.chain).has(a));
-    const uniquePoolIds = [...new Set(livePositions.map(p => p.poolId))];
+    const uniquePoolIds = [...new Set(ownedPositions.map(p => p.poolId))];
 
     const tickByPool = new Map<string, number>();
     await fallback.call(async (p) => {
@@ -317,7 +327,6 @@ export class EvmScanner implements IWalletScanner {
       const allCalls = [...tokenCalls, ...slotCalls];
       const results = await multicall3(p, allCalls);
 
-      // Parse token info
       const cache = getTokenCache(this.chain);
       for (let i = 0; i < unknownTokens.length; i++) {
         const c = new ethers.Contract(unknownTokens[i], ERC20_ABI, p);
@@ -325,8 +334,6 @@ export class EvmScanner implements IWalletScanner {
         const dec = decodeCall3Result<bigint>(c, 'decimals', results[i * 2 + 1]);
         cache.set(unknownTokens[i], { symbol: sym ?? 'UNKNOWN', decimals: dec !== null ? Number(dec) : 18 });
       }
-
-      // Parse slot0
       for (let i = 0; i < uniquePoolIds.length; i++) {
         const r = results[tokenCalls.length + i];
         if (!r.success) continue;
@@ -338,7 +345,7 @@ export class EvmScanner implements IWalletScanner {
     // Build DiscoveredPosition list
     const tokenCache = getTokenCache(this.chain);
     const discovered: DiscoveredPosition[] = [];
-    for (const pos of livePositions) {
+    for (const pos of ownedPositions) {
       const tickCurrent = tickByPool.get(pos.poolId);
       if (tickCurrent === undefined) continue;
       const t0 = tokenCache.get(pos.currency0) ?? { symbol: 'UNKNOWN', decimals: 18 };
