@@ -28,6 +28,16 @@ const ERC20_ABI = [
   'function symbol() view returns (string)',
 ];
 
+const POSITION_MANAGER_V4_ABI = [
+  'function getPoolAndPositionInfo(uint256 tokenId) view returns (tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bytes32 info)',
+  'function getPositionLiquidity(uint256 tokenId) view returns (uint128 liquidity)',
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+];
+
+const STATE_VIEW_V4_ABI = [
+  'function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)',
+];
+
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD', 'BUSD']);
 
 const MIN_POSITION_USD = 10;
@@ -46,10 +56,16 @@ export class EvmScanner implements IWalletScanner {
   }
 
   async scanWallet(walletAddress: string): Promise<DiscoveredPosition[]> {
+    if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') {
+      return this.scanV4(walletAddress);
+    }
     return this.scanV3(walletAddress);
   }
 
   async lookupById(id: PositionId): Promise<DiscoveredPosition | null> {
+    if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') {
+      return this.lookupByTokenIdV4(Number(id));
+    }
     return this.lookupByTokenId(Number(id));
   }
 
@@ -91,6 +107,211 @@ export class EvmScanner implements IWalletScanner {
       logger.info(`[EvmScanner][${this.chain}:${this.dex}] lookupById #${tokenId} failed: ${err}`);
       return null;
     }
+  }
+
+  private async lookupByTokenIdV4(tokenId: number): Promise<DiscoveredPosition | null> {
+    const addresses = getChainDexAddresses(this.chain, this.dex);
+    if (!addresses.positionManagerV4 || !addresses.stateViewV4) return null;
+    const fallback = getLpProvider(this.chain);
+
+    try {
+      return await fallback.call(async (p) => {
+        const pm = new ethers.Contract(addresses.positionManagerV4!, POSITION_MANAGER_V4_ABI, p);
+        const sv = new ethers.Contract(addresses.stateViewV4!, STATE_VIEW_V4_ABI, p);
+
+        const liquidity: bigint = BigInt(await pm.getPositionLiquidity(tokenId));
+        if (liquidity === 0n) return null;
+
+        const { poolKey, info } = await pm.getPoolAndPositionInfo(tokenId);
+        const infoBig = BigInt(info as string);
+        const rawTickLower = Number((infoBig >> 8n) & 0xFFFFFFn);
+        const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
+        const rawTickUpper = Number((infoBig >> 32n) & 0xFFFFFFn);
+        const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
+
+        const poolId = ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ['address', 'address', 'uint24', 'int24', 'address'],
+            [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
+          )
+        );
+
+        const [t0Info, t1Info, slot0] = await Promise.all([
+          this.getTokenInfo(p, poolKey.currency0),
+          this.getTokenInfo(p, poolKey.currency1),
+          sv.getSlot0(poolId),
+        ]);
+
+        const tickCurrent = Number(slot0.tick);
+        const dp = this.buildDiscoveredPosition(
+          tokenId,
+          String(poolKey.currency0).toLowerCase(), t0Info,
+          String(poolKey.currency1).toLowerCase(), t1Info,
+          Number(poolKey.fee),
+          tickLower, tickUpper, tickCurrent,
+          liquidity, poolId,
+        );
+        logger.info(`[EvmScanner][${this.chain}:${this.dex}] lookupByIdV4 #${tokenId}: ${t0Info.symbol}/${t1Info.symbol}`);
+        return dp;
+      });
+    } catch (err) {
+      logger.info(`[EvmScanner][${this.chain}:${this.dex}] lookupByIdV4 #${tokenId} failed: ${err}`);
+      return null;
+    }
+  }
+
+  private async scanV4(walletAddress: string): Promise<DiscoveredPosition[]> {
+    const addresses = getChainDexAddresses(this.chain, this.dex);
+    if (!addresses.positionManagerV4 || !addresses.stateViewV4) return [];
+    const fallback = getLpProvider(this.chain);
+    const pmAddr = addresses.positionManagerV4;
+    const svAddr = addresses.stateViewV4;
+
+    // Round 1: ERC721 Transfer events where to = wallet — eth_getLogs
+    const transferTopic = ethers.id('Transfer(address,address,uint256)');
+    const paddedWallet = ethers.zeroPadValue(walletAddress.toLowerCase(), 32);
+
+    const logs = await fallback.call(async (p) =>
+      p.getLogs({
+        address: pmAddr,
+        topics: [transferTopic, null, paddedWallet],
+        fromBlock: 0,
+        toBlock: 'latest',
+      })
+    );
+
+    // Collect unique tokenIds from Transfer-in events
+    const pmIface = new ethers.Interface(POSITION_MANAGER_V4_ABI);
+    const tokenIdSet = new Set<number>();
+    for (const log of logs) {
+      try {
+        const parsed = pmIface.parseLog({ topics: log.topics as string[], data: log.data });
+        if (parsed?.name === 'Transfer') tokenIdSet.add(Number(parsed.args.tokenId));
+      } catch { /* ignore unparseable logs */ }
+    }
+
+    const tokenIds = [...tokenIdSet];
+    if (tokenIds.length === 0) return [];
+    logger.info(`[EvmScanner][${this.chain}:${this.dex}] Found ${tokenIds.length} Transfer-in events for ${walletAddress}`);
+
+    // Round 2: batch getPositionLiquidity + getPoolAndPositionInfo — 1 multicall
+    interface V4PosData {
+      tokenId: number;
+      currency0: string;
+      currency1: string;
+      fee: number;
+      tickSpacing: number;
+      hooks: string;
+      tickLower: number;
+      tickUpper: number;
+      liquidity: bigint;
+      poolId: string;
+    }
+
+    const livePositions: V4PosData[] = await fallback.call(async (p) => {
+      const pm = new ethers.Contract(pmAddr, POSITION_MANAGER_V4_ABI, p);
+      const calls = tokenIds.flatMap(id => [
+        buildCall3(pm, 'getPositionLiquidity', [id]),
+        buildCall3(pm, 'getPoolAndPositionInfo', [id]),
+      ]);
+      const results = await multicall3(p, calls);
+      const out: V4PosData[] = [];
+
+      for (let i = 0; i < tokenIds.length; i++) {
+        const liquidityResult = results[i * 2];
+        const infoResult = results[i * 2 + 1];
+        if (!liquidityResult.success || !infoResult.success) continue;
+
+        const liquidity = BigInt(
+          pm.interface.decodeFunctionResult('getPositionLiquidity', liquidityResult.returnData)[0],
+        );
+        if (liquidity === 0n) continue;
+
+        const decoded = pm.interface.decodeFunctionResult('getPoolAndPositionInfo', infoResult.returnData);
+        const poolKey = decoded[0];
+        const infoBig = BigInt(decoded[1]);
+
+        const rawTickLower = Number((infoBig >> 8n) & 0xFFFFFFn);
+        const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
+        const rawTickUpper = Number((infoBig >> 32n) & 0xFFFFFFn);
+        const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
+
+        const poolId = ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ['address', 'address', 'uint24', 'int24', 'address'],
+            [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
+          )
+        );
+
+        out.push({
+          tokenId: tokenIds[i],
+          currency0: String(poolKey.currency0).toLowerCase(),
+          currency1: String(poolKey.currency1).toLowerCase(),
+          fee: Number(poolKey.fee),
+          tickSpacing: Number(poolKey.tickSpacing),
+          hooks: String(poolKey.hooks),
+          tickLower,
+          tickUpper,
+          liquidity,
+          poolId,
+        });
+      }
+      return out;
+    });
+
+    if (livePositions.length === 0) return [];
+
+    // Round 3: token info for unknown tokens + slot0 for unique pools — 1 multicall
+    const tokenAddrs = new Set<string>();
+    for (const pos of livePositions) { tokenAddrs.add(pos.currency0); tokenAddrs.add(pos.currency1); }
+    const unknownTokens = [...tokenAddrs].filter(a => !getTokenCache(this.chain).has(a));
+    const uniquePoolIds = [...new Set(livePositions.map(p => p.poolId))];
+
+    const tickByPool = new Map<string, number>();
+    await fallback.call(async (p) => {
+      const sv = new ethers.Contract(svAddr, STATE_VIEW_V4_ABI, p);
+      const tokenCalls = unknownTokens.flatMap(addr => {
+        const c = new ethers.Contract(addr, ERC20_ABI, p);
+        return [buildCall3(c, 'symbol', []), buildCall3(c, 'decimals', [])];
+      });
+      const slotCalls = uniquePoolIds.map(poolId => buildCall3(sv, 'getSlot0', [poolId]));
+      const allCalls = [...tokenCalls, ...slotCalls];
+      const results = await multicall3(p, allCalls);
+
+      // Parse token info
+      const cache = getTokenCache(this.chain);
+      for (let i = 0; i < unknownTokens.length; i++) {
+        const c = new ethers.Contract(unknownTokens[i], ERC20_ABI, p);
+        const sym = decodeCall3Result<string>(c, 'symbol', results[i * 2]);
+        const dec = decodeCall3Result<bigint>(c, 'decimals', results[i * 2 + 1]);
+        cache.set(unknownTokens[i], { symbol: sym ?? 'UNKNOWN', decimals: dec !== null ? Number(dec) : 18 });
+      }
+
+      // Parse slot0
+      for (let i = 0; i < uniquePoolIds.length; i++) {
+        const r = results[tokenCalls.length + i];
+        if (!r.success) continue;
+        const decoded = sv.interface.decodeFunctionResult('getSlot0', r.returnData);
+        tickByPool.set(uniquePoolIds[i], Number(decoded.tick));
+      }
+    });
+
+    // Build DiscoveredPosition list
+    const tokenCache = getTokenCache(this.chain);
+    const discovered: DiscoveredPosition[] = [];
+    for (const pos of livePositions) {
+      const tickCurrent = tickByPool.get(pos.poolId);
+      if (tickCurrent === undefined) continue;
+      const t0 = tokenCache.get(pos.currency0) ?? { symbol: 'UNKNOWN', decimals: 18 };
+      const t1 = tokenCache.get(pos.currency1) ?? { symbol: 'UNKNOWN', decimals: 18 };
+      const dp = this.buildDiscoveredPosition(
+        pos.tokenId, pos.currency0, t0, pos.currency1, t1, pos.fee,
+        pos.tickLower, pos.tickUpper, tickCurrent, pos.liquidity, pos.poolId,
+      );
+      if (dp.estimatedUsd >= MIN_POSITION_USD || dp.estimatedUsd === 0) discovered.push(dp);
+    }
+    logger.info(`[EvmScanner][${this.chain}:${this.dex}] Found ${discovered.length} active V4 positions`);
+    return discovered;
   }
 
   private async scanV3(walletAddress: string): Promise<DiscoveredPosition[]> {
