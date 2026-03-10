@@ -419,12 +419,29 @@
     }
 
     .range-badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
     }
-    .range-badge.in-range    { background: rgba(0,200,100,0.12); color: #00c864; }
-    .range-badge.above-range { background: rgba(255,180,0,0.12); color: #ffb400; }
-    .range-badge.below-range { background: rgba(255,80,80,0.12); color: #ff5050; }
+
+    .range-badge.in-range {
+      background: rgba(0, 200, 100, 0.12);
+      color: #00c864;
+    }
+
+    .range-badge.above-range {
+      background: rgba(255, 180, 0, 0.12);
+      color: #ffb400;
+    }
+
+    .range-badge.below-range {
+      background: rgba(255, 80, 80, 0.12);
+      color: #ff5050;
+    }
 
     /* ══════════════════════════════════════
    ACTIVE BANNER
@@ -839,7 +856,9 @@
       border-bottom: 1px solid var(--bd);
     }
 
-    .calc-result-table th:first-child { text-align: left; }
+    .calc-result-table th:first-child {
+      text-align: left;
+    }
 
     .calc-result-table td {
       padding: 5px 10px;
@@ -848,14 +867,20 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .calc-result-table td:first-child { text-align: left; color: var(--tx-dim); }
+    .calc-result-table td:first-child {
+      text-align: left;
+      color: var(--tx-dim);
+    }
 
     .calc-result-table tr.range-row td {
       background: rgba(245, 158, 11, 0.07);
       color: var(--amber);
     }
 
-    .calc-result-table tr.range-row td:first-child { color: var(--amber); font-weight: bold; }
+    .calc-result-table tr.range-row td:first-child {
+      color: var(--amber);
+      font-weight: bold;
+    }
 
     .calc-result-table tr.current-row td {
       color: var(--tx-dim);
@@ -884,10 +909,12 @@
       font-size: 1rem;
       color: var(--green);
     }
+
     .calc-field .t-in:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
+
     .range-pct-hint {
       font-size: 0.68rem;
       display: block;
@@ -911,111 +938,314 @@
       letter-spacing: 0.5px;
     }
 
-    .range-mode-btn:hover { color: var(--tx); background: var(--surface2); }
+    .range-mode-btn:hover {
+      color: var(--tx);
+      background: var(--surface2);
+    }
 
-    .range-mode-btn.active { background: var(--accent-dim); color: var(--accent); }
+    .range-mode-btn.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
 
     /* ===== SCANNER ===== */
-    .scanner-container { padding: 24px; max-width: 960px; }
+    .scanner-container {
+      padding: 24px;
+      max-width: 960px;
+    }
 
-    .scanner-subtabs { display: flex; gap: 4px; margin-bottom: 20px; }
+    .scanner-subtabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+    }
+
     .scanner-subtab {
-      padding: 8px 24px; border: 1px solid var(--border);
-      background: transparent; color: var(--text-dim);
-      cursor: pointer; border-radius: 4px; font-size: 12px; font-weight: 600;
-      letter-spacing: 0.05em; text-transform: uppercase;
+      padding: 8px 24px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
     }
-    .scanner-subtab.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
-    .scanner-input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .scanner-subtab.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+
+    .scanner-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
     .scanner-wallet-input {
-      flex: 1; padding: 10px 14px; background: var(--card-bg);
-      border: 1px solid var(--border); border-radius: 4px;
-      color: var(--text); font-family: monospace; font-size: 13px;
+      flex: 1;
+      padding: 10px 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 13px;
     }
-    .scanner-wallet-input:focus { outline: none; border-color: var(--accent); }
+
+    .scanner-wallet-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
     .scanner-scan-btn {
-      padding: 10px 28px; background: var(--accent); color: #000;
-      border: none; border-radius: 4px; font-weight: 700;
-      letter-spacing: 0.08em; cursor: pointer; font-size: 12px;
+      padding: 10px 28px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      font-size: 12px;
     }
-    .scanner-scan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    .scanner-progress { margin-bottom: 12px; }
-    .scanner-progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 6px; }
-    .scanner-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.2s; width: 0%; }
-    #scanner-progress-text { font-size: 11px; color: var(--text-dim); }
+    .scanner-scan-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
 
-    .scanner-last-update { font-size: 11px; color: var(--text-dim); margin-bottom: 16px; }
-    .scanner-empty { color: var(--text-dim); font-size: 13px; padding: 32px 0; }
+    .scanner-progress {
+      margin-bottom: 12px;
+    }
 
-    .scanner-table { width: 100%; border-collapse: collapse; }
+    .scanner-progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-bottom: 6px;
+    }
+
+    .scanner-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.2s;
+      width: 0%;
+    }
+
+    #scanner-progress-text {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .scanner-last-update {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    .scanner-empty {
+      color: var(--text-dim);
+      font-size: 13px;
+      padding: 32px 0;
+    }
+
+    .scanner-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
     .scanner-table th {
-      text-align: left; font-size: 11px; color: var(--text-dim);
-      text-transform: uppercase; letter-spacing: 0.05em;
-      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      text-align: left;
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
     }
-    .scanner-table td { padding: 12px; border-bottom: 1px solid var(--border-dim, #222); font-size: 13px; }
-    .scanner-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .scanner-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border-dim, #222);
+      font-size: 13px;
+    }
+
+    .scanner-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
 
     .btn-protect {
-      padding: 6px 16px; background: var(--accent); color: #000;
-      border: none; border-radius: 3px; font-size: 11px; font-weight: 700;
-      cursor: pointer; letter-spacing: 0.05em;
+      padding: 6px 16px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.05em;
     }
+
     .badge-protected {
-      display: inline-block; padding: 4px 10px;
-      background: rgba(0,200,100,0.12); color: #00c864;
-      border-radius: 3px; font-size: 11px; font-weight: 600;
+      display: inline-block;
+      padding: 4px 10px;
+      background: rgba(0, 200, 100, 0.12);
+      color: #00c864;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
     }
 
     /* Modal */
     .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-      display: flex; align-items: center; justify-content: center; z-index: 1000;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
     }
+
     .modal-box {
-      background: var(--card-bg, #1a1a1a); border: 1px solid var(--border);
-      border-radius: 8px; width: 420px; max-width: 95vw;
+      background: var(--card-bg, #1a1a1a);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      width: 420px;
+      max-width: 95vw;
     }
+
     .modal-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 16px 20px; border-bottom: 1px solid var(--border);
-      font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .modal-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; }
-    .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .modal-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
     .modal-info-row {
-      display: flex; justify-content: space-between;
-      font-size: 12px; color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-dim);
     }
-    .modal-info-row span:last-child { color: var(--text); font-weight: 500; }
-    .modal-divider { border-top: 1px solid var(--border); }
-    .modal-field { display: flex; flex-direction: column; gap: 6px; }
-    .modal-field label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
-    .modal-field input, .modal-field select {
-      padding: 8px 10px; background: var(--bg, #111); border: 1px solid var(--border);
-      border-radius: 4px; color: var(--text); font-size: 13px;
+
+    .modal-info-row span:last-child {
+      color: var(--text);
+      font-weight: 500;
     }
-    .modal-field-inline { flex-direction: row; align-items: center; justify-content: space-between; }
-    .hedge-size-row { display: flex; align-items: center; gap: 6px; }
-    .hedge-size-row input { width: 80px; }
+
+    .modal-divider {
+      border-top: 1px solid var(--border);
+    }
+
+    .modal-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .modal-field label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .modal-field input,
+    .modal-field select {
+      padding: 8px 10px;
+      background: var(--bg, #111);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .modal-field-inline {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .hedge-size-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hedge-size-row input {
+      width: 80px;
+    }
+
     .hedge-mode-btn {
-      padding: 4px 10px; background: transparent; border: 1px solid var(--border);
-      color: var(--text-dim); cursor: pointer; border-radius: 3px; font-size: 11px; font-weight: 600;
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      cursor: pointer;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
     }
-    .hedge-mode-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+    .hedge-mode-btn.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+
     .modal-footer {
-      display: flex; justify-content: flex-end; gap: 10px;
-      padding: 16px 20px; border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
     }
+
     .btn-primary {
-      padding: 8px 20px; background: var(--accent); color: #000;
-      border: none; border-radius: 4px; font-weight: 700; cursor: pointer; font-size: 12px;
+      padding: 8px 20px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 12px;
     }
+
     .btn-secondary {
-      padding: 8px 20px; background: transparent; color: var(--text-dim);
-      border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px;
+      padding: 8px 20px;
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
     }
   </style>
 </head>
@@ -1031,7 +1261,8 @@
     </div>
     <div class="hdr-right">
       <span>UPTIME <span id="uptime">--</span></span>
-      <button class="btn" onclick="logout()" style="font-size:0.72rem;padding:4px 10px;letter-spacing:1px;color:var(--tx-dim);">[LOGOUT]</button>
+      <button class="btn" onclick="logout()"
+        style="font-size:0.72rem;padding:4px 10px;letter-spacing:1px;color:var(--tx-dim);">[LOGOUT]</button>
       <div class="conn-row">
         <span class="dot" id="connDot"></span>
         <span id="connStatus">CONNECTING</span>
@@ -1058,49 +1289,6 @@
 
       <!-- ── PAGE: MONITOR ─────────────────────────────────────── -->
       <div id="page-monitor">
-
-        <!-- Position Discovery -->
-        <div class="panel" style="margin-bottom:10px;">
-          <div class="panel-title">Position Discovery</div>
-          <div style="display:flex;gap:8px;margin-bottom:6px;">
-            <select id="chain-select" onchange="onChainChange()" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;">
-              <option value="base">Base</option>
-              <option value="eth">Ethereum</option>
-              <option value="bsc">BSC</option>
-              <option value="arbitrum">Arbitrum</option>
-              <option value="polygon">Polygon</option>
-              <option value="avalanche">Avalanche</option>
-              <option value="hyperliquid-l1">Hyperliquid L1</option>
-              <option value="solana">Solana</option>
-            </select>
-            <select id="dex-select" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;"></select>
-          </div>
-          <div class="irow">
-            <input id="walletInput" type="text" class="t-in" placeholder="0x… wallet address" autocomplete="off"
-              spellcheck="false" />
-            <button id="scanBtn" class="btn">SCAN</button>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:6px;margin-bottom:6px;">
-            <select id="chain-select-lookup" onchange="onChainChangeLookup()" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;">
-              <option value="base">Base</option>
-              <option value="eth">Ethereum</option>
-              <option value="bsc">BSC</option>
-              <option value="arbitrum">Arbitrum</option>
-              <option value="polygon">Polygon</option>
-              <option value="avalanche">Avalanche</option>
-              <option value="hyperliquid-l1">Hyperliquid L1</option>
-              <option value="solana">Solana</option>
-            </select>
-            <select id="dex-select-lookup" style="flex:1;padding:6px 8px;background:#1a1a2e;border:1px solid #333;color:#e0e0e0;border-radius:4px;"></select>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="dr-lbl" style="white-space:nowrap;font-size:11px;color:#94a3b8;">NFT not found?</span>
-            <input id="tokenIdInput" type="number" class="t-in" placeholder="Enter NFT token ID manually" style="flex:1;" />
-            <button id="lookupBtn" class="btn" style="white-space:nowrap;">LOOKUP</button>
-          </div>
-          <div id="scanStatus" class="status-line"></div>
-          <div id="positionList" class="position-list" style="display:none;"></div>
-        </div>
 
         <!-- TABS CONTAINER -->
         <div id="tabsContainer" class="tabs-container" style="display:none;"></div>
@@ -1170,7 +1358,9 @@
                 </tr>
               </thead>
               <tbody id="historyBody">
-                <tr><td colspan="9" class="empty-msg">Nenhuma posição encerrada ainda.</td></tr>
+                <tr>
+                  <td colspan="9" class="empty-msg">Nenhuma posição encerrada ainda.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1270,11 +1460,12 @@
             <div id="credStatus" class="status-line"></div>
             <div id="credForm">
               <div class="irow">
-                <input id="hlWalletInput" type="text" class="t-in" placeholder="Master wallet address (trading account)" autocomplete="off"
-                  spellcheck="false" />
+                <input id="hlWalletInput" type="text" class="t-in" placeholder="Master wallet address (trading account)"
+                  autocomplete="off" spellcheck="false" />
               </div>
               <div class="irow">
-                <input id="hlKeyInput" type="password" class="t-in" placeholder="Private key (master or API agent)" autocomplete="new-password" />
+                <input id="hlKeyInput" type="password" class="t-in" placeholder="Private key (master or API agent)"
+                  autocomplete="new-password" />
                 <button id="saveCredBtn" class="btn">GO LIVE</button>
               </div>
               <div id="signerHint" style="font-size:0.72rem;color:var(--tx-dim);margin-top:4px;min-height:14px;"></div>
@@ -1287,23 +1478,32 @@
             <ul class="api-steps">
               <li class="api-step">
                 <span class="api-step-num">1</span>
-                <span>Acesse <a href="https://app.hyperliquid.xyz/API" target="_blank" rel="noopener">app.hyperliquid.xyz/API</a> e conecte sua carteira principal de trading.</span>
+                <span>Acesse <a href="https://app.hyperliquid.xyz/API" target="_blank"
+                    rel="noopener">app.hyperliquid.xyz/API</a> e conecte sua carteira principal de trading.</span>
               </li>
               <li class="api-step">
                 <span class="api-step-num">2</span>
-                <span>Clique em <strong style="color:var(--tx);">Generate API Key</strong> para criar uma carteira agente. Copie a chave privada exibida — ela é mostrada apenas uma vez.</span>
+                <span>Clique em <strong style="color:var(--tx);">Generate API Key</strong> para criar uma carteira
+                  agente. Copie a chave privada exibida — ela é mostrada apenas uma vez.</span>
               </li>
               <li class="api-step">
                 <span class="api-step-num">3</span>
-                <span>Cole a chave privada no campo <em style="color:var(--tx);">Private key</em> ao lado. No campo <em style="color:var(--tx);">Master wallet address</em>, informe o endereço da sua <strong style="color:var(--amber);">carteira principal de trading</strong> — <strong style="color:var(--red);">não</strong> o endereço gerado pela API.</span>
+                <span>Cole a chave privada no campo <em style="color:var(--tx);">Private key</em> ao lado. No campo <em
+                    style="color:var(--tx);">Master wallet address</em>, informe o endereço da sua <strong
+                    style="color:var(--amber);">carteira principal de trading</strong> — <strong
+                    style="color:var(--red);">não</strong> o endereço gerado pela API.</span>
               </li>
               <li class="api-step">
                 <span class="api-step-num">4</span>
-                <span>Clique em <strong style="color:var(--accent);">GO LIVE</strong>. O bot sairá do modo simulado e passará a operar de verdade na Hyperliquid.</span>
+                <span>Clique em <strong style="color:var(--accent);">GO LIVE</strong>. O bot sairá do modo simulado e
+                  passará a operar de verdade na Hyperliquid.</span>
               </li>
             </ul>
             <div class="api-note">
-              <strong style="color:var(--tx);">Carteira agente vs. carteira principal:</strong> A chave privada gerada na Hyperliquid pertence a uma <em>carteira agente</em> temporária — ela assina as ordens, mas não guarda fundos. Sua carteira principal (Master wallet) é a conta onde ficam seus saldos e posições. Insira sempre o endereço da carteira principal no campo correspondente.
+              <strong style="color:var(--tx);">Carteira agente vs. carteira principal:</strong> A chave privada gerada
+              na Hyperliquid pertence a uma <em>carteira agente</em> temporária — ela assina as ordens, mas não guarda
+              fundos. Sua carteira principal (Master wallet) é a conta onde ficam seus saldos e posições. Insira sempre
+              o endereço da carteira principal no campo correspondente.
             </div>
           </div>
 
@@ -1320,14 +1520,8 @@
           </div>
 
           <div class="scanner-input-row">
-            <input
-              type="text"
-              id="scanner-wallet-input"
-              class="scanner-wallet-input"
-              placeholder="0x... ou endereço Solana"
-              autocomplete="off"
-              spellcheck="false"
-            />
+            <input type="text" id="scanner-wallet-input" class="scanner-wallet-input"
+              placeholder="0x... ou endereço Solana" autocomplete="off" spellcheck="false" />
             <button class="scanner-scan-btn" id="scanner-scan-btn" onclick="startScan()">SCAN</button>
           </div>
 
@@ -1387,9 +1581,11 @@
             <div class="modal-field">
               <label>Hedge Size</label>
               <div class="hedge-size-row">
-                <button class="hedge-mode-btn active" id="pm-btn-auto" onclick="setScannerHedgeMode('auto')">AUTO</button>
-                <button class="hedge-mode-btn" id="pm-btn-manual" onclick="setScannerHedgeMode('manual')">MANUAL</button>
-                <input type="number" id="pm-hedge-pct" min="0" max="200" step="1" value="100" />
+                <button class="hedge-mode-btn active" id="pm-btn-auto"
+                  onclick="setScannerHedgeMode('auto')">AUTO</button>
+                <button class="hedge-mode-btn" id="pm-btn-manual"
+                  onclick="setScannerHedgeMode('manual')">MANUAL</button>
+                <input type="number" id="pm-hedge-pct" min="0" max="500" step="1" value="100" />
                 <span>%</span>
               </div>
             </div>
@@ -1407,7 +1603,7 @@
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" onclick="closeProtectModal()">CANCELAR</button>
-            <button class="btn-primary" onclick="submitProtection()">ATIVAR PROTEÇÃO</button>
+            <button id="pm-submit-btn" class="btn-primary" onclick="submitProtection()">ATIVAR PROTEÇÃO</button>
           </div>
         </div>
       </div>
@@ -1860,7 +2056,7 @@
         fetch('/api/rebalances').then(function (r) { return r.json(); }).then(function (data) {
           allRebalances = Array.isArray(data) ? data : [];
           renderRebalances();
-        }).catch(function () {});
+        }).catch(function () { });
       }
 
       let bootTime = null;
@@ -1893,159 +2089,6 @@
         });
       }, 1000);
 
-      var discoveredPositions = [];
-
-      window.toggleConfig = function (index) {
-        var p = discoveredPositions[index];
-        var panel = $('cfg-' + p.tokenId);
-        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
-      }
-
-      function renderPositionList(positions) {
-        var list = $('positionList');
-        if (positions.length === 0) {
-          list.innerHTML = '<div class="empty-msg">No Uniswap V3/V4 positions found.</div>';
-          list.style.display = 'flex';
-          return;
-        }
-        list.innerHTML = positions.map(function (p, i) {
-          var isActive = activePositionsConfig[p.tokenId] != null;
-          var verLabel = p.protocolVersion ? p.protocolVersion.toUpperCase() : 'V3';
-          return '<div class="position-item' + (isActive ? ' active-position' : '') + '">' +
-            '<div class="pos-info">' +
-            '<div class="pos-title"><span class="ver-pill">' + verLabel + '</span> NFT #' + p.tokenId +
-            ' &nbsp; ' + p.token0Symbol + '/' + p.token1Symbol +
-            ' &nbsp; <span class="range-badge ' + p.rangeStatus + '">' + p.rangeStatus + '</span>' +
-            '</div>' +
-            '<div class="pos-detail">' +
-            p.token0AmountFormatted.toFixed(4) + ' ' + p.token0Symbol +
-            ' + ' + p.token1AmountFormatted.toFixed(4) + ' ' + p.token1Symbol +
-            ' · fee ' + (p.fee / 10000).toFixed(2) + '%' +
-            '</div>' +
-            '</div>' +
-            '<div class="pos-usd">~' + fmtUsd(p.estimatedUsd) + '</div>' +
-            (isActive
-              ? '<span class="active-badge">● ACTIVE</span>'
-              : '<button class="btn btn-blue" onclick="toggleConfig(' + i + ')">CONFIGURE</button>'
-            ) +
-            '</div>' +
-            (isActive ? '' :
-              '<div class="config-panel" id="cfg-' + p.tokenId + '" style="display:none;">' +
-              '<div class="irow"><label>Hedge Ratio (%): <span class="range-mode-toggle" id="hr-toggle-' + p.tokenId + '"><span class="range-mode-btn active" onclick="setHrMode(\'' + p.tokenId + '\',\'manual\',this)">MANUAL</span><span class="range-mode-btn" onclick="setHrMode(\'' + p.tokenId + '\',\'auto\',this)">AUTO</span></span></label><input type="number" step="0.01" id="cfg-ratio-' + p.tokenId + '" value="0.8" class="t-in"></div>' +
-              '<div id="cfg-auto-hint-' + p.tokenId + '" style="display:none;font-size:11px;color:#888;padding:2px 0 4px 0;line-height:1.5;"></div>' +
-              '<div class="irow"><label>Cooldown (min):</label> <input type="number" id="cfg-int-' + p.tokenId + '" value="240" class="t-in"></div>' +
-              '<div class="irow"><label>Price Move %:</label> <input type="number" step="0.01" id="cfg-ept-' + p.tokenId + '" value="0.15" class="t-in"></div>' +
-              '<button class="btn btn-blue" onclick="activatePosition(' + i + ')" style="margin-top:4px;">START PROTECTION</button>' +
-              '</div>');
-        }).join('');
-        list.style.display = 'flex';
-      }
-
-      window.activatePosition = function (index) {
-        var p = discoveredPositions[index];
-        if (!p) return;
-
-        var hedgeRatio = parseFloat($('cfg-ratio-' + p.tokenId).value) || 0;
-        var timeRebal = parseFloat($('cfg-int-' + p.tokenId).value) || 0;
-        var ept = parseFloat($('cfg-ept-' + p.tokenId).value) || 0;
-
-        if (!confirm(
-          'Activate delta-neutral protection for ' + (p.protocolVersion || 'V3').toUpperCase() + ' NFT #' + p.tokenId + '?\n\n' +
-          'Protecting ' + (hedgeRatio * 100) + '%.\n\n' +
-          'This will capture current LP and HL equity as the PnL baseline.'
-        )) return;
-        $('scanStatus').textContent = 'Activating NFT #' + p.tokenId + '...';
-
-        fetch('/api/activate-position', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tokenId: p.tokenId,
-            protocolVersion: p.protocolVersion || 'v3',
-            poolAddress: p.poolAddress,
-            chain: p.chain,
-            dex: p.dex,
-            token0Symbol: p.token0Symbol, token1Symbol: p.token1Symbol,
-            fee: p.fee,
-            tickLower: p.tickLower,
-            tickUpper: p.tickUpper,
-            hedgeRatio: hedgeRatio,
-            cooldownSeconds: Math.round(timeRebal * 60),
-            emergencyPriceMovementThreshold: ept
-          }),
-        }).then(function (r) { return r.json(); }).then(function (data) {
-          if (data.queued)
-            $('scanStatus').textContent = 'Activation sent — waiting for confirmation...';
-          else
-            $('scanStatus').textContent = 'Activation error: ' + (data.error || 'unknown');
-        }).catch(function () {
-          $('scanStatus').textContent = 'Activation request failed (network error).';
-        });
-      };
-
-      // ── Auto Hedge Ratio calculation for activation form ────────────────
-      var _hrModes = {};
-      var _STABLE_SYMS = ['USDC','USDT','DAI','BUSD','FDUSD','FRAX','LUSD','CRVUSD','PYUSD','USDS','USDE','TUSD'];
-
-      function _tickRangeToUsd(p) {
-        var d0 = p.token0Decimals != null ? p.token0Decimals : 18;
-        var d1 = p.token1Decimals != null ? p.token1Decimals : 18;
-        var decAdj = Math.pow(10, d0 - d1);
-        var rawLo = Math.pow(1.0001, p.tickLower) * decAdj;
-        var rawHi = Math.pow(1.0001, p.tickUpper) * decAdj;
-        // If token0 is a stablecoin, tick price = stablecoin/volatile → invert to get USD price of volatile
-        if (_STABLE_SYMS.indexOf((p.token0Symbol || '').toUpperCase()) >= 0) {
-          return { Pa: 1 / rawHi, Pb: 1 / rawLo };
-        }
-        return { Pa: rawLo, Pb: rawHi };
-      }
-
-      function _calcHedgeRatio(Pa, Pb, P) {
-        if (!(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb || P < Pa || P > Pb) return null;
-        var sPa = Math.sqrt(Pa), sPb = Math.sqrt(Pb), sP = Math.sqrt(P);
-        var denom = sP * (sPb - sP) / sPb + sP - sPa;
-        if (denom <= 0) return null;
-        var L = 1 / denom; // V cancels in the ratio; use V=1
-        var lpValUp = L * (sPb - sPa);
-        var lpValDn = L * (1 / sPa - 1 / sPb) * Pa;
-        var H = (lpValUp - lpValDn) * P / (Pb - Pa);
-        var xTokens = L * (1 / sP - 1 / sPb);
-        if (xTokens <= 0) return null;
-        return Math.max(0, H / (xTokens * P));
-      }
-
-      window.setHrMode = function(tokenId, mode, el) {
-        _hrModes[tokenId] = mode;
-        var toggle = document.getElementById('hr-toggle-' + tokenId);
-        toggle.querySelectorAll('.range-mode-btn').forEach(function(b) { b.classList.remove('active'); });
-        el.classList.add('active');
-        var ratioInput = document.getElementById('cfg-ratio-' + tokenId);
-        var hintEl = document.getElementById('cfg-auto-hint-' + tokenId);
-        if (mode === 'auto') {
-          ratioInput.disabled = true;
-          var p = discoveredPositions.find(function(pos) { return String(pos.tokenId) === String(tokenId); });
-          if (p) {
-            var range = _tickRangeToUsd(p);
-            var ratio = _calcHedgeRatio(range.Pa, range.Pb, p.price);
-            if (ratio !== null) {
-              ratioInput.value = ratio.toFixed(4);
-              hintEl.style.color = '#888';
-              hintEl.innerHTML = 'Pa: $' + range.Pa.toFixed(4) + ' &nbsp;·&nbsp; Pb: $' + range.Pb.toFixed(4) + ' &nbsp;·&nbsp; P: $' + p.price.toFixed(4);
-            } else {
-              ratioInput.value = '';
-              hintEl.style.color = '#f66';
-              hintEl.textContent = 'Preço atual fora do range — não é possível calcular.';
-            }
-            hintEl.style.display = '';
-          }
-        } else {
-          ratioInput.disabled = false;
-          ratioInput.value = '0.8';
-          hintEl.style.display = 'none';
-        }
-      };
-      // ────────────────────────────────────────────────────────────────────
-
       window.switchTab = function (tokenId) {
         activeTokenId = tokenId;
         renderTabs();
@@ -2067,63 +2110,6 @@
           return '<div class="tab-btn ' + (activeTokenId == tid ? 'active' : '') + '" onclick="switchTab(' + tid + ')">NFT #' + tid + ' Chart</div>';
         }).join('');
       }
-
-      $('scanBtn').addEventListener('click', function () {
-        var addr = $('walletInput').value.trim();
-        var scanChain = document.getElementById('chain-select').value;
-        var validAddr = scanChain === 'solana'
-          ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)
-          : /^0x[0-9a-fA-F]{40}$/.test(addr);
-        if (!validAddr) {
-          $('scanStatus').textContent = scanChain === 'solana'
-            ? 'Enter a valid Solana wallet address (base58).'
-            : 'Enter a valid 0x wallet address.';
-          return;
-        }
-        $('scanBtn').disabled = true;
-        $('scanStatus').textContent = 'Scanning…';
-        $('positionList').style.display = 'none';
-        fetch('/api/scan-wallet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ walletAddress: addr, chain: document.getElementById('chain-select').value, dex: document.getElementById('dex-select').value }),
-        }).then(r => r.json()).then(function (data) {
-          $('scanBtn').disabled = false;
-          if (data.error) { $('scanStatus').textContent = 'Error: ' + data.error; return; }
-          discoveredPositions = data.positions || [];
-          $('scanStatus').textContent = 'Found ' + discoveredPositions.length + ' position(s).';
-          renderPositionList(discoveredPositions);
-        }).catch(function () {
-          $('scanBtn').disabled = false;
-          $('scanStatus').textContent = 'Scan failed — check connection.';
-        });
-      });
-
-      $('lookupBtn').addEventListener('click', function () {
-        var raw = $('tokenIdInput').value.trim();
-        var tokenId = parseInt(raw, 10);
-        if (isNaN(tokenId) || tokenId <= 0) {
-          $('scanStatus').textContent = 'Enter a valid NFT token ID.';
-          return;
-        }
-        $('lookupBtn').disabled = true;
-        $('scanStatus').textContent = 'Looking up NFT #' + tokenId + '…';
-        $('positionList').style.display = 'none';
-        fetch('/api/lookup-position', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokenId: tokenId, chain: document.getElementById('chain-select-lookup').value, dex: document.getElementById('dex-select-lookup').value }),
-        }).then(r => r.json()).then(function (data) {
-          $('lookupBtn').disabled = false;
-          if (data.error) { $('scanStatus').textContent = 'Not found: ' + data.error; return; }
-          discoveredPositions = [data.position];
-          $('scanStatus').textContent = 'Found NFT #' + tokenId + '.';
-          renderPositionList(discoveredPositions);
-        }).catch(function () {
-          $('lookupBtn').disabled = false;
-          $('scanStatus').textContent = 'Lookup failed — check connection.';
-        });
-      });
 
       function showCredentialsStatus(walletAddress) {
         $('credStatus').textContent = '● LIVE  ' + walletAddress;
@@ -2247,20 +2233,8 @@
             if (!activeTokenId) activeTokenId = r.tokenId;
             renderTabs();
             renderAllMetrics();
-
-            $('scanStatus').textContent =
-              'NFT #' + r.tokenId + ' activated. LP: ' + fmtUsd(r.initialLpUsd) +
-              ' | HL: ' + fmtUsd(r.initialHlUsd);
-            renderPositionList(discoveredPositions);
             if (currentPage === 'history') renderActivePositionsInHistory();
-          } else {
-            $('scanStatus').textContent = 'Activation failed: ' + (r.error || 'unknown');
           }
-        });
-
-        es.addEventListener('positionsDiscovered', function (e) {
-          discoveredPositions = JSON.parse(e.data);
-          if ($('positionList').style.display !== 'none') renderPositionList(discoveredPositions);
         });
 
         es.addEventListener('credentialsUpdated', function (e) {
@@ -2389,7 +2363,7 @@
 
         rebalanceExpanded[tokenId] = cacheKey;
         var row = document.getElementById('hist-row-' + tokenId) ||
-                  document.getElementById('active-row-' + tokenId);
+          document.getElementById('active-row-' + tokenId);
         if (!row) return;
 
         function insertPanel(rows) {
@@ -2459,7 +2433,7 @@
           var pnlPctSign = pnlPct != null && pnlPct >= 0 ? '+' : '';
           var pnlCell = pnlUsd != null
             ? '<span style="color:' + pnlColor + ';">' + pnlSign + fmtUsd(pnlUsd) +
-              ' <span style="font-size:0.72rem;">(' + pnlPctSign + fmt(pnlPct, 2) + '%)</span></span>'
+            ' <span style="font-size:0.72rem;">(' + pnlPctSign + fmt(pnlPct, 2) + '%)</span></span>'
             : '--';
           var isExpA = !!rebalanceExpanded[tid];
           var activeOnclick = tid + ', 12' + (cfg.activationId ? ', \'' + cfg.activationId + '\'' : '');
@@ -2638,489 +2612,568 @@
       window.addEventListener('resize', drawChart);
     })();
 
-// ── HEDGE CALCULATOR ─────────────────────────────────────
-(function () {
-  var paModeState = 'usd';
-  var pbModeState = 'usd';
-  var hedgeModeState = 'manual';
+    // ── HEDGE CALCULATOR ─────────────────────────────────────
+    (function () {
+      var paModeState = 'usd';
+      var pbModeState = 'usd';
+      var hedgeModeState = 'manual';
 
-  window.setRangeMode = function (field, mode, el) {
-    if (field === 'pa') paModeState = mode;
-    else pbModeState = mode;
-    var toggle = document.getElementById(field + '-mode-toggle');
-    toggle.querySelectorAll('.range-mode-btn').forEach(function (btn) { btn.classList.remove('active'); });
-    el.classList.add('active');
-    var input = document.getElementById('calc-' + field);
-    input.value = '';
-    input.placeholder = mode === 'pct' ? '10' : (field === 'pa' ? '2400' : '3200');
-  };
+      window.setRangeMode = function (field, mode, el) {
+        if (field === 'pa') paModeState = mode;
+        else pbModeState = mode;
+        var toggle = document.getElementById(field + '-mode-toggle');
+        toggle.querySelectorAll('.range-mode-btn').forEach(function (btn) { btn.classList.remove('active'); });
+        el.classList.add('active');
+        var input = document.getElementById('calc-' + field);
+        input.value = '';
+        input.placeholder = mode === 'pct' ? '10' : (field === 'pa' ? '2400' : '3200');
+      };
 
-  window.setHedgeMode = function (mode, el) {
-    hedgeModeState = mode;
-    var toggle = document.getElementById('hedge-mode-toggle');
-    toggle.querySelectorAll('.range-mode-btn').forEach(function (btn) { btn.classList.remove('active'); });
-    el.classList.add('active');
-    var input = document.getElementById('calc-hedge');
-    input.disabled = mode === 'auto';
-    if (mode === 'auto') input.value = '';
-  };
+      window.setHedgeMode = function (mode, el) {
+        hedgeModeState = mode;
+        var toggle = document.getElementById('hedge-mode-toggle');
+        toggle.querySelectorAll('.range-mode-btn').forEach(function (btn) { btn.classList.remove('active'); });
+        el.classList.add('active');
+        var input = document.getElementById('calc-hedge');
+        input.disabled = mode === 'auto';
+        if (mode === 'auto') input.value = '';
+      };
 
-  // Uniswap V3: compute liquidity L from pool value and price bounds
-  function computeL(V, P, Pa, Pb) {
-    var sp = Math.sqrt(P), spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
-    // V = L * (sp*(spb-sp)/spb + sp - spa)
-    return V / (sp * (spb - sp) / spb + sp - spa);
-  }
+      // Uniswap V3: compute liquidity L from pool value and price bounds
+      function computeL(V, P, Pa, Pb) {
+        var sp = Math.sqrt(P), spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
+        // V = L * (sp*(spb-sp)/spb + sp - spa)
+        return V / (sp * (spb - sp) / spb + sp - spa);
+      }
 
-  // LP value at new price P' given liquidity L and bounds
-  function lpValue(L, Pp, Pa, Pb) {
-    if (Pp <= Pa) {
-      // fully volatile token
-      var spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
-      return L * (1 / spa - 1 / spb) * Pp;
+      // LP value at new price P' given liquidity L and bounds
+      function lpValue(L, Pp, Pa, Pb) {
+        if (Pp <= Pa) {
+          // fully volatile token
+          var spa = Math.sqrt(Pa), spb = Math.sqrt(Pb);
+          return L * (1 / spa - 1 / spb) * Pp;
+        }
+        if (Pp >= Pb) {
+          // fully stable
+          var spb2 = Math.sqrt(Pb), spa2 = Math.sqrt(Pa);
+          return L * (spb2 - spa2);
+        }
+        var sp2 = Math.sqrt(Pp), spb3 = Math.sqrt(Pb), spa3 = Math.sqrt(Pa);
+        return L * (sp2 * (spb3 - sp2) / spb3 + sp2 - spa3);
+      }
+
+      function fmtUsdPnl(v) {
+        var sign = v >= 0 ? '+' : '';
+        return sign + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function pnlColor(v) {
+        if (Math.abs(v) < 0.005) return 'var(--tx-muted)';
+        return v >= 0 ? 'var(--green)' : 'var(--red)';
+      }
+
+      window.runCalc = function () {
+        var errEl = document.getElementById('calc-error');
+        var resultsEl = document.getElementById('calc-results');
+        var farmCard = document.getElementById('calc-farm-card');
+        errEl.textContent = '';
+
+        var V = parseFloat(document.getElementById('calc-poolValue').value);
+        var P = parseFloat(document.getElementById('calc-price').value);
+        var paRaw = parseFloat(document.getElementById('calc-pa').value);
+        var pbRaw = parseFloat(document.getElementById('calc-pb').value);
+        var Pa = paModeState === 'pct' ? P * (1 - paRaw / 100) : paRaw;
+        var Pb = pbModeState === 'pct' ? P * (1 + pbRaw / 100) : pbRaw;
+        var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
+
+        if (!(V > 0) || !(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb) {
+          errEl.textContent = 'Preencha todos os campos com valores válidos (Pa < Pb).';
+          resultsEl.style.display = 'none';
+          return;
+        }
+        if (P < Pa || P > Pb) {
+          errEl.textContent = 'Preço atual deve estar dentro do range (Pa ≤ P ≤ Pb).';
+          resultsEl.style.display = 'none';
+          return;
+        }
+
+        var L = computeL(V, P, Pa, Pb);
+        var xTokens = L * (1 / Math.sqrt(P) - 1 / Math.sqrt(Pb));
+
+        var hedgePct;
+        if (hedgeModeState === 'auto') {
+          var lpPnlUp = lpValue(L, Pb, Pa, Pb) - V;
+          var lpPnlDown = lpValue(L, Pa, Pa, Pb) - V;
+          var H = (lpPnlUp - lpPnlDown) * P / (Pb - Pa);
+          var safeX = xTokens > 0 ? xTokens : 1e-9;
+          hedgePct = Math.max(0, H / (safeX * P) * 100);
+          document.getElementById('calc-hedge').value = hedgePct.toFixed(2);
+          if (H <= 0) errEl.textContent = 'Auto Hedge: range não requer hedge para equalizar extremos (H ≤ 0).';
+        } else {
+          hedgePct = parseFloat(document.getElementById('calc-hedge').value) || 0;
+        }
+        var hedgeUsd = xTokens * P * (hedgePct / 100);
+
+        // Fixed percentage rows
+        var pcts = [-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15];
+        var rows = pcts.map(function (pct) {
+          return { label: pct === 0 ? 'Atual' : (pct > 0 ? '+' : '') + (pct * 100).toFixed(0) + '%', price: P * (1 + pct), isRange: false, isCurrent: pct === 0 };
+        });
+
+        // Insert range rows
+        rows.push({ label: '▼ RANGE MIN', price: Pa, isRange: true, isCurrent: false });
+        rows.push({ label: '▲ RANGE MAX', price: Pb, isRange: true, isCurrent: false });
+
+        // Sort by price descending (+15% at top, -15% at bottom)
+        rows.sort(function (a, b) { return b.price - a.price; });
+
+        // Hoist daily so it's available for break-even inside row render
+        var daily = apr > 0 ? V * (apr / 100) / 365 : 0;
+
+        // Update thead — add Break-even column only when APR > 0
+        document.getElementById('calc-thead').innerHTML =
+          '<tr><th>Cenário</th><th>Preço</th><th>P&amp;L LP</th><th>P&amp;L Hedge</th><th>P&amp;L Líquido</th>' +
+          (apr > 0 ? '<th>Break-even</th>' : '') + '</tr>';
+
+        // Render
+        var tbody = document.getElementById('calc-tbody');
+        tbody.innerHTML = rows.map(function (row) {
+          var Pp = row.price;
+          var lpPnl = row.isCurrent ? 0 : lpValue(L, Pp, Pa, Pb) - V;
+          var hPnl = row.isCurrent ? 0 : hedgeUsd * (1 - Pp / P);
+          var net = lpPnl + hPnl;
+
+          var lpStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(lpPnl) + ';">' + fmtUsdPnl(lpPnl) + '</span>';
+          var hStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(hPnl) + ';">' + fmtUsdPnl(hPnl) + '</span>';
+          var netStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(net) + ';font-weight:bold;">' + fmtUsdPnl(net) + '</span>';
+
+          // Price cell: range rows show price + pct-from-current hint
+          var pxFormatted = '$' + Pp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          var pctFromCurrent = (Pp / P - 1) * 100;
+          var pctSign = pctFromCurrent >= 0 ? '+' : '';
+          var priceStr = pxFormatted + (row.isRange
+            ? '<span class="range-pct-hint">' + pctSign + pctFromCurrent.toFixed(2) + '%</span>'
+            : '');
+
+          // Break-even cell: only for range rows with a loss, only when APR > 0
+          var beStr = '—';
+          if (row.isRange && apr > 0 && net < 0) {
+            beStr = (Math.abs(net) / daily).toFixed(1) + ' dias';
+          }
+          var beTd = apr > 0 ? '<td>' + beStr + '</td>' : '';
+
+          var cls = row.isRange ? 'range-row' : (row.isCurrent ? 'current-row' : '');
+          return '<tr class="' + cls + '"><td>' + row.label + '</td><td style="text-align:right;">' + priceStr + '</td><td>' + lpStr + '</td><td>' + hStr + '</td><td>' + netStr + '</td>' + beTd + '</tr>';
+        }).join('');
+
+        document.getElementById('calc-panel-title').textContent =
+          hedgeModeState === 'auto' ? 'Cenários · AUTO HEDGE' : 'Cenários';
+
+        // Farm card (daily already computed above)
+        if (apr > 0) {
+          document.getElementById('calc-farm-value').textContent =
+            '$' + daily.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+            ' / dia  (APR ' + apr + '%)';
+          farmCard.style.display = 'flex';
+        } else {
+          farmCard.style.display = 'none';
+        }
+
+        resultsEl.style.display = '';
+      };
+    })();
+    // ─────────────────────────────────────────────────────────
+
+    // ── CHAIN / DEX SELECTORS ────────────────────────────────
+    var DEX_LABELS = {
+      'uniswap-v3': 'Uniswap V3',
+      'uniswap-v4': 'Uniswap V4',
+      'pancake-v3': 'PancakeSwap V3',
+      'pancake-v4': 'PancakeSwap V4',
+      'aerodrome-cl': 'Aerodrome CL',
+      'project-x': 'ProjectX',
+      'orca': 'Orca Whirlpool',
+      'raydium': 'Raydium CLMM',
+      'meteora': 'Meteora DLMM',
+    };
+
+    // ─────────────────────────────────────────────────────────
+
+    // ===== SCANNER FUNCTIONS =====
+
+    function setScannerNetwork(network) {
+      scannerNetwork = network;
+      document.getElementById('subtab-evm').classList.toggle('active', network === 'evm');
+      document.getElementById('subtab-solana').classList.toggle('active', network === 'solana');
+      document.getElementById('scanner-wallet-input').placeholder =
+        network === 'evm' ? '0x...' : 'Endereço Solana (base58)';
     }
-    if (Pp >= Pb) {
-      // fully stable
-      var spb2 = Math.sqrt(Pb), spa2 = Math.sqrt(Pa);
-      return L * (spb2 - spa2);
-    }
-    var sp2 = Math.sqrt(Pp), spb3 = Math.sqrt(Pb), spa3 = Math.sqrt(Pa);
-    return L * (sp2 * (spb3 - sp2) / spb3 + sp2 - spa3);
-  }
 
-  function fmtUsdPnl(v) {
-    var sign = v >= 0 ? '+' : '';
-    return sign + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
+    async function startScan() {
+      var addr = document.getElementById('scanner-wallet-input').value.trim();
+      if (!addr) return;
 
-  function pnlColor(v) {
-    if (Math.abs(v) < 0.005) return 'var(--tx-muted)';
-    return v >= 0 ? 'var(--green)' : 'var(--red)';
-  }
+      var btn = document.getElementById('scanner-scan-btn');
+      btn.disabled = true;
 
-  window.runCalc = function () {
-    var errEl = document.getElementById('calc-error');
-    var resultsEl = document.getElementById('calc-results');
-    var farmCard = document.getElementById('calc-farm-card');
-    errEl.textContent = '';
+      scanProgressDone = 0;
+      scanProgressTotal = scannerNetwork === 'evm' ? 18 : 3;
+      updateScanProgress();
+      document.getElementById('scanner-progress').style.display = '';
+      document.getElementById('scanner-table').style.display = 'none';
+      document.getElementById('scanner-empty').style.display = 'none';
 
-    var V = parseFloat(document.getElementById('calc-poolValue').value);
-    var P = parseFloat(document.getElementById('calc-price').value);
-    var paRaw = parseFloat(document.getElementById('calc-pa').value);
-    var pbRaw = parseFloat(document.getElementById('calc-pb').value);
-    var Pa = paModeState === 'pct' ? P * (1 - paRaw / 100) : paRaw;
-    var Pb = pbModeState === 'pct' ? P * (1 + pbRaw / 100) : pbRaw;
-    var apr = parseFloat(document.getElementById('calc-apr').value) || 0;
-
-    if (!(V > 0) || !(P > 0) || !(Pa > 0) || !(Pb > 0) || Pa >= Pb) {
-      errEl.textContent = 'Preencha todos os campos com valores válidos (Pa < Pb).';
-      resultsEl.style.display = 'none';
-      return;
-    }
-    if (P < Pa || P > Pb) {
-      errEl.textContent = 'Preço atual deve estar dentro do range (Pa ≤ P ≤ Pb).';
-      resultsEl.style.display = 'none';
-      return;
+      try {
+        var res = await fetch('/api/scan-wallet-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ walletAddress: addr, network: scannerNetwork }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        var data = await res.json();
+        renderScannerTable(data.positions);
+      } catch (err) {
+        alert('Erro no scan: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        document.getElementById('scanner-progress').style.display = 'none';
+      }
     }
 
-    var L = computeL(V, P, Pa, Pb);
-    var xTokens = L * (1 / Math.sqrt(P) - 1 / Math.sqrt(Pb));
+    function updateScanProgress() {
+      var pct = scanProgressTotal ? (scanProgressDone / scanProgressTotal) * 100 : 0;
+      document.getElementById('scanner-progress-fill').style.width = pct + '%';
+      document.getElementById('scanner-progress-text').textContent =
+        'Escaneando... ' + scanProgressDone + '/' + scanProgressTotal;
+    }
 
-    var hedgePct;
-    if (hedgeModeState === 'auto') {
-      var lpPnlUp = lpValue(L, Pb, Pa, Pb) - V;
-      var lpPnlDown = lpValue(L, Pa, Pa, Pb) - V;
+    function sanitizeHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    var VALID_RANGE_STATUS = ['in-range', 'above-range', 'below-range'];
+
+    function renderScannerTable(positions) {
+      scannerPositions = positions || [];
+      var tbody = document.getElementById('scanner-tbody');
+      tbody.innerHTML = '';
+
+      if (!scannerPositions.length) {
+        document.getElementById('scanner-empty').style.display = '';
+        document.getElementById('scanner-table').style.display = 'none';
+        return;
+      }
+
+      document.getElementById('scanner-table').style.display = '';
+      document.getElementById('scanner-empty').style.display = 'none';
+
+      for (var i = 0; i < scannerPositions.length; i++) {
+        var p = scannerPositions[i];
+        var rangeLabel = p.rangeStatus === 'in-range' ? '✓ In Range'
+          : p.rangeStatus === 'above-range' ? '↑ Above'
+            : '↓ Below';
+        var safeCls = VALID_RANGE_STATUS.includes(p.rangeStatus) ? p.rangeStatus : 'in-range';
+
+        var priceLow, priceHigh;
+        if (p.priceLowerUsd != null && p.priceUpperUsd != null) {
+          priceLow = Math.min(p.priceLowerUsd, p.priceUpperUsd);
+          priceHigh = Math.max(p.priceLowerUsd, p.priceUpperUsd);
+        } else {
+          priceLow = scannerTickToUsd(p.tickLower, p.token0Decimals, p.token1Decimals, p.token0Symbol, p.token1Symbol);
+          priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals, p.token0Symbol, p.token1Symbol);
+          if (priceLow > priceHigh) { var tmp = priceLow; priceLow = priceHigh; priceHigh = tmp; }
+        }
+
+        var fmtLow = priceLow < 0.01 ? priceLow.toPrecision(3) : scannerFmt(priceLow);
+        var fmtHigh = priceHigh < 0.01 ? priceHigh.toPrecision(3) : scannerFmt(priceHigh);
+        var rangeStr = '$' + fmtLow + ' — $' + fmtHigh;
+
+        var safeTokenId = sanitizeHtml(p.tokenId);
+        var actionHtml = p.isActive
+          ? '<span class="badge-protected">✓ PROTEGIDA</span>'
+          : '<button class="btn-protect" onclick="openProtectModal(&#39;' + safeTokenId + '&#39;)">▶ PROTECT</button>';
+
+        var dexChain = sanitizeHtml(dexLabel(p.dex) + ' · ' + chainLabel(p.chain));
+
+        tbody.insertAdjacentHTML('beforeend',
+          '<tr>' +
+          '<td>' + sanitizeHtml(p.token0Symbol) + '/' + sanitizeHtml(p.token1Symbol) + '</td>' +
+          '<td>' + dexChain + '</td>' +
+          '<td><span class="range-badge ' + safeCls + '">' + rangeLabel + '</span></td>' +
+          '<td>' + rangeStr + '</td>' +
+          '<td>$' + scannerFmt(p.estimatedUsd) + '</td>' +
+          '<td>' + actionHtml + '</td>' +
+          '</tr>'
+        );
+      }
+    }
+
+    function scannerTickToUsd(tick, dec0, dec1, sym0, sym1) {
+      var STABLES = ['USDC', 'USDT', 'DAI', 'USDBC', 'BUSD', 'USDS', 'FDUSD', 'TUSD', 'CRVUSD', 'PYUSD', 'USDE', 'FRAX', 'LUSD'];
+      var raw = Math.pow(1.0001, tick) * Math.pow(10, dec0 - dec1);
+      var s0 = (sym0 || '').toUpperCase();
+      if (STABLES.some(function (s) { return s0.indexOf(s) >= 0; })) {
+        return raw > 0 ? 1 / raw : 0;
+      }
+      return raw;
+    }
+
+    function dexLabel(dex) {
+      var map = {
+        'uniswap-v3': 'Uni V3', 'uniswap-v4': 'Uni V4',
+        'pancake-v3': 'Cake V3', 'pancake-v4': 'Cake V4',
+        'aerodrome-cl': 'Aero', 'project-x': 'ProjX',
+        'orca': 'Orca', 'raydium': 'Raydium', 'meteora': 'Meteora',
+      };
+      return map[dex] || dex;
+    }
+
+    function chainLabel(chain) {
+      var map = {
+        'base': 'Base', 'eth': 'ETH', 'bsc': 'BSC',
+        'arbitrum': 'Arb', 'polygon': 'Poly', 'avalanche': 'Avax',
+        'hyperliquid-l1': 'HyperEVM', 'solana': 'Solana',
+      };
+      return map[chain] || chain;
+    }
+
+    function scannerFmt(n) {
+      if (n == null || isNaN(n)) return '—';
+      if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      if (n >= 1) return n.toFixed(2);
+      return n.toFixed(4);
+    }
+
+    function _fillProtectModalFields(p) {
+      document.getElementById('pm-pair').textContent = p.token0Symbol + '/' + p.token1Symbol;
+      document.getElementById('pm-dex-chain').textContent = dexLabel(p.dex) + ' · ' + chainLabel(p.chain);
+
+      var priceLow, priceHigh;
+      if (p.priceLowerUsd != null && p.priceUpperUsd != null) {
+        priceLow = Math.min(p.priceLowerUsd, p.priceUpperUsd);
+        priceHigh = Math.max(p.priceLowerUsd, p.priceUpperUsd);
+      } else {
+        priceLow = scannerTickToUsd(p.tickLower, p.token0Decimals, p.token1Decimals, p.token0Symbol, p.token1Symbol);
+        priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals, p.token0Symbol, p.token1Symbol);
+        if (priceLow > priceHigh) { var tmp = priceLow; priceLow = priceHigh; priceHigh = tmp; }
+      }
+      var fmtLow = priceLow < 0.01 ? priceLow.toPrecision(3) : scannerFmt(priceLow);
+      var fmtHigh = priceHigh < 0.01 ? priceHigh.toPrecision(3) : scannerFmt(priceHigh);
+      document.getElementById('pm-range').textContent = '$' + fmtLow + ' — $' + fmtHigh;
+      document.getElementById('pm-value').textContent = '$' + scannerFmt(p.estimatedUsd);
+
+      document.getElementById('pm-token0-opt').textContent = p.token0Symbol + ' (token0)';
+      document.getElementById('pm-token0-opt').value = 'token0';
+      document.getElementById('pm-token1-opt').textContent = p.token1Symbol + ' (token1)';
+      document.getElementById('pm-token1-opt').value = 'token1';
+
+      var t1Lower = (p.token1Symbol || '').toLowerCase();
+      var isT1Stable = ['usdc', 'usdt', 'dai', 'busd', 'usd', 'tusd'].some(function (s) { return t1Lower.includes(s); });
+      document.getElementById('pm-hedge-token').value = isT1Stable ? 'token0' : 'token1';
+    }
+
+    async function openProtectModal(tokenId) {
+      var cached = scannerPositions.find(function (x) { return String(x.tokenId) === String(tokenId); });
+      if (!cached) return;
+
+      // Show modal immediately with cached data
+      protectModalData = cached;
+      document.getElementById('protect-modal-title').textContent = 'Proteger Posição #' + tokenId;
+      _fillProtectModalFields(cached);
+      document.getElementById('pm-cooldown').value = 720;
+      document.getElementById('pm-emergency').value = 15;
+
+      // Show loading state while fetching fresh LP data
+      var hedgePctInput = document.getElementById('pm-hedge-pct');
+      var submitBtn = document.getElementById('pm-submit-btn');
+      scannerHedgeMode = 'auto';
+      document.getElementById('pm-btn-auto').classList.add('active');
+      document.getElementById('pm-btn-manual').classList.remove('active');
+      hedgePctInput.value = '';
+      hedgePctInput.placeholder = '...';
+      hedgePctInput.readOnly = true;
+      hedgePctInput.style.opacity = '0.5';
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.5';
+
+      document.getElementById('protect-modal-overlay').style.display = 'flex';
+
+      // Fetch fresh on-chain LP data for accurate AUTO calculation
+      try {
+        var tid = typeof cached.tokenId === 'string' ? cached.tokenId : Number(cached.tokenId);
+        var resp = await fetch('/api/lookup-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: tid, chain: cached.chain, dex: cached.dex }),
+        });
+        if (resp.ok) {
+          var data = await resp.json();
+          if (data.position) {
+            protectModalData = data.position;
+            _fillProtectModalFields(data.position);
+          }
+        }
+      } catch (e) {
+        // network error — keep cached data
+      }
+
+      hedgePctInput.placeholder = '';
+      setScannerHedgeMode('auto');
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '';
+    }
+
+    function closeProtectModal() {
+      document.getElementById('protect-modal-overlay').style.display = 'none';
+      protectModalData = null;
+    }
+
+    function setScannerHedgeMode(mode) {
+      scannerHedgeMode = mode;
+      document.getElementById('pm-btn-auto').classList.toggle('active', mode === 'auto');
+      document.getElementById('pm-btn-manual').classList.toggle('active', mode === 'manual');
+      var input = document.getElementById('pm-hedge-pct');
+      if (mode === 'auto') {
+        input.value = calcAutoHedge(protectModalData);
+        input.readOnly = true;
+        input.style.opacity = '0.5';
+      } else {
+        input.readOnly = false;
+        input.style.opacity = '1';
+      }
+    }
+
+    function calcAutoHedge(p) {
+      if (!p) return 100;
+
+      var hedgeToken = (document.getElementById('pm-hedge-token') || {}).value || 'token0';
+      var xTokens = hedgeToken === 'token0' ? p.token0AmountFormatted : p.token1AmountFormatted;
+      if (!xTokens || xTokens <= 0) return 100;
+
+      var dec0 = p.token0Decimals, dec1 = p.token1Decimals;
+      if (dec0 == null || dec1 == null) return 100;
+
+      // raw = token1/token0 in human units (same convention as p.price from scanner)
+      var rawLower = Math.pow(1.0001, p.tickLower) * Math.pow(10, dec0 - dec1);
+      var rawUpper = Math.pow(1.0001, p.tickUpper) * Math.pow(10, dec0 - dec1);
+
+      var Pa, Pb, P;
+      if (hedgeToken === 'token0') {
+        // token0=volatile, token1=stable: raw = USD per volatile; lower tick = lower USD price
+        Pa = rawLower;
+        Pb = rawUpper;
+        P = p.price;
+      } else {
+        // token1=volatile, token0=stable: raw = volatile/stable; USD price = 1/raw
+        // lower tick = higher USD price (inverse relationship), so bounds are swapped
+        Pa = rawUpper > 0 ? 1 / rawUpper : 0;
+        Pb = rawLower > 0 ? 1 / rawLower : 0;
+        P = p.price > 0 ? 1 / p.price : 0;
+      }
+
+      if (!Pa || !Pb || Pa <= 0 || Pb <= Pa) return 100;
+      if (!P || P <= Pa || P >= Pb) return 100;
+
+      // Liquidity derived from volatile token amount at current price
+      var denom = 1 / Math.sqrt(P) - 1 / Math.sqrt(Pb);
+      if (denom <= 0) return 100;
+      var L = xTokens / denom;
+
+      // LP value in USD at arbitrary price (volatile-centric, works for both token orderings)
+      function lpVal(liq, price, pa, pb) {
+        if (price <= pa) return liq * (1 / Math.sqrt(pa) - 1 / Math.sqrt(pb)) * price;
+        if (price >= pb) return liq * (Math.sqrt(pb) - Math.sqrt(pa));
+        return liq * (2 * Math.sqrt(price) - Math.sqrt(pa) - price / Math.sqrt(pb));
+      }
+
+      var V = p.estimatedUsd > 0 ? p.estimatedUsd : (xTokens * P);
+      if (V <= 0) return 100;
+
+      // Hedge % that equalizes LP P&L at both range extremes
+      var lpPnlUp = lpVal(L, Pb, Pa, Pb) - V;
+      var lpPnlDown = lpVal(L, Pa, Pa, Pb) - V;
       var H = (lpPnlUp - lpPnlDown) * P / (Pb - Pa);
-      var safeX = xTokens > 0 ? xTokens : 1e-9;
-      hedgePct = Math.max(0, H / (safeX * P) * 100);
-      document.getElementById('calc-hedge').value = hedgePct.toFixed(2);
-      if (H <= 0) errEl.textContent = 'Auto Hedge: range não requer hedge para equalizar extremos (H ≤ 0).';
-    } else {
-      hedgePct = parseFloat(document.getElementById('calc-hedge').value) || 0;
+      var hedgePct = H / (xTokens * P) * 100;
+      hedgePct = Math.max(0, Math.min(500, hedgePct));
+      return Math.round(hedgePct);
     }
-    var hedgeUsd = xTokens * P * (hedgePct / 100);
 
-    // Fixed percentage rows
-    var pcts = [-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15];
-    var rows = pcts.map(function (pct) {
-      return { label: pct === 0 ? 'Atual' : (pct > 0 ? '+' : '') + (pct * 100).toFixed(0) + '%', price: P * (1 + pct), isRange: false, isCurrent: pct === 0 };
-    });
+    async function submitProtection() {
+      var p = protectModalData;
+      if (!p) return;
 
-    // Insert range rows
-    rows.push({ label: '▼ RANGE MIN', price: Pa, isRange: true, isCurrent: false });
-    rows.push({ label: '▲ RANGE MAX', price: Pb, isRange: true, isCurrent: false });
+      var hedgeToken = document.getElementById('pm-hedge-token').value;
+      var hedgeRatio = parseFloat(document.getElementById('pm-hedge-pct').value) / 100;
+      var cooldown = parseInt(document.getElementById('pm-cooldown').value, 10) * 60;
+      var emergency = parseFloat(document.getElementById('pm-emergency').value) / 100;
 
-    // Sort by price descending (+15% at top, -15% at bottom)
-    rows.sort(function (a, b) { return b.price - a.price; });
-
-    // Hoist daily so it's available for break-even inside row render
-    var daily = apr > 0 ? V * (apr / 100) / 365 : 0;
-
-    // Update thead — add Break-even column only when APR > 0
-    document.getElementById('calc-thead').innerHTML =
-      '<tr><th>Cenário</th><th>Preço</th><th>P&amp;L LP</th><th>P&amp;L Hedge</th><th>P&amp;L Líquido</th>' +
-      (apr > 0 ? '<th>Break-even</th>' : '') + '</tr>';
-
-    // Render
-    var tbody = document.getElementById('calc-tbody');
-    tbody.innerHTML = rows.map(function (row) {
-      var Pp = row.price;
-      var lpPnl = row.isCurrent ? 0 : lpValue(L, Pp, Pa, Pb) - V;
-      var hPnl = row.isCurrent ? 0 : hedgeUsd * (1 - Pp / P);
-      var net = lpPnl + hPnl;
-
-      var lpStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(lpPnl) + ';">' + fmtUsdPnl(lpPnl) + '</span>';
-      var hStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(hPnl) + ';">' + fmtUsdPnl(hPnl) + '</span>';
-      var netStr = row.isCurrent ? '—' : '<span style="color:' + pnlColor(net) + ';font-weight:bold;">' + fmtUsdPnl(net) + '</span>';
-
-      // Price cell: range rows show price + pct-from-current hint
-      var pxFormatted = '$' + Pp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      var pctFromCurrent = (Pp / P - 1) * 100;
-      var pctSign = pctFromCurrent >= 0 ? '+' : '';
-      var priceStr = pxFormatted + (row.isRange
-        ? '<span class="range-pct-hint">' + pctSign + pctFromCurrent.toFixed(2) + '%</span>'
-        : '');
-
-      // Break-even cell: only for range rows with a loss, only when APR > 0
-      var beStr = '—';
-      if (row.isRange && apr > 0 && net < 0) {
-        beStr = (Math.abs(net) / daily).toFixed(1) + ' dias';
+      if (isNaN(hedgeRatio) || hedgeRatio <= 0) {
+        alert('Aguarde o cálculo do hedge ou insira um valor manualmente.');
+        return;
       }
-      var beTd = apr > 0 ? '<td>' + beStr + '</td>' : '';
 
-      var cls = row.isRange ? 'range-row' : (row.isCurrent ? 'current-row' : '');
-      return '<tr class="' + cls + '"><td>' + row.label + '</td><td style="text-align:right;">' + priceStr + '</td><td>' + lpStr + '</td><td>' + hStr + '</td><td>' + netStr + '</td>' + beTd + '</tr>';
-    }).join('');
+      var payload = {
+        tokenId: typeof p.tokenId === 'string' ? p.tokenId : Number(p.tokenId),
+        protocolVersion: p.protocolVersion,
+        poolAddress: p.poolAddress,
+        token0Symbol: p.token0Symbol,
+        token1Symbol: p.token1Symbol,
+        fee: p.fee,
+        tickLower: p.tickLower,
+        tickUpper: p.tickUpper,
+        chain: p.chain,
+        dex: p.dex,
+        positionId: p.tokenId,
+        hedgeToken: hedgeToken,
+        hedgeRatio: hedgeRatio,
+        cooldownSeconds: cooldown,
+        emergencyPriceMovementThreshold: emergency,
+      };
 
-    document.getElementById('calc-panel-title').textContent =
-      hedgeModeState === 'auto' ? 'Cenários · AUTO HEDGE' : 'Cenários';
-
-    // Farm card (daily already computed above)
-    if (apr > 0) {
-      document.getElementById('calc-farm-value').textContent =
-        '$' + daily.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
-        ' / dia  (APR ' + apr + '%)';
-      farmCard.style.display = 'flex';
-    } else {
-      farmCard.style.display = 'none';
-    }
-
-    resultsEl.style.display = '';
-  };
-})();
-// ─────────────────────────────────────────────────────────
-
-// ── CHAIN / DEX SELECTORS ────────────────────────────────
-var DEX_OPTIONS_BY_CHAIN = {
-  base:             ['uniswap-v3', 'uniswap-v4', 'aerodrome-cl'],
-  eth:              ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
-  bsc:              ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
-  arbitrum:         ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
-  polygon:          ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
-  avalanche:        ['uniswap-v3', 'uniswap-v4'],
-  'hyperliquid-l1': ['project-x'],
-  solana:           ['orca', 'raydium', 'meteora'],
-};
-
-var DEX_LABELS = {
-  'uniswap-v3':   'Uniswap V3',
-  'uniswap-v4':   'Uniswap V4',
-  'pancake-v3':   'PancakeSwap V3',
-  'pancake-v4':   'PancakeSwap V4',
-  'aerodrome-cl': 'Aerodrome CL',
-  'project-x':    'ProjectX',
-  'orca':         'Orca Whirlpool',
-  'raydium':      'Raydium CLMM',
-  'meteora':      'Meteora DLMM',
-};
-
-function populateDexSelect(selectEl, chain) {
-  var options = DEX_OPTIONS_BY_CHAIN[chain] || [];
-  selectEl.innerHTML = options
-    .map(function (d) { return '<option value="' + d + '">' + (DEX_LABELS[d] || d) + '</option>'; })
-    .join('');
-}
-
-function onChainChange() {
-  var chain = document.getElementById('chain-select').value;
-  populateDexSelect(document.getElementById('dex-select'), chain);
-  var walletInput = document.getElementById('walletInput');
-  if (walletInput) {
-    walletInput.placeholder = chain === 'solana' ? 'Solana wallet (base58)' : '0x… wallet address';
-  }
-}
-
-function onChainChangeLookup() {
-  var chain = document.getElementById('chain-select-lookup').value;
-  populateDexSelect(document.getElementById('dex-select-lookup'), chain);
-  var tokenIdInput = document.getElementById('tokenIdInput');
-  if (tokenIdInput) {
-    tokenIdInput.placeholder = chain === 'solana' ? 'Enter position pubkey (base58)' : 'Enter NFT token ID manually';
-  }
-}
-
-window.addEventListener('DOMContentLoaded', function () {
-  onChainChange();
-  onChainChangeLookup();
-});
-// ─────────────────────────────────────────────────────────
-
-// ===== SCANNER FUNCTIONS =====
-
-function setScannerNetwork(network) {
-  scannerNetwork = network;
-  document.getElementById('subtab-evm').classList.toggle('active', network === 'evm');
-  document.getElementById('subtab-solana').classList.toggle('active', network === 'solana');
-  document.getElementById('scanner-wallet-input').placeholder =
-    network === 'evm' ? '0x...' : 'Endereço Solana (base58)';
-}
-
-async function startScan() {
-  var addr = document.getElementById('scanner-wallet-input').value.trim();
-  if (!addr) return;
-
-  var btn = document.getElementById('scanner-scan-btn');
-  btn.disabled = true;
-
-  scanProgressDone = 0;
-  scanProgressTotal = scannerNetwork === 'evm' ? 18 : 3;
-  updateScanProgress();
-  document.getElementById('scanner-progress').style.display = '';
-  document.getElementById('scanner-table').style.display = 'none';
-  document.getElementById('scanner-empty').style.display = 'none';
-
-  try {
-    var res = await fetch('/api/scan-wallet-all', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ walletAddress: addr, network: scannerNetwork }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    var data = await res.json();
-    renderScannerTable(data.positions);
-  } catch (err) {
-    alert('Erro no scan: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    document.getElementById('scanner-progress').style.display = 'none';
-  }
-}
-
-function updateScanProgress() {
-  var pct = scanProgressTotal ? (scanProgressDone / scanProgressTotal) * 100 : 0;
-  document.getElementById('scanner-progress-fill').style.width = pct + '%';
-  document.getElementById('scanner-progress-text').textContent =
-    'Escaneando... ' + scanProgressDone + '/' + scanProgressTotal;
-}
-
-function sanitizeHtml(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-var VALID_RANGE_STATUS = ['in-range', 'above-range', 'below-range'];
-
-function renderScannerTable(positions) {
-  scannerPositions = positions || [];
-  var tbody = document.getElementById('scanner-tbody');
-  tbody.innerHTML = '';
-
-  if (!scannerPositions.length) {
-    document.getElementById('scanner-empty').style.display = '';
-    document.getElementById('scanner-table').style.display = 'none';
-    return;
-  }
-
-  document.getElementById('scanner-table').style.display = '';
-  document.getElementById('scanner-empty').style.display = 'none';
-
-  for (var i = 0; i < scannerPositions.length; i++) {
-    var p = scannerPositions[i];
-    var rangeLabel = p.rangeStatus === 'in-range' ? '✓ In Range'
-      : p.rangeStatus === 'above-range' ? '↑ Above'
-      : '↓ Below';
-    var safeCls = VALID_RANGE_STATUS.includes(p.rangeStatus) ? p.rangeStatus : 'in-range';
-
-    var priceLow  = scannerTickToUsd(p.tickLower, p.token0Decimals, p.token1Decimals);
-    var priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals);
-    var rangeStr  = '$' + scannerFmt(priceLow) + ' — $' + scannerFmt(priceHigh);
-
-    var safeTokenId = sanitizeHtml(p.tokenId);
-    var actionHtml = p.isActive
-      ? '<span class="badge-protected">✓ PROTEGIDA</span>'
-      : '<button class="btn-protect" onclick="openProtectModal(&#39;' + safeTokenId + '&#39;)">▶ PROTECT</button>';
-
-    var dexChain = sanitizeHtml(dexLabel(p.dex) + ' · ' + chainLabel(p.chain));
-
-    tbody.insertAdjacentHTML('beforeend',
-      '<tr>' +
-      '<td>' + sanitizeHtml(p.token0Symbol) + '/' + sanitizeHtml(p.token1Symbol) + '</td>' +
-      '<td>' + dexChain + '</td>' +
-      '<td><span class="range-badge ' + safeCls + '">' + rangeLabel + '</span></td>' +
-      '<td>' + rangeStr + '</td>' +
-      '<td>$' + scannerFmt(p.estimatedUsd) + '</td>' +
-      '<td>' + actionHtml + '</td>' +
-      '</tr>'
-    );
-  }
-}
-
-function scannerTickToUsd(tick, dec0, dec1) {
-  var raw = Math.pow(1.0001, tick) * Math.pow(10, dec0 - dec1);
-  return raw > 0 ? 1 / raw : 0;
-}
-
-function dexLabel(dex) {
-  var map = {
-    'uniswap-v3': 'Uni V3', 'uniswap-v4': 'Uni V4',
-    'pancake-v3': 'Cake V3', 'pancake-v4': 'Cake V4',
-    'aerodrome-cl': 'Aero', 'project-x': 'ProjX',
-    'orca': 'Orca', 'raydium': 'Raydium', 'meteora': 'Meteora',
-  };
-  return map[dex] || dex;
-}
-
-function chainLabel(chain) {
-  var map = {
-    'base': 'Base', 'eth': 'ETH', 'bsc': 'BSC',
-    'arbitrum': 'Arb', 'polygon': 'Poly', 'avalanche': 'Avax',
-    'hyperliquid-l1': 'HyperEVM', 'solana': 'Solana',
-  };
-  return map[chain] || chain;
-}
-
-function scannerFmt(n) {
-  if (n == null || isNaN(n)) return '—';
-  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  if (n >= 1)    return n.toFixed(2);
-  return n.toFixed(4);
-}
-
-function openProtectModal(tokenId) {
-  var p = scannerPositions.find(function (x) { return String(x.tokenId) === String(tokenId); });
-  if (!p) return;
-  protectModalData = p;
-
-  document.getElementById('pm-pair').textContent = p.token0Symbol + '/' + p.token1Symbol;
-  document.getElementById('pm-dex-chain').textContent = dexLabel(p.dex) + ' · ' + chainLabel(p.chain);
-
-  var priceLow  = scannerTickToUsd(p.tickLower,  p.token0Decimals, p.token1Decimals);
-  var priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals);
-  document.getElementById('pm-range').textContent = '$' + scannerFmt(priceLow) + ' — $' + scannerFmt(priceHigh);
-  document.getElementById('pm-value').textContent  = '$' + scannerFmt(p.estimatedUsd);
-  document.getElementById('protect-modal-title').textContent = 'Proteger Posição #' + tokenId;
-
-  document.getElementById('pm-token0-opt').textContent = p.token0Symbol + ' (token0)';
-  document.getElementById('pm-token0-opt').value = 'token0';
-  document.getElementById('pm-token1-opt').textContent = p.token1Symbol + ' (token1)';
-  document.getElementById('pm-token1-opt').value = 'token1';
-
-  var t1Lower = (p.token1Symbol || '').toLowerCase();
-  var isT1Stable = ['usdc','usdt','dai','busd','usd','tusd'].some(function (s) { return t1Lower.includes(s); });
-  document.getElementById('pm-hedge-token').value = isT1Stable ? 'token0' : 'token1';
-
-  setScannerHedgeMode('auto');
-  document.getElementById('pm-cooldown').value = 720;
-  document.getElementById('pm-emergency').value = 15;
-
-  document.getElementById('protect-modal-overlay').style.display = 'flex';
-}
-
-function closeProtectModal() {
-  document.getElementById('protect-modal-overlay').style.display = 'none';
-  protectModalData = null;
-}
-
-function setScannerHedgeMode(mode) {
-  scannerHedgeMode = mode;
-  document.getElementById('pm-btn-auto').classList.toggle('active', mode === 'auto');
-  document.getElementById('pm-btn-manual').classList.toggle('active', mode === 'manual');
-  var input = document.getElementById('pm-hedge-pct');
-  if (mode === 'auto') {
-    input.value = calcAutoHedge(protectModalData);
-    input.readOnly = true;
-    input.style.opacity = '0.5';
-  } else {
-    input.readOnly = false;
-    input.style.opacity = '1';
-  }
-}
-
-function calcAutoHedge(p) {
-  if (!p) return 100;
-  return 100;
-}
-
-async function submitProtection() {
-  var p = protectModalData;
-  if (!p) return;
-
-  var hedgeToken = document.getElementById('pm-hedge-token').value;
-  var hedgeRatio = parseFloat(document.getElementById('pm-hedge-pct').value) / 100;
-  var cooldown   = parseInt(document.getElementById('pm-cooldown').value, 10) * 60;
-  var emergency  = parseFloat(document.getElementById('pm-emergency').value) / 100;
-
-  var payload = {
-    tokenId:         typeof p.tokenId === 'string' ? p.tokenId : Number(p.tokenId),
-    protocolVersion: p.protocolVersion,
-    poolAddress:     p.poolAddress,
-    token0Symbol:    p.token0Symbol,
-    token1Symbol:    p.token1Symbol,
-    fee:             p.fee,
-    tickLower:       p.tickLower,
-    tickUpper:       p.tickUpper,
-    chain:           p.chain,
-    dex:             p.dex,
-    positionId:      p.tokenId,
-    hedgeToken:      hedgeToken,
-    hedgeRatio:      hedgeRatio,
-    cooldownSeconds: cooldown,
-    emergencyPriceMovementThreshold: emergency,
-  };
-
-  try {
-    var res = await fetch('/api/activate-position', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    closeProtectModal();
-    var row = scannerPositions.find(function (x) { return String(x.tokenId) === String(p.tokenId); });
-    if (row) row.isActive = true;
-    renderScannerTable(scannerPositions);
-  } catch (err) {
-    alert('Erro ao ativar: ' + err.message);
-  }
-}
-
-async function loadPersistedScannedPositions() {
-  try {
-    var res = await fetch('/api/discovered-positions');
-    if (!res.ok) return;
-    var data = await res.json();
-    if (data.positions && data.positions.length) {
-      renderScannerTable(data.positions);
-      if (data.scannedAt) {
-        var dt = new Date(data.scannedAt).toLocaleString('pt-BR');
-        var el = document.getElementById('scanner-last-update');
-        el.textContent = 'Última atualização: ' + dt;
-        el.style.display = '';
-        if (data.scannedWallet) {
-          document.getElementById('scanner-wallet-input').value = data.scannedWallet;
-        }
-        if (data.scannedNetwork) {
-          setScannerNetwork(data.scannedNetwork);
-        }
+      try {
+        var res = await fetch('/api/activate-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        closeProtectModal();
+        var row = scannerPositions.find(function (x) { return String(x.tokenId) === String(p.tokenId); });
+        if (row) row.isActive = true;
+        renderScannerTable(scannerPositions);
+      } catch (err) {
+        alert('Erro ao ativar: ' + err.message);
       }
     }
-  } catch (_) {}
-}
+
+    async function loadPersistedScannedPositions() {
+      try {
+        var res = await fetch('/api/discovered-positions');
+        if (!res.ok) return;
+        var data = await res.json();
+        if (data.positions && data.positions.length) {
+          renderScannerTable(data.positions);
+          if (data.scannedAt) {
+            var dt = new Date(data.scannedAt).toLocaleString('pt-BR');
+            var el = document.getElementById('scanner-last-update');
+            el.textContent = 'Última atualização: ' + dt;
+            el.style.display = '';
+            if (data.scannedWallet) {
+              document.getElementById('scanner-wallet-input').value = data.scannedWallet;
+            }
+            if (data.scannedNetwork) {
+              setScannerNetwork(data.scannedNetwork);
+            }
+          }
+        }
+      } catch (_) { }
+    }
   </script>
 </body>
 

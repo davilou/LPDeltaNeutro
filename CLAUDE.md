@@ -288,9 +288,14 @@ Provedores de referência (sem API key):
 - **`DiscoveredPosition` em `src/types.ts`**: definida localmente em `src/types.ts` (não em `src/lp/types.ts`). Não requer import adicional em módulos que já importam de `../types`.
 - **Dashboard nav sidebar**: usa `<div class="sidebar-item" onclick="showPage('page')">` — não `<li><button>`. `showPage()` mantém um array de nomes de páginas para show/hide; adicionar nova aba requer incluir o nome no array.
 - **`setHedgeMode` reservado pela CALCULATOR**: a aba CALCULATOR usa `window.setHedgeMode(mode, el)` em seu próprio IIFE. Novas abas que precisam de toggle AUTO/MANUAL devem usar nome diferente (ex: `setScannerHedgeMode`).
+- **Scanner tab estado isolado**: `scannerPositions`, `protectModalData`, `calcAutoHedge()` pertencem exclusivamente ao Scanner — nunca compartilhar com código do Monitor. Scanner usa IDs prefixados `scanner-*`. `DEX_LABELS` é compartilhado (usado em Scanner e no header de métricas de posições ativas); `DEX_OPTIONS_BY_CHAIN` pertence apenas ao Scanner.
 - **`dryRun` é flag global**: `/api/activate-position` não aceita `dryRun` por posição — é controlado pelo `.env` (`DRY_RUN=true`). Não expor como opção por posição no UI.
 - **`DashboardStore` é apenas memória**: não persiste em disco. Persistência de dados do usuário é feita via `rebalancer.saveState()` → `state-{userId}.json`. Dados que precisam sobreviver a page reload devem ser salvos via Rebalancer.
 - **`DashboardCallbacks` é a interface server↔index**: `server.ts` acessa engine contexts via `callbacks.getEngineContext(userId)`, não via import direto de `index.ts`. Ao adicionar novos acessos ao Rebalancer em `server.ts`, adicionar o método ao `DashboardCallbacks` e implementar em `index.ts`.
+- **V4 `info bytes32` tick offset**: bits 0-7 = `hasSubscriber` flag. tickLower em bits 8-31 (`>> 8n`), tickUpper em bits 32-55 (`>> 32n`). `evmV4Reader.ts` é a referência correta — sempre sincronizar com ele ao ler ticks em `evmScanner.ts`.
+- **`DiscoveredPosition` não tem `priceLowerUsd`/`priceUpperUsd`**: esses campos só existem em `HistoricalPosition`. Range bounds do scanner devem ser calculados dos ticks: `raw = 1.0001^tick * 10^(dec0-dec1)`.
+- **Concurrency guards em `UserEngineContext`**: `setupUserEventHandlers` é definida fora de `main()` e não acessa variáveis locais dela. Guards de concorrência (ex: `cycleInProgress`) devem estar no `UserEngineContext`, nunca como `Set`/variável local de `main()`.
+- **Modais async com fetch**: desabilitar o botão de submit (`disabled = true`) antes do `await fetch(...)` e re-habilitar após — senão o usuário submete com `input.value = ''` → `parseFloat('') = NaN` → JSON envia `null` → servidor usa default.
 
 ## Limitações conhecidas (multi-chain)
 - `EvmScanner.scanV3()` usa Multicall3 — ≤5 RPC round trips independente do número de NFTs
