@@ -98,7 +98,7 @@ export const config = {
   hlWalletAddress: process.env.HL_WALLET_ADDRESS || '',
 
   // Dashboard
-  dashboardPort: numEnv('DASHBOARD_PORT', 3000),
+  dashboardPort: parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '3000', 10),
 
   // Uniswap V4
   positionManagerV4Address: optionalEnv('POSITION_MANAGER_V4_ADDRESS', '0x7c5f5a4bbd8fd63184577525326123b519429bdc'),
@@ -115,6 +115,9 @@ export const config = {
   supabaseUrl: optionalEnv('SUPABASE_URL', ''),
   supabaseKey: optionalEnv('SUPABASE_KEY', ''),
   supabasePostgresUrl: optionalEnv('SUPABASE_POSTGRES_URL', ''),
+
+  // Zerion API (scanner discovery)
+  zerionApiKey: optionalEnv('ZERION_API_KEY', ''),
 
   // Auth (Google OAuth)
   googleClientId: optionalEnv('GOOGLE_CLIENT_ID', ''),

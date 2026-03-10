@@ -21,7 +21,8 @@ export class Rebalancer {
   constructor(exchange: IHedgeExchange, userId = 'default') {
     this.exchange = exchange;
     this.userId = userId;
-    this.stateFile = path.resolve(__dirname, '..', '..', `state-${userId}.json`);
+    const stateDir = process.env.DATA_DIR || path.resolve(__dirname, '..', '..');
+    this.stateFile = path.join(stateDir, `state-${userId}.json`);
     this.state = this.loadState();
 
     // Restore PnlTrackers for all persisted positions
@@ -37,7 +38,7 @@ export class Rebalancer {
   private loadState(): BotState {
     try {
       // Migrate legacy state.json → state-{userId}.json on first run
-      const legacyFile = path.resolve(__dirname, '..', '..', 'state.json');
+      const legacyFile = path.join(path.dirname(this.stateFile), 'state.json');
       if (!fs.existsSync(this.stateFile) && this.userId === 'default' && fs.existsSync(legacyFile)) {
         fs.copyFileSync(legacyFile, this.stateFile);
         logger.info(`Migrated state.json → ${this.stateFile}`);
@@ -168,12 +169,18 @@ export class Rebalancer {
     const decimalAdj = Math.pow(10, token0Dec - token1Dec);
     const rawLo = Math.pow(1.0001, cfg.tickLower ?? 0) * decimalAdj;
     const rawHi = Math.pow(1.0001, cfg.tickUpper ?? 0) * decimalAdj;
-    const priceLowerUsd = (cfg.token0Decimals != null && cfg.token1Decimals != null)
-      ? (cfg.hedgeToken === 'token1' ? 1 / rawHi : rawLo)
-      : undefined;
-    const priceUpperUsd = (cfg.token0Decimals != null && cfg.token1Decimals != null)
-      ? (cfg.hedgeToken === 'token1' ? 1 / rawLo : rawHi)
-      : undefined;
+
+    // Use explicitly calculated USD prices if available from scanner, otherwise estimate
+    const priceLowerUsd = ps.pnl?.priceLowerUsd ?? (
+      (cfg.token0Decimals != null && cfg.token1Decimals != null)
+        ? (cfg.hedgeToken === 'token1' ? 1 / rawHi : rawLo)
+        : undefined
+    );
+    const priceUpperUsd = ps.pnl?.priceUpperUsd ?? (
+      (cfg.token0Decimals != null && cfg.token1Decimals != null)
+        ? (cfg.hedgeToken === 'token1' ? 1 / rawLo : rawHi)
+        : undefined
+    );
     const record: HistoricalPosition = {
       tokenId: cfg.tokenId,
       poolAddress: cfg.poolAddress,
@@ -612,8 +619,8 @@ export class Rebalancer {
     volatilePriceUsd: number
   ): number {
     const sqrtCurrent = Math.sqrt(Math.pow(1.0001, position.tickCurrent));
-    const sqrtLower   = Math.sqrt(Math.pow(1.0001, position.tickLower));
-    const sqrtUpper   = Math.sqrt(Math.pow(1.0001, position.tickUpper));
+    const sqrtLower = Math.sqrt(Math.pow(1.0001, position.tickLower));
+    const sqrtUpper = Math.sqrt(Math.pow(1.0001, position.tickUpper));
     const liq = Number(liquidity);
     let amount0 = 0;
     let amount1 = 0;

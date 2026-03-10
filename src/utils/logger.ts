@@ -1,8 +1,18 @@
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
+import fs from 'fs';
 
-const logDir = path.resolve(__dirname, '..', '..', 'logs');
+const logDir = process.env.LOG_DIR || path.resolve(__dirname, '..', '..', 'logs');
+
+// Try to create the log directory; fall back to console-only if it fails (e.g. Railway read-only FS)
+let fileLoggingEnabled = false;
+try {
+  fs.mkdirSync(logDir, { recursive: true });
+  fileLoggingEnabled = true;
+} catch {
+  // no-op — console-only mode
+}
 
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -12,22 +22,41 @@ const logFormat = winston.format.combine(
   })
 );
 
-const rotateTransport = new DailyRotateFile({
-  dirname: logDir,
-  filename: 'bot-%DATE%.log',
-  datePattern: 'YYYY-MM-DD',
-  maxFiles: '14d',
-  maxSize: '20m',
-  format: logFormat,
-});
+const loggerTransports: winston.transport[] = [new winston.transports.Console()];
+if (fileLoggingEnabled) {
+  loggerTransports.push(new DailyRotateFile({
+    dirname: logDir,
+    filename: 'bot-%DATE%.log',
+    datePattern: 'YYYY-MM-DD',
+    maxFiles: '14d',
+    maxSize: '20m',
+    format: logFormat,
+  }));
+}
 
 export const logger = winston.createLogger({
   level: 'info',
   format: logFormat,
-  transports: [
-    new winston.transports.Console(),
-    rotateTransport,
-  ],
+  transports: loggerTransports,
+});
+
+// Dedicated price logger — writes every poll (10s) to logs/price-YYYY-MM-DD.log
+const priceTransports: winston.transport[] = [];
+if (fileLoggingEnabled) {
+  priceTransports.push(new DailyRotateFile({
+    dirname: logDir,
+    filename: 'price-%DATE%.log',
+    datePattern: 'YYYY-MM-DD',
+    maxFiles: '7d',
+    maxSize: '10m',
+    format: logFormat,
+  }));
+}
+
+export const priceLogger = winston.createLogger({
+  level: 'info',
+  format: logFormat,
+  transports: priceTransports.length ? priceTransports : [new winston.transports.Console()],
 });
 
 export function logCycle(data: {
