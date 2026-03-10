@@ -1,5 +1,5 @@
 import { config } from '../config';
-import { ActivePositionConfig, BotState, HedgeState, HistoricalPosition, LPPosition, PnlSnapshot, PositionState, PositionId } from '../types';
+import { ActivePositionConfig, BotState, DiscoveredPosition, HedgeState, HistoricalPosition, LPPosition, PnlSnapshot, PositionState, PositionId } from '../types';
 import { FillResult, HlIsolatedPnl, IHedgeExchange } from '../hedge/types';
 import { calculateHedge, HedgeTarget } from '../hedge/hedgeCalculator';
 import { insertRebalance } from '../db/supabase';
@@ -221,6 +221,36 @@ export class Rebalancer {
     } catch (err) {
       logger.error(`Failed to save state: ${err}`);
     }
+  }
+
+  saveScannedPositions(
+    positions: DiscoveredPosition[],
+    network: 'evm' | 'solana',
+    wallet: string,
+  ): void {
+    this.state.scannedPositions = positions;
+    this.state.scannedAt = Date.now();
+    this.state.scannedNetwork = network;
+    this.state.scannedWallet = wallet;
+    this.saveState();
+  }
+
+  getScannedPositions(): {
+    positions: DiscoveredPosition[];
+    scannedAt?: number;
+    scannedNetwork?: 'evm' | 'solana';
+    scannedWallet?: string;
+  } {
+    return {
+      positions: this.state.scannedPositions ?? [],
+      scannedAt: this.state.scannedAt,
+      scannedNetwork: this.state.scannedNetwork,
+      scannedWallet: this.state.scannedWallet,
+    };
+  }
+
+  getState(): BotState {
+    return this.state;
   }
 
   async cycle(tokenId: PositionId, position: LPPosition): Promise<void> {
