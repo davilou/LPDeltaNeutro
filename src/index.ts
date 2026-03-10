@@ -28,6 +28,8 @@ interface UserEngineContext {
   readers: Map<string, ILPReader>;
   activationsInProgress: Set<PositionId>;
   deactivationsInProgress: Set<PositionId>;
+  /** True while any cycle (timer, price poller, or activation) is running for this user. */
+  cycleInProgress: boolean;
 }
 
 function getOrCreateReader(ctx: UserEngineContext, chain: ChainId, dex: DexId): ILPReader {
@@ -155,10 +157,13 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       store.notifyActivationResult({ success: true, tokenId: activReq.tokenId, initialLpUsd, initialHlUsd });
 
       logger.info(`[Activation] Running immediate first cycle for NFT #${activReq.tokenId}...`);
+      ctx.cycleInProgress = true;
       try {
         await ctx.rebalancer.cycle(activReq.tokenId, position);
       } catch (cycleErr) {
         logger.error(`[Activation] Initial cycle failed for NFT #${activReq.tokenId}: ${cycleErr}`);
+      } finally {
+        ctx.cycleInProgress = false;
       }
     } catch (err) {
       logger.error(`[Activation] Failed for user ${userId}: ${err}`);
@@ -320,7 +325,7 @@ async function getOrCreateEngineContext(userId: string): Promise<UserEngineConte
   const exchange = await createExchangeForUser(userId);
   const rebalancer = new Rebalancer(exchange, userId);
 
-  const ctx: UserEngineContext = { rebalancer, exchange, readers: new Map(), activationsInProgress: new Set(), deactivationsInProgress: new Set() };
+  const ctx: UserEngineContext = { rebalancer, exchange, readers: new Map(), activationsInProgress: new Set(), deactivationsInProgress: new Set(), cycleInProgress: false };
   engineContexts.set(userId, ctx);
 
   const store = getStoreForUser(userId);
@@ -407,7 +412,7 @@ async function getOrCreateEngineContext(userId: string): Promise<UserEngineConte
  * never falls back to MockExchange for auto-restored users.
  */
 async function autoRestoreEngineContexts(): Promise<void> {
-  const stateDir = path.resolve(__dirname, '..');
+  const stateDir = process.env.DATA_DIR || path.resolve(__dirname, '..');
   let files: string[];
   try {
     files = fs.readdirSync(stateDir).filter(f => /^state-[a-z0-9-]+\.json$/.test(f));
@@ -555,8 +560,6 @@ async function main() {
     }
   }
 
-  const cyclesInProgress = new Set<string>();
-
   // ── LP Read Cycle (RPCs gratuitos, sem Alchemy) ─────────────────────────────
 
   async function runLpReadForToken(userId: string, ctx: UserEngineContext, tokenId: number): Promise<void> {
@@ -699,12 +702,12 @@ async function main() {
 
   async function runCycleForAllUsers(): Promise<void> {
     for (const [userId, ctx] of engineContexts.entries()) {
-      if (cyclesInProgress.has(userId)) {
+      if (ctx.cycleInProgress) {
         logger.warn(`[Cycle] User ${userId} — cycle already in progress, skipping`);
         continue;
       }
-      cyclesInProgress.add(userId);
-      runCycleForUser(userId, ctx).finally(() => cyclesInProgress.delete(userId));
+      ctx.cycleInProgress = true;
+      runCycleForUser(userId, ctx).finally(() => { ctx.cycleInProgress = false; });
     }
   }
 
@@ -817,17 +820,17 @@ async function main() {
             }
 
             if (triggerReason) {
-              if (cyclesInProgress.has(userId)) {
+              if (ctx.cycleInProgress) {
                 logger.warn(`[PricePoller] NFT #${cfg.tokenId} ${triggerReason} — cycle skipped (main cycle in progress)`);
               } else {
                 logger.warn(`[PricePoller] NFT #${cfg.tokenId} ${triggerReason} — triggering immediate cycle`);
-                cyclesInProgress.add(userId);
+                ctx.cycleInProgress = true;
                 const pollDex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
                 const pollReader = getOrCreateReader(ctx, chain, pollDex);
                 pollReader.readPosition(cfg.tokenId, cfg.poolAddress)
                   .then(position => ctx.rebalancer.cycle(cfg.tokenId, position))
                   .catch(err => logger.error(`[PricePoller] Cycle error for NFT #${cfg.tokenId}: ${err}`))
-                  .finally(() => cyclesInProgress.delete(userId));
+                  .finally(() => { ctx.cycleInProgress = false; });
               }
             }
           }

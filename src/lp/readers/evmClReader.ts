@@ -4,23 +4,10 @@ import { logger } from '../../utils/logger';
 import { getCachedPrice } from '../../utils/priceApi';
 import { ChainId, DexId, ILPReader, PositionId } from '../types';
 import { ChainDexAddresses, getChainDexAddresses } from '../chainRegistry';
-import { getChainProvider } from '../chainProviders';
+import { getLpProvider } from '../chainProviders';
 import { getTokenCache, TokenMeta, KNOWN_TOKENS_BY_CHAIN, seedTokenCache } from '../tokenCache';
 import { config } from '../../config';
-
-const POSITION_MANAGER_V3_ABI = [
-  'function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
-  'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) returns (uint256 amount0, uint256 amount1)',
-];
-
-const POOL_V3_ABI = [
-  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
-];
-
-const ERC20_ABI = [
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-];
+import { ERC20_ABI, POOL_V3_ABI, POSITION_MANAGER_V3_ABI } from '../abis';
 
 interface CachedPositionData {
   liquidity: bigint;
@@ -33,8 +20,6 @@ interface CachedPositionData {
   feesCycleCount: number;
   cachedAt: number;
 }
-
-const POSITION_CACHE_TTL_MS = 30 * 60 * 1_000;
 
 /**
  * LP reader for Uniswap V3-compatible DEXes on EVM chains.
@@ -61,13 +46,13 @@ export class EvmClReader implements ILPReader {
 
   async readPosition(id: PositionId, poolAddress: string): Promise<LPPosition> {
     const tokenId = Number(id);
-    const fallback = getChainProvider(this.chain);
+    const fallback = getLpProvider(this.chain);
 
     return fallback.call(async (provider) => {
       const pm = new ethers.Contract(this.addresses.positionManagerV3!, POSITION_MANAGER_V3_ABI, provider);
       const now = Date.now();
       const cached = this.positionDataCache.get(tokenId);
-      const needsFullRefresh = !cached || (now - cached.cachedAt > POSITION_CACHE_TTL_MS);
+      const needsFullRefresh = !cached || (now - cached.cachedAt > config.positionCacheTtlMs);
 
       let liquidity: bigint;
       let tickLower: number;
@@ -191,8 +176,13 @@ export class EvmClReader implements ILPReader {
     this.positionDataCache.delete(Number(id));
   }
 
+  refreshFees(id: PositionId): void {
+    const cached = this.positionDataCache.get(Number(id));
+    if (cached) cached.feesCycleCount = config.positionCacheRefreshCycles;
+  }
+
   async getBlockOrSlot(): Promise<number> {
-    return getChainProvider(this.chain).call(p => p.getBlockNumber());
+    return getLpProvider(this.chain).call(p => p.getBlockNumber());
   }
 
   private async getTokenInfo(provider: ethers.Provider, address: string): Promise<TokenMeta> {

@@ -9,6 +9,7 @@ import type { DiscoveredPosition, BotState } from '../types';
 import { createWalletScanner } from '../lp/walletScannerFactory';
 import type { ChainId, DexId } from '../lp/types';
 import { isChainDexSupported } from '../lp/chainRegistry';
+import { getZerionComplexPositions } from '../lp/zerionClient';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 import { fetchClosedPositions, fetchRebalances, supabaseServiceClient } from '../db/supabase';
@@ -19,24 +20,24 @@ import { saveCredentials } from '../auth/userStore';
 import '../auth/types';
 
 const _EVM_COMBOS_ALL: Array<{ chain: ChainId; dex: DexId }> = [
-  { chain: 'base',           dex: 'uniswap-v3'   },
-  { chain: 'base',           dex: 'uniswap-v4'   },
-  { chain: 'base',           dex: 'aerodrome-cl'  },
-  { chain: 'eth',            dex: 'uniswap-v3'   },
-  { chain: 'eth',            dex: 'uniswap-v4'   },
-  { chain: 'eth',            dex: 'pancake-v3'   },
-  { chain: 'bsc',            dex: 'uniswap-v3'   },
-  { chain: 'bsc',            dex: 'uniswap-v4'   },
-  { chain: 'bsc',            dex: 'pancake-v3'   },
-  { chain: 'arbitrum',       dex: 'uniswap-v3'   },
-  { chain: 'arbitrum',       dex: 'uniswap-v4'   },
-  { chain: 'arbitrum',       dex: 'pancake-v3'   },
-  { chain: 'polygon',        dex: 'uniswap-v3'   },
-  { chain: 'polygon',        dex: 'uniswap-v4'   },
-  { chain: 'polygon',        dex: 'pancake-v3'   },
-  { chain: 'avalanche',      dex: 'uniswap-v3'   },
-  { chain: 'avalanche',      dex: 'uniswap-v4'   },
-  { chain: 'hyperliquid-l1', dex: 'project-x'    },
+  { chain: 'base', dex: 'uniswap-v3' },
+  { chain: 'base', dex: 'uniswap-v4' },
+  { chain: 'base', dex: 'aerodrome-cl' },
+  { chain: 'eth', dex: 'uniswap-v3' },
+  { chain: 'eth', dex: 'uniswap-v4' },
+  { chain: 'eth', dex: 'pancake-v3' },
+  { chain: 'bsc', dex: 'uniswap-v3' },
+  { chain: 'bsc', dex: 'uniswap-v4' },
+  { chain: 'bsc', dex: 'pancake-v3' },
+  { chain: 'arbitrum', dex: 'uniswap-v3' },
+  { chain: 'arbitrum', dex: 'uniswap-v4' },
+  { chain: 'arbitrum', dex: 'pancake-v3' },
+  { chain: 'polygon', dex: 'uniswap-v3' },
+  { chain: 'polygon', dex: 'uniswap-v4' },
+  { chain: 'polygon', dex: 'pancake-v3' },
+  { chain: 'avalanche', dex: 'uniswap-v3' },
+  { chain: 'avalanche', dex: 'uniswap-v4' },
+  { chain: 'hyperliquid-l1', dex: 'project-x' },
 ];
 const EVM_CHAIN_DEX_COMBOS: Array<{ chain: ChainId; dex: DexId }> =
   _EVM_COMBOS_ALL.filter(({ chain, dex }) => isChainDexSupported(chain, dex));
@@ -226,8 +227,8 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       chain?: string;
       dex?: string;
     };
-    const isEvmAddr     = /^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? '');
-    const isSolanaAddr  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress ?? '');
+    const isEvmAddr = /^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? '');
+    const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress ?? '');
     if (!walletAddress || (!isEvmAddr && !isSolanaAddr)) {
       res.status(400).json({ error: 'Invalid wallet address' });
       return;
@@ -252,7 +253,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       network?: 'evm' | 'solana';
     };
 
-    const isEvmAddr    = /^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? '');
+    const isEvmAddr = /^0x[0-9a-fA-F]{40}$/.test(walletAddress ?? '');
     const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress ?? '');
 
     if (!walletAddress || !network) {
@@ -269,15 +270,29 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     }
 
     const userId = req.session.userId!;
-    const store  = getStoreForUser(userId);
-    const ctx    = callbacks.getEngineContext(userId);
+    const store = getStoreForUser(userId);
+    const ctx = callbacks.getEngineContext(userId);
 
     logger.info(`[Scanner] scan-all network=${network} addr=${walletAddress}`);
 
     try {
-      const combos: Array<{ chain: ChainId; dex: DexId }> = network === 'evm'
-        ? EVM_CHAIN_DEX_COMBOS
-        : SOLANA_DEX_COMBOS.map(dex => ({ chain: 'solana' as ChainId, dex }));
+      let combos: Array<{ chain: ChainId; dex: DexId }>;
+      if (network === 'evm') {
+        const zerionPositions = await getZerionComplexPositions(walletAddress);
+        if (zerionPositions && zerionPositions.length > 0) {
+          // Zerion detected these chains — scan ALL supported dexes per chain
+          const zerionChains = new Set(zerionPositions.map(p => p.chainId));
+          combos = EVM_CHAIN_DEX_COMBOS.filter(c => zerionChains.has(c.chain));
+          // Always include chains that Zerion can't detect (e.g. HyperEVM/ProjectX)
+          const extra = EVM_CHAIN_DEX_COMBOS.filter(c => !zerionChains.has(c.chain));
+          combos.push(...extra);
+          logger.info(`[Scanner] Zerion detected chains: [${[...zerionChains].join(',')}] → scanning ${combos.length} combos (${extra.length} extra non-Zerion chains)`);
+        } else {
+          combos = EVM_CHAIN_DEX_COMBOS;
+        }
+      } else {
+        combos = SOLANA_DEX_COMBOS.map(dex => ({ chain: 'solana' as ChainId, dex }));
+      }
 
       const total = combos.length;
       let done = 0;
@@ -287,7 +302,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       const tasks = combos.map(async ({ chain, dex }) => {
         try {
           const scanner = createWalletScanner(chain, dex);
-          const found   = await scanner.scanWallet(walletAddress);
+          const found = await scanner.scanWallet(walletAddress);
           for (const p of found) {
             const key = `${p.tokenId}:${chain}:${dex}`;
             if (!seen.has(key)) {
@@ -305,7 +320,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
       await Promise.allSettled(tasks);
 
-      const filtered = allPositions.filter(p => p.estimatedUsd > 10);
+      const filtered = allPositions.filter(p => p.estimatedUsd >= 10 || p.estimatedUsd === 0);
 
       if (ctx) {
         ctx.rebalancer.saveScannedPositions(filtered, network, walletAddress);

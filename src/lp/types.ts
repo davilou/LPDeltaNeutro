@@ -27,6 +27,8 @@ export type PositionId = number | string;
 export interface ILPReader {
   readPosition(id: PositionId, poolAddress: string): Promise<LPPosition>;
   invalidateCache(id: PositionId): void;
+  /** Força re-leitura de fees no próximo readPosition sem descartar cache de liquidez/ticks. */
+  refreshFees?(id: PositionId): void;
   getBlockOrSlot(): Promise<number>;
 }
 

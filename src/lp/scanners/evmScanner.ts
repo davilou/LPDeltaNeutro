@@ -7,6 +7,7 @@ import { getLpProvider } from '../chainProviders';
 import { getTokenCache, KNOWN_TOKENS_BY_CHAIN, seedTokenCache, TokenMeta } from '../tokenCache';
 import { NonRetryableError } from '../../utils/fallbackProvider';
 import { multicall3, buildCall3, decodeCall3Result } from '../../utils/multicall';
+import { getZerionComplexPositions, isZerionSupportedChain, ZerionComplexPosition } from '../zerionClient';
 
 const POSITION_MANAGER_V3_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -39,19 +40,19 @@ const STATE_VIEW_V4_ABI = [
   'function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)',
 ];
 
-const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD', 'BUSD']);
+const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD', 'BUSD', 'FRAX', 'LUSD', 'PYUSD', 'USDE', 'TUSD', 'FDUSD']);
 
 const MIN_POSITION_USD = 10;
 
 // Approximate block at which Uniswap V4 contracts were deployed per chain.
 // Used as fromBlock in ModifyLiquidity event scans to avoid scanning from genesis.
 const V4_DEPLOY_BLOCKS: Partial<Record<ChainId, number>> = {
-  'base':           23_000_000,
-  'eth':            21_500_000,
-  'bsc':            45_000_000,
-  'arbitrum':      290_000_000,
-  'polygon':        65_000_000,
-  'avalanche':      54_000_000,
+  'base': 23_000_000,
+  'eth': 21_500_000,
+  'bsc': 45_000_000,
+  'arbitrum': 290_000_000,
+  'polygon': 65_000_000,
+  'avalanche': 54_000_000,
   'hyperliquid-l1': 0,
 };
 
@@ -69,10 +70,174 @@ export class EvmScanner implements IWalletScanner {
   }
 
   async scanWallet(walletAddress: string): Promise<DiscoveredPosition[]> {
-    if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') {
-      return this.scanV4(walletAddress);
+    if (!isZerionSupportedChain(this.chain)) {
+      if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') return this.scanV4(walletAddress);
+      return this.scanV3(walletAddress);
     }
-    return this.scanV3(walletAddress);
+
+    const zPositions = await getZerionComplexPositions(walletAddress);
+    if (!zPositions || zPositions.length === 0) {
+      if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') return this.scanV4(walletAddress);
+      return this.scanV3(walletAddress);
+    }
+
+    const relevant = zPositions.filter(p => p.chainId === this.chain && p.dexId === this.dex);
+    if (relevant.length === 0) {
+      if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') return this.scanV4(walletAddress);
+      return this.scanV3(walletAddress);
+    }
+
+    if (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') {
+      return this.scanV4Hybrid(walletAddress, relevant);
+    }
+    return this.scanV3Hybrid(walletAddress, relevant);
+  }
+
+  private async scanV3Hybrid(walletAddress: string, zPositions: ZerionComplexPosition[]): Promise<DiscoveredPosition[]> {
+    const addresses = getChainDexAddresses(this.chain, this.dex);
+    if (!addresses.positionManagerV3) return [];
+
+    const posDataList = zPositions.map(p => {
+      const match = p.name.match(/#(\d+)/);
+      return { tokenId: match ? Number(match[1]) : 0, zPos: p };
+    }).filter(p => p.tokenId > 0);
+
+    if (posDataList.length === 0) return this.scanV3(walletAddress);
+
+    const fallback = getLpProvider(this.chain);
+    const pmAddr = addresses.positionManagerV3;
+
+    // Fetch on-chain details for these tokenIds
+    const onChainDetails = await fallback.call(async (provider) => {
+      const pm = new ethers.Contract(pmAddr, POSITION_MANAGER_V3_ABI, provider);
+      const calls = posDataList.map(p => buildCall3(pm, 'positions', [p.tokenId]));
+      const results = await multicall3(provider, calls);
+      return results.map(r => decodeCall3Result<ethers.Result>(pm, 'positions', r));
+    });
+
+    const discovered: DiscoveredPosition[] = [];
+    const tokenCache = getTokenCache(this.chain);
+
+    for (let i = 0; i < posDataList.length; i++) {
+      const posRes = onChainDetails[i];
+      if (!posRes || BigInt(posRes.liquidity) === 0n) continue;
+
+      const t0Addr = String(posRes.token0).toLowerCase();
+      const t1Addr = String(posRes.token1).toLowerCase();
+      const fee = Number(posRes.fee);
+      const tickLower = Number(posRes.tickLower);
+      const tickUpper = Number(posRes.tickUpper);
+      const liquidity = BigInt(posRes.liquidity);
+
+      // Unique token/pool info
+      const { t0Meta, t1Meta, poolAddr, tickCurrent } = await fallback.call(async (provider) => {
+        const [m0, m1] = await Promise.all([
+          this.getTokenInfo(provider, t0Addr),
+          this.getTokenInfo(provider, t1Addr),
+        ]);
+        const rAddr = await this.resolvePoolAddress(provider, addresses, t0Addr, t1Addr, fee);
+        const pool = new ethers.Contract(rAddr, POOL_V3_ABI, provider);
+        const s0 = await pool.slot0();
+        return { t0Meta: m0, t1Meta: m1, poolAddr: rAddr, tickCurrent: Number(s0.tick) };
+      });
+
+      const t0Found = posDataList[i].zPos.tokens.find((t: any) => t.address.toLowerCase() === t0Addr);
+      const t1Found = posDataList[i].zPos.tokens.find((t: any) => t.address.toLowerCase() === t1Addr);
+
+      const dp = this.buildDiscoveredPosition(
+        posDataList[i].tokenId,
+        t0Addr, t0Meta,
+        t1Addr, t1Meta,
+        fee,
+        tickLower, tickUpper, tickCurrent,
+        liquidity,
+        poolAddr,
+        t0Found?.price, t1Found?.price
+      );
+
+      // Zerion usdValue override if needed
+      if (posDataList[i].zPos.usdValue > 0 && (!dp.estimatedUsd || dp.estimatedUsd === 0)) {
+        dp.estimatedUsd = posDataList[i].zPos.usdValue;
+      }
+
+      if (dp.estimatedUsd >= MIN_POSITION_USD || dp.estimatedUsd === 0) discovered.push(dp);
+    }
+
+    return discovered;
+  }
+
+  private async scanV4Hybrid(walletAddress: string, zPositions: ZerionComplexPosition[]): Promise<DiscoveredPosition[]> {
+    const addresses = getChainDexAddresses(this.chain, this.dex);
+    if (!addresses.positionManagerV4 || !addresses.stateViewV4) return [];
+
+    const posDataList = zPositions.map(p => {
+      const match = p.name.match(/#(\d+)/);
+      return { tokenId: match ? Number(match[1]) : 0, zPos: p };
+    }).filter(p => p.tokenId > 0);
+
+    if (posDataList.length === 0) return this.scanV4(walletAddress);
+
+    const fallback = getLpProvider(this.chain);
+    const pmAddr = addresses.positionManagerV4;
+    const svAddr = addresses.stateViewV4;
+
+    const onChainDetails = await fallback.call(async (provider) => {
+      const pm = new ethers.Contract(pmAddr, POSITION_MANAGER_V4_ABI, provider);
+      const sv = new ethers.Contract(svAddr, STATE_VIEW_V4_ABI, provider);
+
+      const discovered: DiscoveredPosition[] = [];
+      const cache = getTokenCache(this.chain);
+
+      for (let i = 0; i < posDataList.length; i++) {
+        const tokenId = posDataList[i].tokenId;
+        const liquidity: bigint = BigInt(await pm.getPositionLiquidity(tokenId));
+        if (liquidity === 0n) continue;
+
+        const { poolKey, info } = await pm.getPoolAndPositionInfo(tokenId);
+        const infoBig = BigInt(info as string);
+
+        const rawTickLower = Number(infoBig & 0xFFFFFFn);
+        const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
+        const rawTickUpper = Number((infoBig >> 24n) & 0xFFFFFFn);
+        const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
+
+        const poolId = ethers.keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ['address', 'address', 'uint24', 'int24', 'address'],
+            [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
+          )
+        );
+
+        const [t0Meta, t1Meta, slot0] = await Promise.all([
+          this.getTokenInfo(provider, poolKey.currency0),
+          this.getTokenInfo(provider, poolKey.currency1),
+          sv.getSlot0(poolId),
+        ]);
+
+        const t0Found = posDataList[i].zPos.tokens.find((t: any) => t.address.toLowerCase() === String(poolKey.currency0).toLowerCase());
+        const t1Found = posDataList[i].zPos.tokens.find((t: any) => t.address.toLowerCase() === String(poolKey.currency1).toLowerCase());
+
+        const dp = this.buildDiscoveredPosition(
+          tokenId,
+          String(poolKey.currency0).toLowerCase(), t0Meta,
+          String(poolKey.currency1).toLowerCase(), t1Meta,
+          Number(poolKey.fee),
+          tickLower, tickUpper, Number(slot0.tick),
+          liquidity,
+          poolId,
+          t0Found?.price, t1Found?.price
+        );
+
+        if (posDataList[i].zPos.usdValue > 0 && (!dp.estimatedUsd || dp.estimatedUsd === 0)) {
+          dp.estimatedUsd = posDataList[i].zPos.usdValue;
+        }
+
+        if (dp.estimatedUsd >= MIN_POSITION_USD || dp.estimatedUsd === 0) discovered.push(dp);
+      }
+      return discovered;
+    });
+
+    return onChainDetails;
   }
 
   async lookupById(id: PositionId): Promise<DiscoveredPosition | null> {
@@ -137,9 +302,9 @@ export class EvmScanner implements IWalletScanner {
 
         const { poolKey, info } = await pm.getPoolAndPositionInfo(tokenId);
         const infoBig = BigInt(info as string);
-        const rawTickLower = Number(infoBig & 0xFFFFFFn);
+        const rawTickLower = Number((infoBig >> 8n) & 0xFFFFFFn);
         const tickLower = rawTickLower > 0x7FFFFFn ? rawTickLower - 0x1000000 : rawTickLower;
-        const rawTickUpper = Number((infoBig >> 24n) & 0xFFFFFFn);
+        const rawTickUpper = Number((infoBig >> 32n) & 0xFFFFFFn);
         const tickUpper = rawTickUpper > 0x7FFFFFn ? rawTickUpper - 0x1000000 : rawTickUpper;
 
         const poolId = ethers.keccak256(
@@ -283,7 +448,7 @@ export class EvmScanner implements IWalletScanner {
 
       for (let i = 0; i < liveTokenIds.length; i++) {
         const ownerResult = results[i * 2];
-        const infoResult  = results[i * 2 + 1];
+        const infoResult = results[i * 2 + 1];
 
         const owner = decodeCall3Result<string>(pm, 'ownerOf', ownerResult);
         if (!owner || owner.toLowerCase() !== walletAddress.toLowerCase()) continue;
@@ -633,6 +798,7 @@ export class EvmScanner implements IWalletScanner {
     fee: number,
     tickLower: number, tickUpper: number, tickCurrent: number,
     liquidity: bigint, poolAddress: string,
+    t0PriceUsd?: number, t1PriceUsd?: number
   ): DiscoveredPosition {
     const [amount0, amount1] = this.computeAmountsFromTicks(liquidity, tickCurrent, tickLower, tickUpper);
     const t0Amount = Number(ethers.formatUnits(amount0, t0.decimals));
@@ -642,15 +808,53 @@ export class EvmScanner implements IWalletScanner {
 
     const t0Stable = STABLE_SYMBOLS.has(t0.symbol);
     const t1Stable = STABLE_SYMBOLS.has(t1.symbol);
-    const estimatedUsd = t0Stable
-      ? t0Amount + t1Amount * (1 / price)
-      : t1Stable
-        ? t0Amount * price + t1Amount
-        : 0;
+
+    // Calculate estimatedUsd
+    let estimatedUsd = 0;
+    if (t0Stable) {
+      estimatedUsd = t0Amount + t1Amount * (1 / price);
+    } else if (t1Stable) {
+      estimatedUsd = t0Amount * price + t1Amount;
+    } else if (t0PriceUsd !== undefined && t1PriceUsd !== undefined) {
+      estimatedUsd = t0Amount * t0PriceUsd + t1Amount * t1PriceUsd;
+    }
+
+    // Determine the USD price of token1 (used as quote for volatile pairs)
+    let token1PriceUsd: number | undefined;
+    if (t1Stable) {
+      token1PriceUsd = 1.0;
+    } else if (t0Stable && price > 0) {
+      token1PriceUsd = 1 / price; // token1 price in terms of stable token0
+    } else if (t1PriceUsd !== undefined && t1PriceUsd > 0) {
+      token1PriceUsd = t1PriceUsd; // from Zerion
+    } else if (estimatedUsd > 0 && t0Amount * price + t1Amount > 0) {
+      // derive from total estimatedUsd if Zerion didn't provide individual token prices
+      token1PriceUsd = estimatedUsd / (t0Amount * price + t1Amount);
+    }
+
+    // Calculate USD-equivalent range prices
+    let priceLowerUsd: number | undefined;
+    let priceUpperUsd: number | undefined;
+
+    if (t0Stable) {
+      // price is token1/token0. Since token0 is stable, price = 1/usdPrice
+      const rawLower = Math.pow(1.0001, tickLower) * Math.pow(10, decimalAdj);
+      const rawUpper = Math.pow(1.0001, tickUpper) * Math.pow(10, decimalAdj);
+      priceLowerUsd = rawUpper > 0 ? 1 / rawUpper : 0; // inverted so High tick = Low USD price
+      priceUpperUsd = rawLower > 0 ? 1 / rawLower : 0;
+    } else if (token1PriceUsd !== undefined) {
+      // Base case: token1 is quote (or derived as quote). Tick price = token1/token0
+      const rawLower = Math.pow(1.0001, tickLower) * Math.pow(10, decimalAdj);
+      const rawUpper = Math.pow(1.0001, tickUpper) * Math.pow(10, decimalAdj);
+      priceLowerUsd = rawLower * token1PriceUsd;
+      priceUpperUsd = rawUpper * token1PriceUsd;
+    }
+
+    const p0Usd = token1PriceUsd !== undefined ? price * token1PriceUsd : undefined;
 
     const rangeStatus = tickCurrent < tickLower ? 'below-range'
       : tickCurrent >= tickUpper ? 'above-range'
-      : 'in-range';
+        : 'in-range';
 
     const protocolVersion = (this.dex === 'uniswap-v4' || this.dex === 'pancake-v4') ? 'v4' : 'v3';
 
@@ -671,7 +875,12 @@ export class EvmScanner implements IWalletScanner {
       token0AmountFormatted: t0Amount,
       token1AmountFormatted: t1Amount,
       price,
+      priceUsd: p0Usd, // We can add this if needed, but the main ones are the bounds
+      token0PriceUsd: p0Usd,
       estimatedUsd,
+      priceLowerUsd,
+      priceUpperUsd,
+      token1PriceUsd,
       chain: this.chain,
       dex: this.dex,
     };
@@ -679,8 +888,8 @@ export class EvmScanner implements IWalletScanner {
 
   private computeAmountsFromTicks(liquidity: bigint, tickCurrent: number, tickLower: number, tickUpper: number): [bigint, bigint] {
     const sqrtPriceCurrent = Math.sqrt(Math.pow(1.0001, tickCurrent));
-    const sqrtPriceLower   = Math.sqrt(Math.pow(1.0001, tickLower));
-    const sqrtPriceUpper   = Math.sqrt(Math.pow(1.0001, tickUpper));
+    const sqrtPriceLower = Math.sqrt(Math.pow(1.0001, tickLower));
+    const sqrtPriceUpper = Math.sqrt(Math.pow(1.0001, tickUpper));
     const liq = Number(liquidity);
     let amount0 = 0, amount1 = 0;
     if (tickCurrent < tickLower) { amount0 = liq * (1 / sqrtPriceLower - 1 / sqrtPriceUpper); }

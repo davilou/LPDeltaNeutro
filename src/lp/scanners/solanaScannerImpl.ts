@@ -1,6 +1,6 @@
 // src/lp/scanners/solanaScannerImpl.ts
 import { Connection, PublicKey, Keypair } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import {
   buildWhirlpoolClient,
   WhirlpoolContext,
@@ -13,6 +13,7 @@ import { AnchorProvider } from '@coral-xyz/anchor';
 import {
   PositionInfoLayout,
   PoolInfoLayout,
+  ClmmConfigLayout,
   SqrtPriceMath,
   LiquidityMath,
 } from '@raydium-io/raydium-sdk-v2';
@@ -24,12 +25,16 @@ import { logger } from '../../utils/logger';
 
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'BUSD', 'DAI']);
 
-// Raydium CLMM program ID (mainnet)
+// Raydium CLMM program (mainnet). Seed for PersonalPosition PDA: ["position", nftMint]
 const RAYDIUM_CLMM_PROGRAM_ID = new PublicKey('CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK');
+
+// Metaplex Token Metadata program
+const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 export class SolanaScannerImpl implements IWalletScanner {
   private readonly dex: DexId;
   private readonly connection: Connection;
+  private readonly symbolCache = new Map<string, string>();
 
   constructor(dex: DexId) {
     this.dex = dex;
@@ -63,13 +68,14 @@ export class SolanaScannerImpl implements IWalletScanner {
     const ctx = WhirlpoolContext.withProvider(provider);
     const client = buildWhirlpoolClient(ctx);
 
-    const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(walletPK, {
-      programId: TOKEN_PROGRAM_ID,
-    });
-    const nftMints = tokenAccounts.value
+    const [ta1, ta2] = await Promise.all([
+      this.connection.getParsedTokenAccountsByOwner(walletPK, { programId: TOKEN_PROGRAM_ID }),
+      this.connection.getParsedTokenAccountsByOwner(walletPK, { programId: TOKEN_2022_PROGRAM_ID }),
+    ]);
+    const nftMints = [...ta1.value, ...ta2.value]
       .filter(a => {
-        const info = a.account.data.parsed.info.tokenAmount;
-        return info.uiAmount === 1 && info.decimals === 0;
+        const ta = a.account.data.parsed.info.tokenAmount;
+        return (ta.amount === '1' || ta.uiAmount === 1) && ta.decimals === 0;
       })
       .map(a => new PublicKey(a.account.data.parsed.info.mint as string));
 
@@ -91,6 +97,11 @@ export class SolanaScannerImpl implements IWalletScanner {
         const decimalsA = mintInfoA?.decimals ?? 6;
         const decimalsB = mintInfoB?.decimals ?? 6;
 
+        const [symA, symB] = await Promise.all([
+          this.resolveTokenSymbol(poolData.tokenMintA),
+          this.resolveTokenSymbol(poolData.tokenMintB),
+        ]);
+
         const amounts = PoolUtil.getTokenAmountsFromLiquidity(
           positionData.liquidity,
           poolData.sqrtPrice,
@@ -105,16 +116,16 @@ export class SolanaScannerImpl implements IWalletScanner {
         const t0Amount = Number(amounts.tokenA.toString()) / Math.pow(10, decimalsA);
         const t1Amount = Number(amounts.tokenB.toString()) / Math.pow(10, decimalsB);
         const rangeStatus = this.calcRangeStatus(tickCurrent, positionData.tickLowerIndex, positionData.tickUpperIndex);
-        const estimatedUsd = this.estimateUsd(t0Amount, t1Amount, price, 'TOKEN_A', 'TOKEN_B');
+        const estimatedUsd = this.estimateUsd(t0Amount, t1Amount, price, symA, symB);
 
         positions.push({
           tokenId: positionPDA.publicKey.toBase58(),
           protocolVersion: 'v3',
           token0Address: poolData.tokenMintA.toBase58(),
-          token0Symbol: 'TOKEN_A',
+          token0Symbol: symA,
           token0Decimals: decimalsA,
           token1Address: poolData.tokenMintB.toBase58(),
-          token1Symbol: 'TOKEN_B',
+          token1Symbol: symB,
           token1Decimals: decimalsB,
           fee: poolData.feeRate,
           tickLower: positionData.tickLowerIndex,
@@ -143,30 +154,52 @@ export class SolanaScannerImpl implements IWalletScanner {
   // Raydium CLMM scan
   // ---------------------------------------------------------------------------
   private async scanRaydium(walletPK: PublicKey): Promise<DiscoveredPosition[]> {
-    const accounts = await this.connection.getProgramAccounts(RAYDIUM_CLMM_PROGRAM_ID, {
-      filters: [{ dataSize: PositionInfoLayout.span }],
-    });
+    // Get wallet NFTs from both SPL token programs (Raydium CLMM uses Token-2022 for position NFTs)
+    const [ta1, ta2] = await Promise.all([
+      this.connection.getParsedTokenAccountsByOwner(walletPK, { programId: TOKEN_PROGRAM_ID }),
+      this.connection.getParsedTokenAccountsByOwner(walletPK, { programId: TOKEN_2022_PROGRAM_ID }),
+    ]);
+    const nftMints = [...ta1.value, ...ta2.value]
+      .filter(a => {
+        const ta = a.account.data.parsed.info.tokenAmount;
+        return (ta.amount === '1' || ta.uiAmount === 1) && ta.decimals === 0;
+      })
+      .map(a => new PublicKey(a.account.data.parsed.info.mint as string));
+
+    logger.info(`[SolanaScannerImpl][raydium] ${walletPK.toBase58()} — ${nftMints.length} NFTs to check`);
 
     const positions: DiscoveredPosition[] = [];
-    for (const { pubkey, account } of accounts) {
+    for (const nftMint of nftMints) {
       try {
-        const posData = PositionInfoLayout.decode(account.data);
+        // PersonalPosition PDA: seeds=["position", nftMint], program=Raydium CLMM
+        const [positionPDA] = PublicKey.findProgramAddressSync(
+          [Buffer.from('position'), nftMint.toBuffer()],
+          RAYDIUM_CLMM_PROGRAM_ID,
+        );
+        const accountInfo = await this.connection.getAccountInfo(positionPDA);
+        if (!accountInfo) continue;
 
-        // Skip empty/zero accounts
-        if (posData.nftMint.toBase58() === '11111111111111111111111111111111') continue;
-
-        // Skip zero-liquidity positions
+        const posData = PositionInfoLayout.decode(accountInfo.data);
         if (posData.liquidity.isZero()) continue;
-
-        // Verify wallet owns the NFT mint token account
-        const tokenAccounts = await this.connection.getTokenAccountsByOwner(walletPK, {
-          mint: posData.nftMint,
-        });
-        if (tokenAccounts.value.length === 0) continue;
 
         const poolAccount = await this.connection.getAccountInfo(posData.poolId);
         if (!poolAccount) continue;
         const poolData = PoolInfoLayout.decode(poolAccount.data);
+
+        // Read fee rate from AmmConfig account
+        let fee = 0;
+        try {
+          const configAccount = await this.connection.getAccountInfo(poolData.ammConfig);
+          if (configAccount) {
+            const configData = ClmmConfigLayout.decode(configAccount.data);
+            fee = configData.tradeFeeRate as number;
+          }
+        } catch { /* fee stays 0 */ }
+
+        const [symA, symB] = await Promise.all([
+          this.resolveTokenSymbol(poolData.mintA),
+          this.resolveTokenSymbol(poolData.mintB),
+        ]);
 
         const sqrtLower = SqrtPriceMath.getSqrtPriceX64FromTick(posData.tickLower);
         const sqrtUpper = SqrtPriceMath.getSqrtPriceX64FromTick(posData.tickUpper);
@@ -186,18 +219,18 @@ export class SolanaScannerImpl implements IWalletScanner {
         const t0Amount = Number(amountA.toString()) / Math.pow(10, decimalsA);
         const t1Amount = Number(amountB.toString()) / Math.pow(10, decimalsB);
         const rangeStatus = this.calcRangeStatus(tickCurrent, posData.tickLower, posData.tickUpper);
-        const estimatedUsd = this.estimateUsd(t0Amount, t1Amount, price, 'TOKEN_A', 'TOKEN_B');
+        const estimatedUsd = this.estimateUsd(t0Amount, t1Amount, price, symA, symB);
 
         positions.push({
-          tokenId: pubkey.toBase58(),
+          tokenId: positionPDA.toBase58(),
           protocolVersion: 'v3',
           token0Address: poolData.mintA.toBase58(),
-          token0Symbol: 'TOKEN_A',
+          token0Symbol: symA,
           token0Decimals: decimalsA,
           token1Address: poolData.mintB.toBase58(),
-          token1Symbol: 'TOKEN_B',
+          token1Symbol: symB,
           token1Decimals: decimalsB,
-          fee: 0,
+          fee,
           tickLower: posData.tickLower,
           tickUpper: posData.tickUpper,
           tickCurrent,
@@ -212,7 +245,7 @@ export class SolanaScannerImpl implements IWalletScanner {
           dex: 'raydium',
         });
       } catch (err) {
-        logger.warn(`[SolanaScannerImpl][raydium] skipping account ${pubkey.toBase58()}: ${err}`);
+        logger.warn(`[SolanaScannerImpl][raydium] skipping account ${nftMint.toBase58()}: ${err}`);
       }
     }
 
@@ -234,8 +267,11 @@ export class SolanaScannerImpl implements IWalletScanner {
       const activeId = (lbPair as any).activeId as number;
       const decimalsX = tokenX.mint.decimals;
       const decimalsY = tokenY.mint.decimals;
-      const tokenXAddr = tokenX.publicKey.toBase58();
-      const tokenYAddr = tokenY.publicKey.toBase58();
+
+      const [symX, symY] = await Promise.all([
+        this.resolveTokenSymbol(tokenX.publicKey),
+        this.resolveTokenSymbol(tokenY.publicKey),
+      ]);
 
       for (const posEntry of lbPairPositionsData) {
         try {
@@ -247,16 +283,16 @@ export class SolanaScannerImpl implements IWalletScanner {
           const t0Amount = parseFloat(String(posData.totalXAmount));
           const t1Amount = parseFloat(String(posData.totalYAmount));
           const rangeStatus = this.calcRangeStatus(activeId, lowerBin, upperBin);
-          const estimatedUsd = this.estimateUsd(t0Amount, t1Amount, price, 'TOKEN_X', 'TOKEN_Y');
+          const estimatedUsd = this.estimateUsd(t0Amount, t1Amount, price, symX, symY);
 
           positions.push({
             tokenId: posEntry.publicKey.toBase58(),
             protocolVersion: 'v3',
-            token0Address: tokenXAddr,
-            token0Symbol: 'TOKEN_X',
+            token0Address: tokenX.publicKey.toBase58(),
+            token0Symbol: symX,
             token0Decimals: decimalsX,
-            token1Address: tokenYAddr,
-            token1Symbol: 'TOKEN_Y',
+            token1Address: tokenY.publicKey.toBase58(),
+            token1Symbol: symY,
             token1Decimals: decimalsY,
             fee: binStep,
             tickLower: lowerBin,
@@ -285,6 +321,45 @@ export class SolanaScannerImpl implements IWalletScanner {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve token symbol via Metaplex Token Metadata program.
+   * Falls back to short mint address if metadata is unavailable.
+   * Results are cached in-memory for the lifetime of this scanner instance.
+   */
+  private async resolveTokenSymbol(mint: PublicKey): Promise<string> {
+    const key = mint.toBase58();
+    if (this.symbolCache.has(key)) return this.symbolCache.get(key)!;
+
+    try {
+      const [metadataPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from('metadata'), METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+        METADATA_PROGRAM_ID,
+      );
+      const accountInfo = await this.connection.getAccountInfo(metadataPDA);
+      if (accountInfo) {
+        const data = accountInfo.data;
+        // Metaplex borsh layout: key(1) + update_authority(32) + mint(32) + name(4+str) + symbol(4+str)
+        let offset = 1 + 32 + 32;
+        const nameLen = data.readUInt32LE(offset); offset += 4 + nameLen;
+        const symbolLen = data.readUInt32LE(offset); offset += 4;
+        const symbol = data
+          .subarray(offset, offset + symbolLen)
+          .toString('utf8')
+          .replace(/\0/g, '')
+          .trim();
+        if (symbol) {
+          this.symbolCache.set(key, symbol);
+          return symbol;
+        }
+      }
+    } catch { /* fall through */ }
+
+    const fallback = key.slice(0, 6);
+    this.symbolCache.set(key, fallback);
+    return fallback;
+  }
+
   private calcRangeStatus(current: number, lower: number, upper: number): DiscoveredPosition['rangeStatus'] {
     if (current < lower)  return 'below-range';
     if (current >= upper) return 'above-range';

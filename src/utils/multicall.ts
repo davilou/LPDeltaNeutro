@@ -60,6 +60,12 @@ export function decodeCall3Result<T>(
   result: Call3Result,
 ): T | null {
   if (!result.success) return null;
-  const decoded = contract.interface.decodeFunctionResult(method, result.returnData);
-  return decoded.length === 1 ? (decoded[0] as T) : (decoded as unknown as T);
+  // Calling a non-existent contract returns success=true with empty returnData.
+  if (!result.returnData || result.returnData === '0x') return null;
+  try {
+    const decoded = contract.interface.decodeFunctionResult(method, result.returnData);
+    return decoded.length === 1 ? (decoded[0] as T) : (decoded as unknown as T);
+  } catch {
+    return null;
+  }
 }

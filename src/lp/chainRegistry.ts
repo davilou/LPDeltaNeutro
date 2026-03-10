@@ -39,7 +39,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
   'eth:uniswap-v4': {
-    positionManagerV4: '0x7C0f70Bff9B6aD84E2Ac21D4DC74FB4a5fFF86c',
+    positionManagerV4: '0x7c0f70bff9b6ad84e2ac21d4dc74fb4a5fff86c',
     poolManagerV4:     '0x000000000004444c5dc75cB358380D2e3dE08A90',
     stateViewV4:       '0x7ffe42c4a5deea5b0fec41c94c136cf115597227',
   },
@@ -55,11 +55,11 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'bsc:uniswap-v3': {
     positionManagerV3: '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613',
     factoryV3:         '0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7',
-    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
+    // initCodeHashV3 omitted: BSC Uniswap V3 is unofficial, bytecode hash differs → use factory.getPool()
   },
   'bsc:uniswap-v4': {
     positionManagerV4: '0x7a4a5c919ae2541aed11041a1aeee68f1287f95b',
-    poolManagerV4:     '0x28e2Ea090877bF75740558f6BFB36a5ffeEB8e97',
+    poolManagerV4:     '0x28e2ea090877bf75740558f6bfb36a5ffeeb8e97',
     stateViewV4:       '0xd13dd3d6e93f276fafc9db9e6bb47c1180aee0c4',
   },
   'bsc:pancake-v3': {
@@ -95,7 +95,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   },
   'polygon:uniswap-v4': {
     positionManagerV4: '0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9',
-    poolManagerV4:     '0x67366782805870060151383F4BbFF9B05dF34e60',
+    poolManagerV4:     '0x67366782805870060151383f4bbff9b05df34e60',
     stateViewV4:       '0x5ea1bd7974c8a611cbab0bdcafcb1d9cc9b3ba5a',
   },
   'polygon:pancake-v3': {
@@ -108,11 +108,11 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'avalanche:uniswap-v3': {
     positionManagerV3: '0x655C406EBFa14EE2006250925e54ec43AD184f8B',
     factoryV3:         '0x740b1c1de25031C31FF4fC9A62f554A55cdC1baD',
-    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
+    // initCodeHashV3 omitted: Avalanche Uniswap V3 is unofficial, bytecode hash differs → use factory.getPool()
   },
   'avalanche:uniswap-v4': {
     positionManagerV4: '0xb74b1f14d2754acfcbbe1a221023a5cf50ab8acd',
-    poolManagerV4:     '0x06380C0a08AA5b7Fa2E2DFC4063CCBD68cDCE3ca',
+    poolManagerV4:     '0x06380c0a08aa5b7fa2e2dfc4063ccbd68cdce3ca',
     stateViewV4:       '0xc3c9e198c735a4b97e3e683f391ccbdd60b69286',
   },
 

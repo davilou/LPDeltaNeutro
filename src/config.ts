@@ -91,6 +91,7 @@ export const config = {
   emergencyPriceMovementThreshold: numEnv('EMERGENCY_PRICE_MOVEMENT_THRESHOLD', 0.15),
   /** Intervalo do ciclo pesado (minutos). Default: 30. */
   cycleIntervalMin: numEnv('CYCLE_INTERVAL_MIN', 30),
+  positionCacheTtlMs: numEnv('POSITION_CACHE_TTL_MS', 30 * 60 * 1_000),
   positionCacheRefreshCycles: numEnv('POSITION_CACHE_REFRESH_CYCLES', 60),
 
   // Hyperliquid credentials (required when DRY_RUN=false)

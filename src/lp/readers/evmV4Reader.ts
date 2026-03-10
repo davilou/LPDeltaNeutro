@@ -7,22 +7,7 @@ import { ChainDexAddresses, getChainDexAddresses } from '../chainRegistry';
 import { getLpProvider } from '../chainProviders';
 import { getTokenCache, TokenMeta, KNOWN_TOKENS_BY_CHAIN, seedTokenCache } from '../tokenCache';
 import { config } from '../../config';
-
-const POSITION_MANAGER_V4_ABI = [
-  'function getPoolAndPositionInfo(uint256 tokenId) view returns (tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bytes32 info)',
-  'function getPositionLiquidity(uint256 tokenId) view returns (uint128 liquidity)',
-];
-
-const STATE_VIEW_V4_ABI = [
-  'function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)',
-  'function getPositionInfo(bytes32 poolId, bytes32 positionId) view returns (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128)',
-  'function getFeeGrowthInside(bytes32 poolId, int24 tickLower, int24 tickUpper) view returns (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128)',
-];
-
-const ERC20_ABI = [
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-];
+import { ERC20_ABI, POSITION_MANAGER_V4_ABI, STATE_VIEW_V4_ABI } from '../abis';
 
 interface CachedV4PositionData {
   liquidity: bigint;
@@ -36,8 +21,6 @@ interface CachedV4PositionData {
   cachedAt: number;
   poolId: string;
 }
-
-const POSITION_CACHE_TTL_MS = 30 * 60 * 1_000;
 
 export class EvmV4Reader implements ILPReader {
   private readonly chain: ChainId;
@@ -69,7 +52,7 @@ export class EvmV4Reader implements ILPReader {
       const stateView = new ethers.Contract(svAddress, STATE_VIEW_V4_ABI, provider);
       const now = Date.now();
       const cached = this.positionDataCache.get(tokenId);
-      const needsFullRefresh = !cached || (now - cached.cachedAt > POSITION_CACHE_TTL_MS);
+      const needsFullRefresh = !cached || (now - cached.cachedAt > config.positionCacheTtlMs);
 
       let liquidity: bigint = 0n;
       let tickLower = 0;

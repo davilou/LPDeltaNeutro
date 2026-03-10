@@ -36,6 +36,8 @@ export interface PnlState {
   initialHlUsd: number;
   initialLpFeesUsd?: number;
   initialTimestamp: number;
+  priceLowerUsd?: number;
+  priceUpperUsd?: number;
 }
 
 export interface PnlSnapshot {
@@ -74,7 +76,12 @@ export interface DiscoveredPosition {
   token0AmountFormatted: number;
   token1AmountFormatted: number;
   price: number;
+  priceUsd?: number; // Added field
+  token0PriceUsd?: number; // Added field
   estimatedUsd: number;
+  priceLowerUsd?: number;
+  priceUpperUsd?: number;
+  token1PriceUsd?: number;
   chain?: ChainId;
   dex?: DexId;
 }

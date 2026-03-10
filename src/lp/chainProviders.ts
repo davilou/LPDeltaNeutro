@@ -2,7 +2,8 @@ import { ChainId } from './types';
 import { FallbackProvider } from '../utils/fallbackProvider';
 import { config } from '../config';
 
-const providers = new Map<ChainId, FallbackProvider>();
+const providers   = new Map<ChainId, FallbackProvider>();
+const lpProviders = new Map<ChainId, FallbackProvider>();
 
 const CHAIN_IDS: Partial<Record<ChainId, number>> = {
   base:            8453,
@@ -28,6 +29,19 @@ function getRpcUrls(chain: ChainId): string[] {
   }
 }
 
+function getLpFreeRpcUrls(chain: ChainId): string[] {
+  switch (chain) {
+    case 'base':           return config.lpFreeBaseRpcUrls;
+    case 'eth':            return config.lpFreeEthRpcUrls;
+    case 'bsc':            return config.lpFreeBscRpcUrls;
+    case 'arbitrum':       return config.lpFreeArbRpcUrls;
+    case 'polygon':        return config.lpFreePolygonRpcUrls;
+    case 'avalanche':      return config.lpFreeAvaxRpcUrls;
+    case 'hyperliquid-l1': return config.lpFreeHlL1RpcUrls;
+    default:               return [];
+  }
+}
+
 /**
  * Returns a shared FallbackProvider for the given chain.
  * Lazy-initialised on first call; singleton per chain.
@@ -43,5 +57,22 @@ export function getChainProvider(chain: ChainId): FallbackProvider {
 
   const provider = new FallbackProvider(urls, CHAIN_IDS[chain]);
   providers.set(chain, provider);
+  return provider;
+}
+
+/**
+ * Returns a FallbackProvider backed by free LP RPCs (LP_FREE_*_RPC_URL).
+ * Falls back to getChainProvider() if no free RPCs are configured.
+ * Use this for reads de posição/fees para não consumir CUs do Alchemy.
+ */
+export function getLpProvider(chain: ChainId): FallbackProvider {
+  const cached = lpProviders.get(chain);
+  if (cached) return cached;
+
+  const freeUrls = getLpFreeRpcUrls(chain);
+  if (freeUrls.length === 0) return getChainProvider(chain);
+
+  const provider = new FallbackProvider(freeUrls, CHAIN_IDS[chain]);
+  lpProviders.set(chain, provider);
   return provider;
 }
