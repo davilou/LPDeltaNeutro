@@ -148,4 +148,8 @@ export interface PositionState {
 export interface BotState {
   positions: Record<string, PositionState>;
   history?: HistoricalPosition[];
+  scannedPositions?: DiscoveredPosition[];
+  scannedAt?: number;
+  scannedNetwork?: 'evm' | 'solana';
+  scannedWallet?: string;
 }
