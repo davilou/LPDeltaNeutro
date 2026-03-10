@@ -586,6 +586,35 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     });
   });
 
+  // One-time state upload endpoint — protected by UPLOAD_SECRET env var
+  // Usage: curl -X POST https://host/api/upload-state \
+  //   -H "x-upload-secret: YOUR_SECRET" \
+  //   -H "Content-Type: application/json" \
+  //   -d @state-USERID.json?userId=USERID
+  app.post('/api/upload-state', express.json({ limit: '10mb' }), (req, res) => {
+    const secret = process.env.UPLOAD_SECRET;
+    if (!secret || req.headers['x-upload-secret'] !== secret) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const userId = req.query['userId'] as string;
+    if (!userId || !/^[a-z0-9-]+$/.test(userId)) {
+      res.status(400).json({ error: 'Invalid userId' });
+      return;
+    }
+    const dataDir = process.env.DATA_DIR || path.resolve(__dirname, '..', '..');
+    const fs = require('fs') as typeof import('fs');
+    const destPath = path.join(dataDir, `state-${userId}.json`);
+    try {
+      fs.writeFileSync(destPath, JSON.stringify(req.body, null, 2), 'utf-8');
+      logger.info(`[UploadState] Saved ${destPath}`);
+      res.json({ ok: true, path: destPath });
+    } catch (err) {
+      logger.error(`[UploadState] Failed to write ${destPath}: ${err}`);
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   app.listen(port, () => {
     logger.info(`Dashboard running at http://localhost:${port}`);
   });
