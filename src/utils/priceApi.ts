@@ -210,3 +210,13 @@ export async function fetchPoolPrice(
 
   return null;
 }
+
+/**
+ * Fetches the USD price of a single token by address.
+ * Primary: DexScreener token endpoint. Fallback: CoinGecko.
+ */
+export async function fetchTokenUsd(tokenAddress: string, chain: ChainId): Promise<number | null> {
+  const dex = await fetchTokenUsdDexScreener(tokenAddress, chain);
+  if (dex !== null) return dex;
+  return fetchTokenPriceCoingecko(tokenAddress, chain);
+}

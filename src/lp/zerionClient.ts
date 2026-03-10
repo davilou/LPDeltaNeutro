@@ -129,21 +129,26 @@ async function _fetchComplexPositions(walletAddress: string): Promise<ZerionComp
     const protocolStr = mainItem.attributes.protocol;
     const dexIds = protocolToDexIds(protocolStr);
 
-    // In many cases we just take the first candidate dexId for simplicity, EvmScanner will verify it later
-    if (dexIds.length === 0) continue;
-    const dexId = dexIds[0];
-
     const zerionChain = mainItem.relationships?.chain?.data?.id;
     if (!zerionChain) continue;
 
     const chainId = ZERION_CHAIN_MAP[zerionChain];
     if (!chainId) continue;
 
+    if (dexIds.length === 0) {
+      logger.warn(`[Zerion] Unrecognized protocol="${protocolStr}" on chain="${zerionChain}" (${chainId}) — position skipped`);
+      continue;
+    }
+    const dexId = dexIds[0];
+
     const name = mainItem.attributes.name || 'Unknown Position';
     const poolAddress = mainItem.attributes.pool_address?.toLowerCase();
 
     // We only support pool-based dexes right now
-    if (!poolAddress) continue;
+    if (!poolAddress) {
+      logger.warn(`[Zerion] No pool_address for protocol="${protocolStr}" name="${name}" chain="${zerionChain}" — position skipped`);
+      continue;
+    }
 
     let totalUsd = 0;
     const tokens = [];

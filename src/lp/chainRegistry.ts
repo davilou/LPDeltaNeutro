@@ -39,7 +39,7 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
   'eth:uniswap-v4': {
-    positionManagerV4: '0x7c0f70bff9b6ad84e2ac21d4dc74fb4a5fff86c',
+    positionManagerV4: '0x7c0f70bff9b6ad84e2ac21d4dc74fb4a5fff86ce',
     poolManagerV4:     '0x000000000004444c5dc75cB358380D2e3dE08A90',
     stateViewV4:       '0x7ffe42c4a5deea5b0fec41c94c136cf115597227',
   },
