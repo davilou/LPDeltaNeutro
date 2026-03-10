@@ -1387,8 +1387,8 @@
             <div class="modal-field">
               <label>Hedge Size</label>
               <div class="hedge-size-row">
-                <button class="hedge-mode-btn active" id="pm-btn-auto" onclick="setHedgeMode('auto')">AUTO</button>
-                <button class="hedge-mode-btn" id="pm-btn-manual" onclick="setHedgeMode('manual')">MANUAL</button>
+                <button class="hedge-mode-btn active" id="pm-btn-auto" onclick="setScannerHedgeMode('auto')">AUTO</button>
+                <button class="hedge-mode-btn" id="pm-btn-manual" onclick="setScannerHedgeMode('manual')">MANUAL</button>
                 <input type="number" id="pm-hedge-pct" min="0" max="200" step="1" value="100" />
                 <span>%</span>
               </div>
@@ -1432,6 +1432,14 @@
 
     var currentPage = 'monitor';
 
+    // ===== SCANNER STATE =====
+    var scannerNetwork = 'evm';
+    var scannerPositions = [];
+    var protectModalData = null;
+    var scannerHedgeMode = 'auto';
+    var scanProgressTotal = 0;
+    var scanProgressDone = 0;
+
     window.showPage = function (page) {
       currentPage = page;
       ['monitor', 'history', 'calculator', 'settings', 'scanner'].forEach(function (p) {
@@ -1440,6 +1448,7 @@
         navEl.className = 'sidebar-item' + (p === page ? ' active' : '');
       });
       if (page === 'history') { fetchHistory(); renderActivePositionsInHistory(); }
+      if (page === 'scanner') { loadPersistedScannedPositions(); }
     };
 
     (function () {
@@ -2270,6 +2279,13 @@
           if (currentPage === 'history') renderActivePositionsInHistory();
         });
 
+        es.addEventListener('scanProgress', function (e) {
+          var d = JSON.parse(e.data);
+          scanProgressDone = d.done;
+          scanProgressTotal = d.total;
+          updateScanProgress();
+        });
+
         es.onerror = function () {
           $('connDot').className = 'dot';
           $('connStatus').textContent = 'RECONNECTING';
@@ -2852,6 +2868,253 @@ window.addEventListener('DOMContentLoaded', function () {
   onChainChangeLookup();
 });
 // ─────────────────────────────────────────────────────────
+
+// ===== SCANNER FUNCTIONS =====
+
+function setScannerNetwork(network) {
+  scannerNetwork = network;
+  document.getElementById('subtab-evm').classList.toggle('active', network === 'evm');
+  document.getElementById('subtab-solana').classList.toggle('active', network === 'solana');
+  document.getElementById('scanner-wallet-input').placeholder =
+    network === 'evm' ? '0x...' : 'Endereço Solana (base58)';
+}
+
+async function startScan() {
+  var addr = document.getElementById('scanner-wallet-input').value.trim();
+  if (!addr) return;
+
+  var btn = document.getElementById('scanner-scan-btn');
+  btn.disabled = true;
+
+  scanProgressDone = 0;
+  scanProgressTotal = scannerNetwork === 'evm' ? 18 : 3;
+  updateScanProgress();
+  document.getElementById('scanner-progress').style.display = '';
+  document.getElementById('scanner-table').style.display = 'none';
+  document.getElementById('scanner-empty').style.display = 'none';
+
+  try {
+    var res = await fetch('/api/scan-wallet-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress: addr, network: scannerNetwork }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    var data = await res.json();
+    renderScannerTable(data.positions);
+  } catch (err) {
+    alert('Erro no scan: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('scanner-progress').style.display = 'none';
+  }
+}
+
+function updateScanProgress() {
+  var pct = scanProgressTotal ? (scanProgressDone / scanProgressTotal) * 100 : 0;
+  document.getElementById('scanner-progress-fill').style.width = pct + '%';
+  document.getElementById('scanner-progress-text').textContent =
+    'Escaneando... ' + scanProgressDone + '/' + scanProgressTotal;
+}
+
+function renderScannerTable(positions) {
+  scannerPositions = positions || [];
+  var tbody = document.getElementById('scanner-tbody');
+  tbody.innerHTML = '';
+
+  if (!scannerPositions.length) {
+    document.getElementById('scanner-empty').style.display = '';
+    document.getElementById('scanner-table').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('scanner-table').style.display = '';
+  document.getElementById('scanner-empty').style.display = 'none';
+
+  for (var i = 0; i < scannerPositions.length; i++) {
+    var p = scannerPositions[i];
+    var rangeLabel = p.rangeStatus === 'in-range' ? '✓ In Range'
+      : p.rangeStatus === 'above-range' ? '↑ Above'
+      : '↓ Below';
+    var rangeCls = p.rangeStatus;
+
+    var priceLow  = scannerTickToUsd(p.tickLower, p.token0Decimals, p.token1Decimals);
+    var priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals);
+    var rangeStr  = '$' + scannerFmt(priceLow) + ' — $' + scannerFmt(priceHigh);
+
+    var actionHtml = p.isActive
+      ? '<span class="badge-protected">✓ PROTEGIDA</span>'
+      : '<button class="btn-protect" onclick="openProtectModal(\'' + p.tokenId + '\')">▶ PROTECT</button>';
+
+    var dexChain = dexLabel(p.dex) + ' · ' + chainLabel(p.chain);
+
+    tbody.insertAdjacentHTML('beforeend',
+      '<tr>' +
+      '<td>' + p.token0Symbol + '/' + p.token1Symbol + '</td>' +
+      '<td>' + dexChain + '</td>' +
+      '<td><span class="range-badge ' + rangeCls + '">' + rangeLabel + '</span></td>' +
+      '<td>' + rangeStr + '</td>' +
+      '<td>$' + scannerFmt(p.estimatedUsd) + '</td>' +
+      '<td>' + actionHtml + '</td>' +
+      '</tr>'
+    );
+  }
+}
+
+function scannerTickToUsd(tick, dec0, dec1) {
+  var raw = Math.pow(1.0001, tick) * Math.pow(10, dec0 - dec1);
+  return raw > 0 ? 1 / raw : 0;
+}
+
+function dexLabel(dex) {
+  var map = {
+    'uniswap-v3': 'Uni V3', 'uniswap-v4': 'Uni V4',
+    'pancake-v3': 'Cake V3', 'pancake-v4': 'Cake V4',
+    'aerodrome-cl': 'Aero', 'project-x': 'ProjX',
+    'orca': 'Orca', 'raydium': 'Raydium', 'meteora': 'Meteora',
+  };
+  return map[dex] || dex;
+}
+
+function chainLabel(chain) {
+  var map = {
+    'base': 'Base', 'eth': 'ETH', 'bsc': 'BSC',
+    'arbitrum': 'Arb', 'polygon': 'Poly', 'avalanche': 'Avax',
+    'hyperliquid-l1': 'HyperEVM', 'solana': 'Solana',
+  };
+  return map[chain] || chain;
+}
+
+function scannerFmt(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (n >= 1)    return n.toFixed(2);
+  return n.toFixed(4);
+}
+
+function openProtectModal(tokenId) {
+  var p = scannerPositions.find(function (x) { return String(x.tokenId) === String(tokenId); });
+  if (!p) return;
+  protectModalData = p;
+
+  document.getElementById('pm-pair').textContent = p.token0Symbol + '/' + p.token1Symbol;
+  document.getElementById('pm-dex-chain').textContent = dexLabel(p.dex) + ' · ' + chainLabel(p.chain);
+
+  var priceLow  = scannerTickToUsd(p.tickLower,  p.token0Decimals, p.token1Decimals);
+  var priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals);
+  document.getElementById('pm-range').textContent = '$' + scannerFmt(priceLow) + ' — $' + scannerFmt(priceHigh);
+  document.getElementById('pm-value').textContent  = '$' + scannerFmt(p.estimatedUsd);
+  document.getElementById('protect-modal-title').textContent = 'Proteger Posição #' + tokenId;
+
+  document.getElementById('pm-token0-opt').textContent = p.token0Symbol + ' (token0)';
+  document.getElementById('pm-token0-opt').value = 'token0';
+  document.getElementById('pm-token1-opt').textContent = p.token1Symbol + ' (token1)';
+  document.getElementById('pm-token1-opt').value = 'token1';
+
+  var t1Lower = (p.token1Symbol || '').toLowerCase();
+  var isT1Stable = ['usdc','usdt','dai','busd','usd','tusd'].some(function (s) { return t1Lower.includes(s); });
+  document.getElementById('pm-hedge-token').value = isT1Stable ? 'token0' : 'token1';
+
+  setScannerHedgeMode('auto');
+  document.getElementById('pm-cooldown').value = 720;
+  document.getElementById('pm-emergency').value = 15;
+  document.getElementById('pm-dryrun').checked = false;
+
+  document.getElementById('protect-modal-overlay').style.display = 'flex';
+}
+
+function closeProtectModal() {
+  document.getElementById('protect-modal-overlay').style.display = 'none';
+  protectModalData = null;
+}
+
+function setScannerHedgeMode(mode) {
+  scannerHedgeMode = mode;
+  document.getElementById('pm-btn-auto').classList.toggle('active', mode === 'auto');
+  document.getElementById('pm-btn-manual').classList.toggle('active', mode === 'manual');
+  var input = document.getElementById('pm-hedge-pct');
+  if (mode === 'auto') {
+    input.value = calcAutoHedge(protectModalData);
+    input.readOnly = true;
+    input.style.opacity = '0.5';
+  } else {
+    input.readOnly = false;
+    input.style.opacity = '1';
+  }
+}
+
+function calcAutoHedge(p) {
+  if (!p) return 100;
+  return 100;
+}
+
+async function submitProtection() {
+  var p = protectModalData;
+  if (!p) return;
+
+  var hedgeToken = document.getElementById('pm-hedge-token').value;
+  var hedgeRatio = parseFloat(document.getElementById('pm-hedge-pct').value) / 100;
+  var cooldown   = parseInt(document.getElementById('pm-cooldown').value, 10) * 60;
+  var emergency  = parseFloat(document.getElementById('pm-emergency').value) / 100;
+  var dryRun     = document.getElementById('pm-dryrun').checked;
+
+  var payload = {
+    tokenId:         typeof p.tokenId === 'string' ? p.tokenId : Number(p.tokenId),
+    protocolVersion: p.protocolVersion,
+    poolAddress:     p.poolAddress,
+    token0Symbol:    p.token0Symbol,
+    token1Symbol:    p.token1Symbol,
+    fee:             p.fee,
+    tickLower:       p.tickLower,
+    tickUpper:       p.tickUpper,
+    chain:           p.chain,
+    dex:             p.dex,
+    positionId:      p.tokenId,
+    hedgeToken:      hedgeToken,
+    hedgeRatio:      hedgeRatio,
+    cooldownSeconds: cooldown,
+    emergencyPriceMovementThreshold: emergency,
+    dryRun:          dryRun,
+  };
+
+  try {
+    var res = await fetch('/api/activate-position', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    closeProtectModal();
+    var row = scannerPositions.find(function (x) { return String(x.tokenId) === String(p.tokenId); });
+    if (row) row.isActive = true;
+    renderScannerTable(scannerPositions);
+  } catch (err) {
+    alert('Erro ao ativar: ' + err.message);
+  }
+}
+
+async function loadPersistedScannedPositions() {
+  try {
+    var res = await fetch('/api/discovered-positions');
+    if (!res.ok) return;
+    var data = await res.json();
+    if (data.positions && data.positions.length) {
+      renderScannerTable(data.positions);
+      if (data.scannedAt) {
+        var dt = new Date(data.scannedAt).toLocaleString('pt-BR');
+        var el = document.getElementById('scanner-last-update');
+        el.textContent = 'Última atualização: ' + dt;
+        el.style.display = '';
+        if (data.scannedWallet) {
+          document.getElementById('scanner-wallet-input').value = data.scannedWallet;
+        }
+        if (data.scannedNetwork) {
+          setScannerNetwork(data.scannedNetwork);
+        }
+      }
+    }
+  } catch (_) {}
+}
   </script>
 </body>
 
