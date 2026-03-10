@@ -285,6 +285,12 @@ Provedores de referência (sem API key):
 - **ethers v6 staticNetwork**: sempre passar `chainId` ao `new FallbackProvider(urls, chainId)`. Sem isso: spam "JsonRpcProvider failed to detect network; retry in 1s" em RPCs lentos. Chain IDs ficam em `CHAIN_IDS` em `src/lp/chainProviders.ts`.
 - **Circular import em `lp/types.ts`**: usar `import type { LPPosition }` (não value import). Value import cria circular CommonJS require em runtime. Nunca mudar para import de valor.
 - **Supabase `rebalances` table**: requer colunas `pnl_realized_usd NUMERIC` e `pnl_funding_usd NUMERIC` (adicionadas em 2026-03-09). Sem elas, `fetchRebalances()` retorna zeros nesses campos.
+- **`DiscoveredPosition` em `src/types.ts`**: definida localmente em `src/types.ts` (não em `src/lp/types.ts`). Não requer import adicional em módulos que já importam de `../types`.
+- **Dashboard nav sidebar**: usa `<div class="sidebar-item" onclick="showPage('page')">` — não `<li><button>`. `showPage()` mantém um array de nomes de páginas para show/hide; adicionar nova aba requer incluir o nome no array.
+- **`setHedgeMode` reservado pela CALCULATOR**: a aba CALCULATOR usa `window.setHedgeMode(mode, el)` em seu próprio IIFE. Novas abas que precisam de toggle AUTO/MANUAL devem usar nome diferente (ex: `setScannerHedgeMode`).
+- **`dryRun` é flag global**: `/api/activate-position` não aceita `dryRun` por posição — é controlado pelo `.env` (`DRY_RUN=true`). Não expor como opção por posição no UI.
+- **`DashboardStore` é apenas memória**: não persiste em disco. Persistência de dados do usuário é feita via `rebalancer.saveState()` → `state-{userId}.json`. Dados que precisam sobreviver a page reload devem ser salvos via Rebalancer.
+- **`DashboardCallbacks` é a interface server↔index**: `server.ts` acessa engine contexts via `callbacks.getEngineContext(userId)`, não via import direto de `index.ts`. Ao adicionar novos acessos ao Rebalancer em `server.ts`, adicionar o método ao `DashboardCallbacks` e implementar em `index.ts`.
 
 ## Limitações conhecidas (multi-chain)
 - `EvmScanner.scanV3()` usa Multicall3 — ≤5 RPC round trips independente do número de NFTs
