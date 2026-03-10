@@ -469,6 +469,7 @@ async function main() {
     onUserAuthenticated: async (userId: string) => {
       await getOrCreateEngineContext(userId);
     },
+    getEngineContext: (userId: string) => engineContexts.get(userId) ?? null,
     hotSwapExchange: (userId: string, privateKey: string, walletAddress: string) => {
       const ctx = engineContexts.get(userId);
       if (!ctx) {

@@ -5,6 +5,7 @@ import passport from 'passport';
 import connectPgSimple from 'connect-pg-simple';
 import { ethers } from 'ethers';
 import { getStoreForUser, ActivatePositionRequest, SaveCredentialsRequest } from './store';
+import type { DiscoveredPosition, BotState } from '../types';
 import { createWalletScanner } from '../lp/walletScannerFactory';
 import type { ChainId, DexId } from '../lp/types';
 import { logger } from '../utils/logger';
@@ -16,9 +17,20 @@ import { requireAuth } from '../auth/middleware';
 import { saveCredentials } from '../auth/userStore';
 import '../auth/types';
 
+interface RebalancerView {
+  getScannedPositions(): {
+    positions: DiscoveredPosition[];
+    scannedAt?: number;
+    scannedNetwork?: 'evm' | 'solana';
+    scannedWallet?: string;
+  };
+  getState(): BotState;
+}
+
 export interface DashboardCallbacks {
   onUserAuthenticated: (userId: string) => Promise<void>;
   hotSwapExchange: (userId: string, privateKey: string, walletAddress: string) => void;
+  getEngineContext: (userId: string) => { rebalancer: RebalancerView } | null;
 }
 
 export function startDashboard(port: number, callbacks: DashboardCallbacks): void {
@@ -160,10 +172,24 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     }
   });
 
-  // API: discovered positions (cached from last scan)
+  // API: discovered positions (persisted from last scan via rebalancer state)
   app.get('/api/discovered-positions', (req, res) => {
-    const store = getStoreForUser(req.session.userId!);
-    res.json(store.getDiscoveredPositions());
+    const userId = req.session.userId!;
+    const ctx = callbacks.getEngineContext(userId);
+    if (!ctx) {
+      res.json({ positions: [], scannedAt: undefined, scannedNetwork: undefined, scannedWallet: undefined });
+      return;
+    }
+    const { positions, scannedAt, scannedNetwork, scannedWallet } =
+      ctx.rebalancer.getScannedPositions();
+
+    const activeTokenIds = new Set(Object.keys(ctx.rebalancer.getState().positions));
+    const withStatus = positions.map(p => ({
+      ...p,
+      isActive: activeTokenIds.has(String(p.tokenId)),
+    }));
+
+    res.json({ positions: withStatus, scannedAt, scannedNetwork, scannedWallet });
   });
 
   // API: scan wallet for Uniswap V3 positions
@@ -415,12 +441,17 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       res.write(`event: configUpdated\ndata: ${JSON.stringify(cfg)}\n\n`);
     };
 
+    const onScanProgress = (payload: unknown) => {
+      res.write(`event: scanProgress\ndata: ${JSON.stringify(payload)}\n\n`);
+    };
+
     store.on('update', onUpdate);
     store.on('rebalance', onRebalance);
     store.on('activationComplete', onActivationResult);
     store.on('positionsDiscovered', onPositionsDiscovered);
     store.on('credentialsUpdated', onCredentials);
     store.on('configUpdated', onConfigUpdated);
+    store.on('scanProgress', onScanProgress);
 
     // Keepalive: evita que o navegador encerre a conexão SSE por inatividade
     const keepalive = setInterval(() => {
@@ -435,6 +466,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       store.off('positionsDiscovered', onPositionsDiscovered);
       store.off('credentialsUpdated', onCredentials);
       store.off('configUpdated', onConfigUpdated);
+      store.off('scanProgress', onScanProgress);
     });
   });
 

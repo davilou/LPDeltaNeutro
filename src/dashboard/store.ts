@@ -136,6 +136,10 @@ class DashboardStore extends EventEmitter {
     this.emit('positionsDiscovered', positions);
   }
 
+  emitScanProgress(payload: { done: number; total: number; chain?: string }): void {
+    this.emit('scanProgress', payload);
+  }
+
   getDiscoveredPositions(): DiscoveredPosition[] {
     return this.discoveredPositions;
   }
