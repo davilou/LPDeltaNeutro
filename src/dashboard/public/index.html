@@ -1404,10 +1404,6 @@
               <input type="number" id="pm-emergency" value="15" min="1" max="100" />
             </div>
 
-            <div class="modal-field modal-field-inline">
-              <label>Dry Run</label>
-              <input type="checkbox" id="pm-dryrun" />
-            </div>
           </div>
           <div class="modal-footer">
             <button class="btn-secondary" onclick="closeProtectModal()">CANCELAR</button>
@@ -2917,6 +2913,18 @@ function updateScanProgress() {
     'Escaneando... ' + scanProgressDone + '/' + scanProgressTotal;
 }
 
+function sanitizeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+var VALID_RANGE_STATUS = ['in-range', 'above-range', 'below-range'];
+
 function renderScannerTable(positions) {
   scannerPositions = positions || [];
   var tbody = document.getElementById('scanner-tbody');
@@ -2936,23 +2944,24 @@ function renderScannerTable(positions) {
     var rangeLabel = p.rangeStatus === 'in-range' ? '✓ In Range'
       : p.rangeStatus === 'above-range' ? '↑ Above'
       : '↓ Below';
-    var rangeCls = p.rangeStatus;
+    var safeCls = VALID_RANGE_STATUS.includes(p.rangeStatus) ? p.rangeStatus : 'in-range';
 
     var priceLow  = scannerTickToUsd(p.tickLower, p.token0Decimals, p.token1Decimals);
     var priceHigh = scannerTickToUsd(p.tickUpper, p.token0Decimals, p.token1Decimals);
     var rangeStr  = '$' + scannerFmt(priceLow) + ' — $' + scannerFmt(priceHigh);
 
+    var safeTokenId = sanitizeHtml(p.tokenId);
     var actionHtml = p.isActive
       ? '<span class="badge-protected">✓ PROTEGIDA</span>'
-      : '<button class="btn-protect" onclick="openProtectModal(\'' + p.tokenId + '\')">▶ PROTECT</button>';
+      : '<button class="btn-protect" onclick="openProtectModal(&#39;' + safeTokenId + '&#39;)">▶ PROTECT</button>';
 
-    var dexChain = dexLabel(p.dex) + ' · ' + chainLabel(p.chain);
+    var dexChain = sanitizeHtml(dexLabel(p.dex) + ' · ' + chainLabel(p.chain));
 
     tbody.insertAdjacentHTML('beforeend',
       '<tr>' +
-      '<td>' + p.token0Symbol + '/' + p.token1Symbol + '</td>' +
+      '<td>' + sanitizeHtml(p.token0Symbol) + '/' + sanitizeHtml(p.token1Symbol) + '</td>' +
       '<td>' + dexChain + '</td>' +
-      '<td><span class="range-badge ' + rangeCls + '">' + rangeLabel + '</span></td>' +
+      '<td><span class="range-badge ' + safeCls + '">' + rangeLabel + '</span></td>' +
       '<td>' + rangeStr + '</td>' +
       '<td>$' + scannerFmt(p.estimatedUsd) + '</td>' +
       '<td>' + actionHtml + '</td>' +
@@ -3018,7 +3027,6 @@ function openProtectModal(tokenId) {
   setScannerHedgeMode('auto');
   document.getElementById('pm-cooldown').value = 720;
   document.getElementById('pm-emergency').value = 15;
-  document.getElementById('pm-dryrun').checked = false;
 
   document.getElementById('protect-modal-overlay').style.display = 'flex';
 }
@@ -3056,7 +3064,6 @@ async function submitProtection() {
   var hedgeRatio = parseFloat(document.getElementById('pm-hedge-pct').value) / 100;
   var cooldown   = parseInt(document.getElementById('pm-cooldown').value, 10) * 60;
   var emergency  = parseFloat(document.getElementById('pm-emergency').value) / 100;
-  var dryRun     = document.getElementById('pm-dryrun').checked;
 
   var payload = {
     tokenId:         typeof p.tokenId === 'string' ? p.tokenId : Number(p.tokenId),
@@ -3074,7 +3081,6 @@ async function submitProtection() {
     hedgeRatio:      hedgeRatio,
     cooldownSeconds: cooldown,
     emergencyPriceMovementThreshold: emergency,
-    dryRun:          dryRun,
   };
 
   try {
