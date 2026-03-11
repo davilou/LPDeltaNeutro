@@ -1018,6 +1018,55 @@
       cursor: not-allowed;
     }
 
+    .scanner-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0 16px;
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .scanner-divider::before,
+    .scanner-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .scanner-lookup-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .scanner-lookup-row select,
+    .scanner-lookup-row input {
+      padding: 10px 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .scanner-lookup-row select {
+      min-width: 140px;
+      cursor: pointer;
+    }
+    .scanner-lookup-row select:focus,
+    .scanner-lookup-row input:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
+    .scanner-lookup-nft {
+      flex: 1;
+      min-width: 120px;
+    }
+
     .scanner-progress {
       margin-bottom: 12px;
     }
@@ -1523,6 +1572,28 @@
             <input type="text" id="scanner-wallet-input" class="scanner-wallet-input"
               placeholder="0x... ou endereço Solana" autocomplete="off" spellcheck="false" />
             <button class="scanner-scan-btn" id="scanner-scan-btn" onclick="startScan()">SCAN</button>
+          </div>
+
+          <div class="scanner-divider">ou buscar por NFT ID</div>
+
+          <div class="scanner-lookup-row">
+            <select id="scanner-lookup-chain" onchange="populateLookupDexOptions()">
+              <option value="">Chain...</option>
+              <option value="base">Base</option>
+              <option value="eth">Ethereum</option>
+              <option value="bsc">BNB Chain</option>
+              <option value="arbitrum">Arbitrum</option>
+              <option value="polygon">Polygon</option>
+              <option value="avalanche">Avalanche</option>
+              <option value="hyperliquid-l1">HyperEVM</option>
+            </select>
+            <select id="scanner-lookup-dex" disabled>
+              <option value="">DEX...</option>
+            </select>
+            <input type="text" id="scanner-lookup-nft" class="scanner-lookup-nft"
+              placeholder="NFT Token ID" autocomplete="off" spellcheck="false"
+              onkeydown="if(event.key==='Enter')startLookup()" />
+            <button class="scanner-scan-btn" id="scanner-lookup-btn" onclick="startLookup()">LOOKUP</button>
           </div>
 
           <div id="scanner-progress" class="scanner-progress" style="display:none">
@@ -2800,6 +2871,75 @@
     // ─────────────────────────────────────────────────────────
 
     // ===== SCANNER FUNCTIONS =====
+
+    var LOOKUP_DEX_BY_CHAIN = {
+      'base':            ['uniswap-v3', 'uniswap-v4', 'aerodrome-cl'],
+      'eth':             ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'bsc':             ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'arbitrum':        ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'polygon':         ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'avalanche':       ['uniswap-v3', 'uniswap-v4'],
+      'hyperliquid-l1':  ['project-x'],
+    };
+
+    function populateLookupDexOptions() {
+      var chain = document.getElementById('scanner-lookup-chain').value;
+      var sel = document.getElementById('scanner-lookup-dex');
+      sel.innerHTML = '<option value="">DEX...</option>';
+      var dexes = LOOKUP_DEX_BY_CHAIN[chain] || [];
+      for (var i = 0; i < dexes.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = dexes[i];
+        opt.textContent = DEX_LABELS[dexes[i]] || dexes[i];
+        sel.appendChild(opt);
+      }
+      sel.disabled = dexes.length === 0;
+      if (dexes.length === 1) sel.value = dexes[0];
+    }
+
+    async function startLookup() {
+      var chain = document.getElementById('scanner-lookup-chain').value;
+      var dex = document.getElementById('scanner-lookup-dex').value;
+      var nftId = document.getElementById('scanner-lookup-nft').value.trim();
+
+      if (!chain) { alert('Selecione a blockchain.'); return; }
+      if (!dex)   { alert('Selecione o protocolo/DEX.'); return; }
+      if (!nftId || isNaN(Number(nftId))) { alert('Informe um NFT Token ID válido.'); return; }
+
+      var btn = document.getElementById('scanner-lookup-btn');
+      btn.disabled = true;
+      btn.textContent = '...';
+
+      // Hide previous results
+      document.getElementById('scanner-empty').style.display = 'none';
+      document.getElementById('scanner-table').style.display = 'none';
+
+      try {
+        var res = await fetch('/api/lookup-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: Number(nftId), chain: chain, dex: dex }),
+        });
+        var data = await res.json();
+        if (!res.ok || !data.found) {
+          document.getElementById('scanner-empty').textContent =
+            'Posição #' + nftId + ' não encontrada ou sem liquidez em ' + (DEX_LABELS[dex] || dex) + ' (' + chain + ').';
+          document.getElementById('scanner-empty').style.display = '';
+          return;
+        }
+        // Show result in scanner table
+        scannerPositions = [data.position];
+        renderScannerTable(scannerPositions);
+        document.getElementById('scanner-table').style.display = '';
+        document.getElementById('scanner-last-update').style.display = 'none';
+      } catch (err) {
+        document.getElementById('scanner-empty').textContent = 'Erro ao buscar posição: ' + err.message;
+        document.getElementById('scanner-empty').style.display = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'LOOKUP';
+      }
+    }
 
     function setScannerNetwork(network) {
       scannerNetwork = network;
