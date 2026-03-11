@@ -35,10 +35,10 @@ src/
 │   ├── readers/
 │   │   ├── evmClReader.ts     # Base class V3-compat (Uniswap V3, PancakeSwap V3, Aerodrome CL)
 │   │   ├── evmV4Reader.ts     # Base class V4-compat
-│   │   └── solanaReader.ts    # Stub Phase 2
+│   │   └── solanaReader.ts    # Stub (readPosition não implementado — só scanner é funcional)
 │   ├── scanners/
 │   │   ├── evmScanner.ts      # IWalletScanner parametrizado por chain/dex
-│   │   └── solanaScanner.ts   # Stub Phase 2
+│   │   └── solanaScanner.ts   # Re-export de solanaScannerImpl.ts (Orca, Raydium, Meteora — implementado)
 │   ├── uniswapReader.ts       # Re-exports backwards-compat
 │   └── walletScanner.ts       # Re-exports backwards-compat
 ├── hedge/            # Cálculo de hedge + execução (Hyperliquid / Mock)
@@ -166,8 +166,8 @@ interface IWalletScanner {
 ```
 
 ### Factories (ponto de entrada)
-- `createLPReader(chain, dex)` — roteamento: solana → SolanaReader (stub), V4 dexes → EvmV4Reader, demais → EvmClReader
-- `createWalletScanner(chain, dex)` — roteamento: solana → SolanaScanner (stub), demais → EvmScanner
+- `createLPReader(chain, dex)` — roteamento: solana → SolanaReader (readPosition stub), V4 dexes → EvmV4Reader, demais → EvmClReader
+- `createWalletScanner(chain, dex)` — roteamento: solana → SolanaScannerImpl (Orca/Raydium/Meteora implementados), demais → EvmScanner
 
 ### Chain Registry (`src/lp/chainRegistry.ts`)
 Mapa `ChainId:DexId` → `{ positionManagerV3, factoryV3, initCodeHash, positionManagerV4, poolManagerV4, stateViewV4 }`. Usar `getChainDexAddresses(chain, dex)` e `isChainDexSupported(chain, dex)` — nunca hardcodar endereços fora deste arquivo.
@@ -195,8 +195,11 @@ if (!pos.config.dex)   pos.config.dex = proto === 'v4' ? 'uniswap-v4' : 'uniswap
 if (pos.config.positionId === undefined) pos.config.positionId = pos.config.tokenId;
 ```
 
-### Phase 2 (Solana — stubs)
-`SolanaReader` e `SolanaScanner` implementam as interfaces mas lançam `Error` com mensagem "Phase 2 not yet implemented". `ChainId` já inclui `'solana'`; `PositionId = string` para pubkeys Solana.
+### Solana — estado atual
+- **Scanner** (`SolanaScannerImpl`): totalmente implementado. Suporta Orca (Whirlpool), Raydium CLMM e Meteora DLMM. Resolve símbolos via Metaplex Token Metadata. `PositionId = string` (pubkey base58).
+- **Reader** (`SolanaReader`): `readPosition()` e `getBlockOrSlot()` ainda lançam `Error` — posições Solana podem ser descobertas pelo scanner mas não monitoradas em ciclo contínuo ainda.
+- **Base**: `SolanaBaseReader` — Connection + cache TTL 30s (implementado, usado por readers futuros).
+- `ChainId` já inclui `'solana'`; `DexId` inclui `'orca'`, `'raydium'`, `'meteora'`.
 
 ## Uniswap V4 — LP Fees
 Fees V4 são lidas via contrato StateView (`0xa3c0c9b65bad0b08107aa264b0f3db444b867a71` na Base).

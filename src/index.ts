@@ -92,8 +92,25 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       const t0Symbol = position.token0.symbol;
       const t1Symbol = position.token1.symbol;
       const rawVolatileSymbol = !STABLE_SYMBOLS.has(t0Symbol) ? t0Symbol : t1Symbol;
-      const hedgeSymbol = HL_SYMBOL_MAP[rawVolatileSymbol] ?? rawVolatileSymbol;
+      const mapped = HL_SYMBOL_MAP[rawVolatileSymbol] ?? rawVolatileSymbol;
       const hedgeToken: 'token0' | 'token1' = rawVolatileSymbol === t0Symbol ? 'token0' : 'token1';
+
+      // Resolve final HL symbol: strip trailing 'x' (e.g. NVDAx → NVDA), fallback to original
+      let hedgeSymbol: string;
+      if (mapped.endsWith('x') && mapped.length > 1) {
+        const stripped = mapped.slice(0, -1);
+        if (await ctx.exchange.isSymbolSupported(stripped)) {
+          hedgeSymbol = stripped;
+          logger.info(`[Activation] Symbol resolved: ${mapped} → ${stripped}`);
+        } else if (await ctx.exchange.isSymbolSupported(mapped)) {
+          hedgeSymbol = mapped;
+          logger.info(`[Activation] Symbol resolved (with x): ${mapped}`);
+        } else {
+          throw new Error(`Symbol not found in Hyperliquid universe: tried "${stripped}" and "${mapped}"`);
+        }
+      } else {
+        hedgeSymbol = mapped;
+      }
 
       const volatilePriceUsd = hedgeToken === 'token0' ? position.price : 1 / position.price;
       const initialFeesUsd = hedgeToken === 'token0'

@@ -60,6 +60,13 @@ export class HyperliquidExchange implements IHedgeExchange {
     return decimals;
   }
 
+  async isSymbolSupported(symbol: string): Promise<boolean> {
+    const coin = this.baseCoin(symbol);
+    await this.sdk.ensureInitialized();
+    const [meta] = await this.sdk.info.perpetuals.getMetaAndAssetCtxs(true);
+    return meta.universe.some((a) => a.name === coin);
+  }
+
   /** Round size to the asset's szDecimals */
   private roundSize(size: number, szDecimals: number): number {
     const factor = Math.pow(10, szDecimals);

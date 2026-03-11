@@ -20,4 +20,5 @@ export interface IHedgeExchange {
   getFundingRate(symbol: string): Promise<number>;
   getAccountEquity(): Promise<number>;
   getIsolatedPnl(symbol: string, sinceTimestamp: number): Promise<HlIsolatedPnl>;
+  isSymbolSupported(symbol: string): Promise<boolean>;
 }
