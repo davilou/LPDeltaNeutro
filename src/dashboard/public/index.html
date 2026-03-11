@@ -1018,6 +1018,21 @@
       cursor: not-allowed;
     }
 
+    .scanner-quota-info {
+      text-align: center;
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .scanner-quota-info .quota-count {
+      font-weight: 700;
+      color: var(--accent, #00d4aa);
+    }
+    .scanner-quota-info .quota-exhausted {
+      color: #ff6b6b;
+      font-weight: 600;
+    }
+
     .scanner-divider {
       display: flex;
       align-items: center;
@@ -1056,6 +1071,8 @@
     .scanner-lookup-row select {
       min-width: 140px;
       cursor: pointer;
+      background: #fff;
+      color: #111;
     }
     .scanner-lookup-row select:focus,
     .scanner-lookup-row input:focus {
@@ -1574,7 +1591,11 @@
             <button class="scanner-scan-btn" id="scanner-scan-btn" onclick="startScan()">SCAN</button>
           </div>
 
-          <div class="scanner-divider">ou buscar por NFT ID</div>
+          <div id="scanner-quota-info" class="scanner-quota-info">
+            <span id="scanner-quota-text"></span>
+          </div>
+
+          <div class="scanner-divider">ou buscar por NFT ID (ilimitado)</div>
 
           <div class="scanner-lookup-row">
             <select id="scanner-lookup-chain" onchange="populateLookupDexOptions()">
@@ -1702,6 +1723,7 @@
     var scannerHedgeMode = 'auto';
     var scanProgressTotal = 0;
     var scanProgressDone = 0;
+    var scanQuotaRemaining = 3;
 
     window.showPage = function (page) {
       currentPage = page;
@@ -1711,7 +1733,7 @@
         navEl.className = 'sidebar-item' + (p === page ? ' active' : '');
       });
       if (page === 'history') { fetchHistory(); renderActivePositionsInHistory(); }
-      if (page === 'scanner') { loadPersistedScannedPositions(); }
+      if (page === 'scanner') { loadPersistedScannedPositions(); refreshScanQuota(); }
     };
 
     (function () {
@@ -2949,9 +2971,30 @@
         network === 'evm' ? '0x...' : 'Endereço Solana (base58)';
     }
 
+    async function refreshScanQuota() {
+      try {
+        var res = await fetch('/api/scan-quota');
+        var data = await res.json();
+        scanQuotaRemaining = data.remaining;
+        var el = document.getElementById('scanner-quota-text');
+        var btn = document.getElementById('scanner-scan-btn');
+        if (data.remaining > 0) {
+          el.innerHTML = '<span class="quota-count">' + data.remaining + '/' + data.limit + '</span> scans restantes hoje';
+          btn.disabled = false;
+        } else {
+          el.innerHTML = '<span class="quota-exhausted">Limite diário atingido (0/' + data.limit + ')</span> — use o Lookup por NFT ID';
+          btn.disabled = true;
+        }
+      } catch (_) {}
+    }
+
     async function startScan() {
       var addr = document.getElementById('scanner-wallet-input').value.trim();
       if (!addr) return;
+      if (scanQuotaRemaining <= 0) {
+        alert('Limite diário de scans atingido. Use o Lookup por NFT ID.');
+        return;
+      }
 
       var btn = document.getElementById('scanner-scan-btn');
       btn.disabled = true;
@@ -2969,13 +3012,19 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ walletAddress: addr, network: scannerNetwork }),
         });
+        if (res.status === 429) {
+          await refreshScanQuota();
+          alert('Limite diário de scans atingido. Use o Lookup por NFT ID.');
+          return;
+        }
         if (!res.ok) throw new Error(await res.text());
         var data = await res.json();
         renderScannerTable(data.positions);
+        await refreshScanQuota();
       } catch (err) {
         alert('Erro no scan: ' + err.message);
       } finally {
-        btn.disabled = false;
+        if (scanQuotaRemaining > 0) btn.disabled = false;
         document.getElementById('scanner-progress').style.display = 'none';
       }
     }

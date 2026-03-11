@@ -225,6 +225,34 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     }
   });
 
+  // ── Daily wallet scan quota (3 per user per day, in-memory) ──
+  const DAILY_SCAN_LIMIT = 3;
+  const scanUsage = new Map<string, { date: string; count: number }>();
+
+  function getScanUsage(userId: string): { used: number; remaining: number } {
+    const today = new Date().toISOString().slice(0, 10);
+    const entry = scanUsage.get(userId);
+    if (!entry || entry.date !== today) return { used: 0, remaining: DAILY_SCAN_LIMIT };
+    return { used: entry.count, remaining: Math.max(0, DAILY_SCAN_LIMIT - entry.count) };
+  }
+
+  function consumeScan(userId: string): boolean {
+    const today = new Date().toISOString().slice(0, 10);
+    const entry = scanUsage.get(userId);
+    if (!entry || entry.date !== today) {
+      scanUsage.set(userId, { date: today, count: 1 });
+      return true;
+    }
+    if (entry.count >= DAILY_SCAN_LIMIT) return false;
+    entry.count++;
+    return true;
+  }
+
+  app.get('/api/scan-quota', (req, res) => {
+    const { used, remaining } = getScanUsage(req.session.userId!);
+    res.json({ used, remaining, limit: DAILY_SCAN_LIMIT });
+  });
+
   // API: discovered positions (persisted from last scan via rebalancer state)
   app.get('/api/discovered-positions', (req, res) => {
     const userId = req.session.userId!;
@@ -247,6 +275,11 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
   // API: scan wallet for Uniswap V3 positions
   app.post('/api/scan-wallet', async (req, res) => {
+    if (!consumeScan(req.session.userId!)) {
+      const { used, remaining } = getScanUsage(req.session.userId!);
+      res.status(429).json({ error: 'Daily scan limit reached', used, remaining, limit: DAILY_SCAN_LIMIT });
+      return;
+    }
     const { walletAddress, chain = 'base', dex = 'uniswap-v3' } = req.body as {
       walletAddress?: string;
       chain?: string;
@@ -273,6 +306,11 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
   // API: scan all supported chains/DEXes in parallel
   app.post('/api/scan-wallet-all', async (req, res) => {
+    if (!consumeScan(req.session.userId!)) {
+      const { used, remaining } = getScanUsage(req.session.userId!);
+      res.status(429).json({ error: 'Daily scan limit reached', used, remaining, limit: DAILY_SCAN_LIMIT });
+      return;
+    }
     const { walletAddress, network } = req.body as {
       walletAddress?: string;
       network?: 'evm' | 'solana';
