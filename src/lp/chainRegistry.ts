@@ -3,7 +3,6 @@ import { ChainId, DexId } from './types';
 export interface ChainDexAddresses {
   positionManagerV3?: string;
   factoryV3?: string;
-  initCodeHashV3?: string;
   positionManagerV4?: string;
   poolManagerV4?: string;
   stateViewV4?: string;
@@ -19,7 +18,6 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'base:uniswap-v3': {
     positionManagerV3: '0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1',
     factoryV3:         '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',
-    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
   'base:uniswap-v4': {
     positionManagerV4: '0x7c5f5a4bbd8fd63184577525326123b519429bdc',
@@ -29,14 +27,12 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'base:aerodrome-cl': {
     positionManagerV3: '0x827922686190790b37229fd06084350e74485b72',
     factoryV3:         '0x5e7BB104d84c7CB9B682AaC2F3d509f890406f6d',
-    initCodeHashV3:    '0x1565b129f2d1790f12d45301b9b084335626f0c92410bc43130763b69971135d',
   },
 
   // ── ETHEREUM MAINNET ────────────────────────────────────────────────────
   'eth:uniswap-v3': {
     positionManagerV3: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
     factoryV3:         '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
   'eth:uniswap-v4': {
     positionManagerV4: '0x7c0f70bff9b6ad84e2ac21d4dc74fb4a5fff86ce',
@@ -46,7 +42,6 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'eth:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
-    initCodeHashV3:    '0x6ce8eb472fa82df5469c6ab6d485f17c3ad13c8cd7af59b3d4a8026c5ce0f7e2',
   },
   // PancakeSwap V4 on ETH — addresses TBD, add when verified
   // 'eth:pancake-v4': { ... },
@@ -55,7 +50,6 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'bsc:uniswap-v3': {
     positionManagerV3: '0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613',
     factoryV3:         '0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7',
-    // initCodeHashV3 omitted: BSC Uniswap V3 is unofficial, bytecode hash differs → use factory.getPool()
   },
   'bsc:uniswap-v4': {
     positionManagerV4: '0x7a4a5c919ae2541aed11041a1aeee68f1287f95b',
@@ -65,7 +59,6 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'bsc:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
-    initCodeHashV3:    '0x6ce8eb472fa82df5469c6ab6d485f17c3ad13c8cd7af59b3d4a8026c5ce0f7e2',
   },
   // PancakeSwap V4 on BSC — addresses TBD, add when verified
   // 'bsc:pancake-v4': { ... },
@@ -74,7 +67,6 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'arbitrum:uniswap-v3': {
     positionManagerV3: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
     factoryV3:         '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
   'arbitrum:uniswap-v4': {
     positionManagerV4: '0xd88f38f930b7952f2db2432cb002e7abbf3dd869',
@@ -84,14 +76,12 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'arbitrum:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
-    initCodeHashV3:    '0x6ce8eb472fa82df5469c6ab6d485f17c3ad13c8cd7af59b3d4a8026c5ce0f7e2',
   },
 
   // ── POLYGON ─────────────────────────────────────────────────────────────
   'polygon:uniswap-v3': {
     positionManagerV3: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
     factoryV3:         '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    initCodeHashV3:    '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
   },
   'polygon:uniswap-v4': {
     positionManagerV4: '0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9',
@@ -101,14 +91,12 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'polygon:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
     factoryV3:         '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
-    initCodeHashV3:    '0x6ce8eb472fa82df5469c6ab6d485f17c3ad13c8cd7af59b3d4a8026c5ce0f7e2',
   },
 
   // ── AVALANCHE ───────────────────────────────────────────────────────────
   'avalanche:uniswap-v3': {
     positionManagerV3: '0x655C406EBFa14EE2006250925e54ec43AD184f8B',
     factoryV3:         '0x740b1c1de25031C31FF4fC9A62f554A55cdC1baD',
-    // initCodeHashV3 omitted: Avalanche Uniswap V3 is unofficial, bytecode hash differs → use factory.getPool()
   },
   'avalanche:uniswap-v4': {
     positionManagerV4: '0xb74b1f14d2754acfcbbe1a221023a5cf50ab8acd',
@@ -121,7 +109,6 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
   'hyperliquid-l1:project-x': {
     positionManagerV3: '0xeaD19AE861c29bBb2101E834922B2FEee69B9091',
     factoryV3:         '0xeAF40318453a81993569B14b898AAC31Df6133fA',
-    // initCodeHashV3 not published — pool address resolved via factory.getPool()
   },
 };
 

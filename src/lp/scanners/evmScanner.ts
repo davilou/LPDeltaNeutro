@@ -7,7 +7,7 @@ import { getLpProvider } from '../chainProviders';
 import { getTokenCache, KNOWN_TOKENS_BY_CHAIN, seedTokenCache, TokenMeta } from '../tokenCache';
 import { NonRetryableError } from '../../utils/fallbackProvider';
 import { multicall3, buildCall3, decodeCall3Result } from '../../utils/multicall';
-import { getZerionComplexPositions, isZerionSupportedChain, ZerionComplexPosition } from '../zerionClient';
+import { getZapperComplexPositions, isZapperSupportedChain, ZapperComplexPosition } from '../zapperClient';
 import { fetchTokenUsd } from '../../utils/priceApi';
 
 const POSITION_MANAGER_V3_ABI = [
@@ -57,6 +57,15 @@ const V4_DEPLOY_BLOCKS: Partial<Record<ChainId, number>> = {
   'hyperliquid-l1': 0,
 };
 
+/** Parse NFT tokenId from Zapper label. Handles "Token ID: 123" and "#123" formats. */
+function parseTokenIdFromLabel(label: string): number {
+  const m1 = label.match(/Token ID:\s*(\d+)/i);
+  if (m1) return Number(m1[1]);
+  const m2 = label.match(/#(\d+)/);
+  if (m2) return Number(m2[1]);
+  return 0;
+}
+
 export class EvmScanner implements IWalletScanner {
   private readonly chain: ChainId;
   private readonly dex: DexId;
@@ -71,14 +80,14 @@ export class EvmScanner implements IWalletScanner {
   }
 
   async scanWallet(walletAddress: string): Promise<DiscoveredPosition[]> {
-    if (!isZerionSupportedChain(this.chain)) {
-      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] Chain not supported by Zerion — scan unavailable`);
+    if (!isZapperSupportedChain(this.chain)) {
+      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] Chain not supported by Zapper — scan unavailable`);
       return [];
     }
 
-    const zPositions = await getZerionComplexPositions(walletAddress);
+    const zPositions = await getZapperComplexPositions(walletAddress);
     if (!zPositions || zPositions.length === 0) {
-      logger.info(`[EvmScanner][${this.chain}:${this.dex}] Zerion returned no positions for ${walletAddress}`);
+      logger.info(`[EvmScanner][${this.chain}:${this.dex}] Zapper returned no positions for ${walletAddress}`);
       return [];
     }
 
@@ -86,7 +95,7 @@ export class EvmScanner implements IWalletScanner {
     if (relevant.length === 0) {
       const onChain = zPositions.filter(p => p.chainId === this.chain);
       if (onChain.length > 0) {
-        logger.warn(`[EvmScanner][${this.chain}:${this.dex}] ${onChain.length} Zerion position(s) on chain but dexId mismatch — got: [${[...new Set(onChain.map(p => p.dexId))].join(', ')}]`);
+        logger.warn(`[EvmScanner][${this.chain}:${this.dex}] ${onChain.length} Zapper position(s) on chain but dexId mismatch — got: [${[...new Set(onChain.map(p => p.dexId))].join(', ')}]`);
       }
       return [];
     }
@@ -97,21 +106,24 @@ export class EvmScanner implements IWalletScanner {
     return this.scanV3Hybrid(walletAddress, relevant);
   }
 
-  private async scanV3Hybrid(walletAddress: string, zPositions: ZerionComplexPosition[]): Promise<DiscoveredPosition[]> {
+  private async scanV3Hybrid(walletAddress: string, zPositions: ZapperComplexPosition[]): Promise<DiscoveredPosition[]> {
+    const tag = `[EvmScanner][${this.chain}:${this.dex}]`;
     const addresses = getChainDexAddresses(this.chain, this.dex);
-    if (!addresses.positionManagerV3) return [];
-
-    const posDataList = zPositions.map(p => {
-      const match = p.name.match(/#(\d+)/);
-      return { tokenId: match ? Number(match[1]) : 0, zPos: p };
-    }).filter(p => p.tokenId > 0);
-
-    if (posDataList.length === 0) {
-      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] No tokenIds parseable from Zerion position names: [${zPositions.map(p => p.name).join(' | ')}]`);
+    if (!addresses.positionManagerV3) {
+      logger.warn(`${tag} No positionManagerV3 configured — skipping`);
       return [];
     }
 
-    // Seed token cache from Zerion metadata (avoids ERC20 RPC calls for known tokens)
+    const posDataList = zPositions.map(p => {
+      return { tokenId: parseTokenIdFromLabel(p.name), zPos: p };
+    }).filter(p => p.tokenId > 0);
+
+    if (posDataList.length === 0) {
+      logger.warn(`${tag} No tokenIds parseable from Zapper position names: [${zPositions.map(p => p.name).join(' | ')}]`);
+      return [];
+    }
+
+    // Seed token cache from Zapper metadata (avoids ERC20 RPC calls for known tokens)
     const tokenCache = getTokenCache(this.chain);
     for (const zp of zPositions) {
       for (const t of zp.tokens) {
@@ -131,10 +143,9 @@ export class EvmScanner implements IWalletScanner {
       tickLower: number;
       tickUpper: number;
       liquidity: bigint;
-      zerionPoolAddress?: string;
     }
 
-    logger.info(`[EvmScanner][${this.chain}:${this.dex}] querying ${posDataList.length} tokenId(s): [${posDataList.map(p => p.tokenId).join(', ')}]`);
+    logger.info(`${tag} [Round 1] pm.positions() via multicall on PM=${pmAddr} for ${posDataList.length} tokenId(s): [${posDataList.map(p => p.tokenId).join(', ')}]`);
     const livePositions: PosData[] = await fallback.call(async (provider) => {
       const pm = new ethers.Contract(pmAddr, POSITION_MANAGER_V3_ABI, provider);
       const calls = posDataList.map(p => buildCall3(pm, 'positions', [p.tokenId]));
@@ -143,14 +154,15 @@ export class EvmScanner implements IWalletScanner {
       for (let i = 0; i < posDataList.length; i++) {
         const raw = decodeCall3Result<ethers.Result>(pm, 'positions', results[i]);
         if (!raw) {
-          logger.warn(`[EvmScanner][${this.chain}:${this.dex}] positions(${posDataList[i].tokenId}) call failed (success=${results[i].success}, data=${results[i].returnData})`);
+          logger.warn(`${tag} positions(${posDataList[i].tokenId}) multicall failed (success=${results[i].success}, returnData=${results[i].returnData.slice(0, 20)}...)`);
           continue;
         }
         const liquidity = BigInt(raw.liquidity);
         if (liquidity === 0n) {
-          logger.warn(`[EvmScanner][${this.chain}:${this.dex}] positions(${posDataList[i].tokenId}) liquidity=0 — closed or wrong tokenId (token0=${raw.token0}, token1=${raw.token1})`);
+          logger.warn(`${tag} positions(${posDataList[i].tokenId}) liquidity=0 — closed or burned`);
           continue;
         }
+        logger.info(`${tag}   #${posDataList[i].tokenId}: token0=${String(raw.token0).slice(0,10)}… token1=${String(raw.token1).slice(0,10)}… fee=${raw.fee} ticks=[${raw.tickLower},${raw.tickUpper}] liq=${liquidity}`);
         out.push({
           tokenId: posDataList[i].tokenId,
           token0: String(raw.token0).toLowerCase(),
@@ -159,20 +171,23 @@ export class EvmScanner implements IWalletScanner {
           tickLower: Number(raw.tickLower),
           tickUpper: Number(raw.tickUpper),
           liquidity,
-          zerionPoolAddress: posDataList[i].zPos.poolAddress || undefined,
         });
       }
       return out;
     });
 
-    if (livePositions.length === 0) return [];
-    logger.info(`[EvmScanner][${this.chain}:${this.dex}] ${livePositions.length} position(s) with liquidity — resolving pools`);
+    if (livePositions.length === 0) {
+      logger.warn(`${tag} No positions with liquidity > 0 — nothing to scan`);
+      return [];
+    }
+    logger.info(`${tag} ${livePositions.length} position(s) with liquidity`);
 
-    // Safety net: fetch metadata for any token Zerion didn't cover
+    // Safety net: fetch metadata for any token Zapper didn't cover
     const tokenAddrs = new Set<string>();
     for (const p of livePositions) { tokenAddrs.add(p.token0); tokenAddrs.add(p.token1); }
     const unknownTokens = [...tokenAddrs].filter(a => !tokenCache.has(a));
     if (unknownTokens.length > 0) {
+      logger.info(`${tag} [Round 2] ERC20 metadata for ${unknownTokens.length} unknown token(s)`);
       await fallback.call(async (provider) => {
         const calls = unknownTokens.flatMap(addr => {
           const c = new ethers.Contract(addr, ERC20_ABI, provider);
@@ -186,12 +201,12 @@ export class EvmScanner implements IWalletScanner {
           tokenCache.set(unknownTokens[i], { symbol: sym ?? 'UNKNOWN', decimals: dec !== null ? Number(dec) : 18 });
         }
       });
+    } else {
+      logger.info(`${tag} All tokens already in cache — skipping ERC20 metadata fetch`);
     }
 
-    // Resolve pool addresses:
-    // Priority 1 — Zerion provided pool address directly (reliable, no RPC needed)
-    // Priority 2 — CREATE2 derivation (if initCodeHash known)
-    // Priority 3 — factory.getPool multicall
+    // Resolve pool addresses via factory.getPool (primary) or CREATE2 (fallback)
+    // NOTE: Zapper returns the PositionManager address, NOT the pool address, so we always resolve on-chain
     type PoolKey = `${string}:${string}:${number}`;
     const poolKeyMap = new Map<PoolKey, { t0: string; t1: string; fee: number }>();
     for (const p of livePositions) {
@@ -201,35 +216,27 @@ export class EvmScanner implements IWalletScanner {
     }
 
     const poolAddrs = new Map<PoolKey, string>();
+    const poolKeys = [...poolKeyMap.entries()];
 
-    // Priority 1: Zerion pool address
-    for (const p of livePositions) {
-      if (p.zerionPoolAddress) {
-        const [tA, tB] = p.token0 < p.token1 ? [p.token0, p.token1] : [p.token1, p.token0];
-        const key: PoolKey = `${tA}:${tB}:${p.fee}`;
-        if (!poolAddrs.has(key)) poolAddrs.set(key, p.zerionPoolAddress);
-      }
-    }
-
-    // Priority 2 & 3: resolve remaining pools via CREATE2 or factory.getPool
-    const unresolvedKeys = [...poolKeyMap.entries()].filter(([key]) => !poolAddrs.has(key));
-    if (unresolvedKeys.length > 0) {
-      if (addresses.initCodeHashV3 && addresses.factoryV3) {
-        for (const [key, { t0, t1, fee }] of unresolvedKeys) {
-          const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [t0, t1, fee]);
-          poolAddrs.set(key, ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3));
-        }
-      } else if (addresses.factoryV3) {
-        await fallback.call(async (provider) => {
-          const factory = new ethers.Contract(addresses.factoryV3!, FACTORY_V3_ABI, provider);
-          const calls = unresolvedKeys.map(([, { t0, t1, fee }]) => buildCall3(factory, 'getPool', [t0, t1, fee]));
-          const results = await multicall3(provider, calls);
-          for (let i = 0; i < unresolvedKeys.length; i++) {
-            const addr = decodeCall3Result<string>(factory, 'getPool', results[i]);
-            if (addr && addr !== ethers.ZeroAddress) poolAddrs.set(unresolvedKeys[i][0], addr);
+    if (!addresses.factoryV3) {
+      logger.warn(`${tag} No factoryV3 configured — cannot resolve pool addresses`);
+    } else {
+      logger.info(`${tag} [Pool Resolution] factory.getPool() multicall for ${poolKeys.length} pool(s) (factory=${addresses.factoryV3})`);
+      await fallback.call(async (provider) => {
+        const factory = new ethers.Contract(addresses.factoryV3!, FACTORY_V3_ABI, provider);
+        const calls = poolKeys.map(([, { t0, t1, fee }]) => buildCall3(factory, 'getPool', [t0, t1, fee]));
+        const results = await multicall3(provider, calls);
+        for (let i = 0; i < poolKeys.length; i++) {
+          const addr = decodeCall3Result<string>(factory, 'getPool', results[i]);
+          const { t0, t1, fee } = poolKeys[i][1];
+          if (addr && addr !== ethers.ZeroAddress) {
+            poolAddrs.set(poolKeys[i][0], addr.toLowerCase());
+            logger.info(`${tag}   factory.getPool(${t0.slice(0,10)}…/${t1.slice(0,10)}… fee=${fee}) → ${addr}`);
+          } else {
+            logger.warn(`${tag}   factory.getPool(${t0.slice(0,10)}…/${t1.slice(0,10)}… fee=${fee}) returned ZeroAddress`);
           }
-        });
-      }
+        }
+      });
     }
 
     const getPoolAddr = (p: PosData): string | null => {
@@ -239,12 +246,13 @@ export class EvmScanner implements IWalletScanner {
 
     const posWithPools = livePositions.filter(p => getPoolAddr(p) !== null);
     if (posWithPools.length === 0) {
-      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] pool address not resolved for any position — factory.getPool returned ZeroAddress or no factory configured`);
+      logger.warn(`${tag} Pool address not resolved for any position`);
       return [];
     }
 
-    // Round 2 (or 3 without CREATE2): slot0 for unique pools — 1 multicall
+    // slot0 for unique pools — 1 multicall
     const uniquePoolAddrs = [...new Set(posWithPools.map(p => getPoolAddr(p)!))];
+    logger.info(`${tag} [Round 3] slot0() for ${uniquePoolAddrs.length} unique pool(s): [${uniquePoolAddrs.join(', ')}]`);
     const tickByPool = new Map<string, number>();
     await fallback.call(async (provider) => {
       const calls = uniquePoolAddrs.map(addr => {
@@ -253,9 +261,34 @@ export class EvmScanner implements IWalletScanner {
       });
       const results = await multicall3(provider, calls);
       for (let i = 0; i < uniquePoolAddrs.length; i++) {
-        const pool = new ethers.Contract(uniquePoolAddrs[i], POOL_V3_ABI, provider);
-        const decoded = decodeCall3Result<ethers.Result>(pool, 'slot0', results[i]);
-        if (decoded) tickByPool.set(uniquePoolAddrs[i], Number(decoded.tick));
+        const r = results[i];
+        if (!r.success) {
+          logger.warn(`${tag}   slot0(${uniquePoolAddrs[i]}) REVERTED`);
+          continue;
+        }
+        if (!r.returnData || r.returnData === '0x') {
+          logger.warn(`${tag}   slot0(${uniquePoolAddrs[i]}) returned empty data (no contract at address?)`);
+          continue;
+        }
+        // Try standard 7-field slot0 first, then 6-field variant
+        try {
+          const pool = new ethers.Contract(uniquePoolAddrs[i], POOL_V3_ABI, provider);
+          const decoded = pool.interface.decodeFunctionResult('slot0', r.returnData);
+          tickByPool.set(uniquePoolAddrs[i], Number(decoded.tick));
+          logger.info(`${tag}   slot0(${uniquePoolAddrs[i]}): tick=${decoded.tick} sqrtPrice=${decoded.sqrtPriceX96}`);
+        } catch (err7) {
+          // Some pools return fewer fields — try raw ABI decode
+          try {
+            const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+            const decoded = abiCoder.decode(['uint160', 'int24'], r.returnData);
+            const tick = Number(decoded[1]);
+            tickByPool.set(uniquePoolAddrs[i], tick);
+            logger.info(`${tag}   slot0(${uniquePoolAddrs[i]}): tick=${tick} (decoded with minimal ABI)`);
+          } catch (err2) {
+            const dataLen = (r.returnData.length - 2) / 2; // hex string → bytes
+            logger.warn(`${tag}   slot0(${uniquePoolAddrs[i]}) DECODE FAILED: returnData=${dataLen} bytes, data=${r.returnData.slice(0, 66)}… err=${err7}`);
+          }
+        }
       }
     });
 
@@ -265,6 +298,9 @@ export class EvmScanner implements IWalletScanner {
       if (!STABLE_SYMBOLS.has(tokenCache.get(p.token0)?.symbol ?? '')) volatileAddrs.add(p.token0);
       if (!STABLE_SYMBOLS.has(tokenCache.get(p.token1)?.symbol ?? '')) volatileAddrs.add(p.token1);
     }
+    if (volatileAddrs.size > 0) {
+      logger.info(`${tag} [Prices] Fetching USD prices for ${volatileAddrs.size} volatile token(s)`);
+    }
     const tokenPricesUsd = await this.fetchVolatilePrices([...volatileAddrs]);
 
     // Build DiscoveredPosition list
@@ -272,7 +308,10 @@ export class EvmScanner implements IWalletScanner {
     for (const pos of posWithPools) {
       const poolAddr = getPoolAddr(pos)!;
       const tickCurrent = tickByPool.get(poolAddr);
-      if (tickCurrent === undefined) continue;
+      if (tickCurrent === undefined) {
+        logger.warn(`${tag} #${pos.tokenId}: slot0 unavailable for pool ${poolAddr} — skipping`);
+        continue;
+      }
       const t0 = tokenCache.get(pos.token0) ?? { symbol: 'UNKNOWN', decimals: 18 };
       const t1 = tokenCache.get(pos.token1) ?? { symbol: 'UNKNOWN', decimals: 18 };
       const dp = this.buildDiscoveredPosition(
@@ -280,28 +319,28 @@ export class EvmScanner implements IWalletScanner {
         pos.tickLower, pos.tickUpper, tickCurrent, pos.liquidity, poolAddr,
         tokenPricesUsd.get(pos.token0), tokenPricesUsd.get(pos.token1),
       );
+      logger.info(`${tag}   #${pos.tokenId}: ${t0.symbol}/${t1.symbol} pool=${poolAddr} tick=${tickCurrent} est=$${dp.estimatedUsd.toFixed(2)} range=${dp.rangeStatus}`);
       if (dp.estimatedUsd >= MIN_POSITION_USD || dp.estimatedUsd === 0) discovered.push(dp);
     }
 
-    logger.info(`[EvmScanner][${this.chain}:${this.dex}] scanV3Hybrid: ${discovered.length} active positions`);
+    logger.info(`${tag} scanV3Hybrid: ${discovered.length} active positions`);
     return discovered;
   }
 
-  private async scanV4Hybrid(walletAddress: string, zPositions: ZerionComplexPosition[]): Promise<DiscoveredPosition[]> {
+  private async scanV4Hybrid(walletAddress: string, zPositions: ZapperComplexPosition[]): Promise<DiscoveredPosition[]> {
     const addresses = getChainDexAddresses(this.chain, this.dex);
     if (!addresses.positionManagerV4 || !addresses.stateViewV4) return [];
 
     const posDataList = zPositions.map(p => {
-      const match = p.name.match(/#(\d+)/);
-      return { tokenId: match ? Number(match[1]) : 0, zPos: p };
+      return { tokenId: parseTokenIdFromLabel(p.name), zPos: p };
     }).filter(p => p.tokenId > 0);
 
     if (posDataList.length === 0) {
-      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] No tokenIds parseable from Zerion position names: [${zPositions.map(p => p.name).join(' | ')}]`);
+      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] No tokenIds parseable from Zapper position names: [${zPositions.map(p => p.name).join(' | ')}]`);
       return [];
     }
 
-    // Seed token cache from Zerion metadata (avoids ERC20 RPC calls for known tokens)
+    // Seed token cache from Zapper metadata (avoids ERC20 RPC calls for known tokens)
     const tokenCache = getTokenCache(this.chain);
     for (const zp of zPositions) {
       for (const t of zp.tokens) {
@@ -375,7 +414,7 @@ export class EvmScanner implements IWalletScanner {
 
     if (ownedPositions.length === 0) return [];
 
-    // Safety net: fetch metadata for any token Zerion didn't cover
+    // Safety net: fetch metadata for any token Zapper didn't cover
     const tokenAddrs = new Set<string>();
     for (const pos of ownedPositions) { tokenAddrs.add(pos.currency0); tokenAddrs.add(pos.currency1); }
     const unknownTokens = [...tokenAddrs].filter(a => !tokenCache.has(a));
@@ -814,7 +853,7 @@ export class EvmScanner implements IWalletScanner {
         ];
       });
 
-      // Factory calls — use CREATE2 if initCodeHash available, else call factory
+      // Factory calls — resolve pool addresses via factory.getPool()
       // Declared inside the callback so each retry starts fresh (no index doubling on retry).
       const poolKeys = [...poolKeyMap.entries()];
       type FactoryCallInfo = { key: PoolKey; callIdx: number } | null;
@@ -822,14 +861,9 @@ export class EvmScanner implements IWalletScanner {
       const factoryCalls: FactoryCallInfo[] = [];
 
       for (const [key, { t0, t1, fee }] of poolKeys) {
-        if (addresses.initCodeHashV3 && addresses.factoryV3) {
-          // CREATE2 derivation — no RPC needed
-          const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [t0, t1, fee]);
-          poolAddrs.set(key, ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3));
-          factoryCalls.push(null);
-        } else if (addresses.factoryV3) {
+        if (addresses.factoryV3) {
           const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, p);
-          const callIdx = tokenCalls.length + extraCalls.length; // index of the call we're about to add
+          const callIdx = tokenCalls.length + extraCalls.length;
           extraCalls.push(buildCall3(factory, 'getPool', [t0, t1, fee]));
           factoryCalls.push({ key, callIdx });
         } else {
@@ -934,14 +968,7 @@ export class EvmScanner implements IWalletScanner {
       }
     }
 
-    // 2. CREATE2 derivation (when initCodeHash is known)
-    if (addresses.initCodeHashV3 && addresses.factoryV3) {
-      const [tA, tB] = token0.toLowerCase() < token1.toLowerCase() ? [token0, token1] : [token1, token0];
-      const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [tA, tB, fee]);
-      return ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3);
-    }
-
-    // 3. Fallback: read the factory address directly from the PositionManager's immutable factory()
+    // 2. Fallback: read the factory address directly from the PositionManager's immutable factory()
     //    (every Uniswap V3-compatible PM exposes this). Useful when the configured factoryV3 is
     //    wrong or missing (e.g. ProjectX on HyperEVM).
     if (addresses.positionManagerV3) {
@@ -975,7 +1002,7 @@ export class EvmScanner implements IWalletScanner {
       }
     }
 
-    throw new NonRetryableError(`Cannot resolve pool address for ${token0}/${token1} fee=${fee}: no factory or initCodeHash configured`);
+    throw new NonRetryableError(`Cannot resolve pool address for ${token0}/${token1} fee=${fee}: no factory configured`);
   }
 
   private async getTokenInfo(provider: ethers.Provider, address: string): Promise<TokenMeta> {
@@ -1029,9 +1056,9 @@ export class EvmScanner implements IWalletScanner {
     } else if (t0Stable && price > 0) {
       token1PriceUsd = 1 / price; // token1 price in terms of stable token0
     } else if (t1PriceUsd !== undefined && t1PriceUsd > 0) {
-      token1PriceUsd = t1PriceUsd; // from Zerion
+      token1PriceUsd = t1PriceUsd; // from Zapper
     } else if (estimatedUsd > 0 && t0Amount * price + t1Amount > 0) {
-      // derive from total estimatedUsd if Zerion didn't provide individual token prices
+      // derive from total estimatedUsd if Zapper didn't provide individual token prices
       token1PriceUsd = estimatedUsd / (t0Amount * price + t1Amount);
     }
 

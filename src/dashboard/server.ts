@@ -9,7 +9,7 @@ import type { DiscoveredPosition, BotState } from '../types';
 import { createWalletScanner } from '../lp/walletScannerFactory';
 import type { ChainId, DexId } from '../lp/types';
 import { isChainDexSupported } from '../lp/chainRegistry';
-import { getZerionComplexPositions } from '../lp/zerionClient';
+import { getZapperComplexPositions } from '../lp/zapperClient';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 import { fetchClosedPositions, fetchRebalances, supabaseServiceClient } from '../db/supabase';
@@ -303,15 +303,15 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     try {
       let combos: Array<{ chain: ChainId; dex: DexId }>;
       if (network === 'evm') {
-        const zerionPositions = await getZerionComplexPositions(walletAddress);
-        if (zerionPositions && zerionPositions.length > 0) {
-          // Zerion detected these chains — scan ALL supported dexes per chain
-          const zerionChains = new Set(zerionPositions.map(p => p.chainId));
-          combos = EVM_CHAIN_DEX_COMBOS.filter(c => zerionChains.has(c.chain));
-          // Always include chains that Zerion can't detect (e.g. HyperEVM/ProjectX)
-          const extra = EVM_CHAIN_DEX_COMBOS.filter(c => !zerionChains.has(c.chain));
-          combos.push(...extra);
-          logger.info(`[Scanner] Zerion detected chains: [${[...zerionChains].join(',')}] → scanning ${combos.length} combos (${extra.length} extra non-Zerion chains)`);
+        const zapperPositions = await getZapperComplexPositions(walletAddress);
+        if (zapperPositions && zapperPositions.length > 0) {
+          // Scan only the exact chain:dex pairs that Zapper found positions for
+          const zapperCombos = new Set(zapperPositions.map(p => `${p.chainId}:${p.dexId}`));
+          combos = [...zapperCombos].map(key => {
+            const [chain, dex] = key.split(':') as [ChainId, DexId];
+            return { chain, dex };
+          });
+          logger.info(`[Scanner] Zapper detected ${combos.length} chain:dex combo(s): [${[...zapperCombos].join(', ')}]`);
         } else {
           combos = EVM_CHAIN_DEX_COMBOS;
         }

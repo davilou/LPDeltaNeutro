@@ -117,8 +117,11 @@ export const config = {
   supabaseKey: optionalEnv('SUPABASE_KEY', ''),
   supabasePostgresUrl: optionalEnv('SUPABASE_POSTGRES_URL', ''),
 
-  // Zerion API (scanner discovery)
+  // Zerion API (scanner discovery — legacy, replaced by Zapper)
   zerionApiKey: optionalEnv('ZERION_API_KEY', ''),
+
+  // Zapper API (scanner discovery — primary)
+  zapperApiKey: optionalEnv('ZAPPER_API', ''),
 
   // Auth (Google OAuth)
   googleClientId: optionalEnv('GOOGLE_CLIENT_ID', ''),
