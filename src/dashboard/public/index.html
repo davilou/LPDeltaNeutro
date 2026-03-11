@@ -1834,7 +1834,7 @@
           '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">' +
           '<span class="dr-lbl" style="color:#888;">Ref Price</span>' +
           '<span id="' + tid + '-act-lastRebalPrice" style="font-size:0.75rem;color:#aaa;">—</span></div>' +
-          '<button class="btn btn-blue" id="' + tid + '-updateConfigBtn" onclick="updatePositionConfig(' + tid + ')" style="width:100%;margin-top:5px;font-size:0.7rem;padding:4px;">UPDATE STRATEGY</button>' +
+          '<button class="btn btn-blue" id="' + tid + '-updateConfigBtn" onclick="updatePositionConfig(\'' + tid + '\')" style="width:100%;margin-top:5px;font-size:0.7rem;padding:4px;">UPDATE STRATEGY</button>' +
           '<div style="border-top:1px solid #2a2a2a;margin-top:10px;padding-top:8px;">' +
           '<div style="font-size:0.65rem;color:#888;margin-bottom:4px;">RESET P&amp;L BASE</div>' +
           '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:3px;">' +
@@ -1843,9 +1843,9 @@
           '<div style="display:flex;justify-content:space-between;width:100%;align-items:center;margin-bottom:5px;">' +
           '<span class="dr-lbl">HL USD</span>' +
           '<input type="number" step="0.01" id="' + tid + '-act-initHl" class="t-in-small" placeholder="0.00"></div>' +
-          '<button class="btn" id="' + tid + '-resetPnlBtn" onclick="resetPositionPnl(' + tid + ')" style="width:100%;font-size:0.7rem;padding:4px;background-color:#1a2a3a;color:#88ccff;border:1px solid #254060;">RESET P&amp;L BASE</button>' +
+          '<button class="btn" id="' + tid + '-resetPnlBtn" onclick="resetPositionPnl(\'' + tid + '\')" style="width:100%;font-size:0.7rem;padding:4px;background-color:#1a2a3a;color:#88ccff;border:1px solid #254060;">RESET P&amp;L BASE</button>' +
           '</div>' +
-          '<button class="btn" id="' + tid + '-deactivateBtn" onclick="deactivatePosition(' + tid + ')" style="width:100%;margin-top:8px;font-size:0.7rem;padding:4px;background-color:#4a1a1a;color:#ff9999;border:1px solid #632525;">DEACTIVATE PROTECTION</button>' +
+          '<button class="btn" id="' + tid + '-deactivateBtn" onclick="deactivatePosition(\'' + tid + '\')" style="width:100%;margin-top:8px;font-size:0.7rem;padding:4px;background-color:#4a1a1a;color:#ff9999;border:1px solid #632525;">DEACTIVATE PROTECTION</button>' +
           '</div></div></div>' + // end strategy config card
           '</div>' + // end .metrics grid
           '</div>'; // end .position-metrics-block
@@ -1853,11 +1853,11 @@
 
       function renderAllMetrics() {
         var container = $('allMetrics');
-        var tokenIds = Object.keys(activePositionsConfig).map(Number);
+        var tokenIds = Object.keys(activePositionsConfig);
         // Remove blocks for positions no longer active
         Array.from(container.children).forEach(function (child) {
-          var tid = parseInt(child.id.replace('pos-block-', ''));
-          if (isNaN(tid) || !activePositionsConfig[tid]) container.removeChild(child);
+          var tid = child.id.replace('pos-block-', '');
+          if (!tid || !activePositionsConfig[tid]) container.removeChild(child);
         });
         // Add blocks for new positions (preserves existing blocks)
         tokenIds.forEach(function (tid) {
@@ -2200,7 +2200,7 @@
         }
         container.style.display = 'flex';
         container.innerHTML = tokenIds.map(function (tid) {
-          return '<div class="tab-btn ' + (activeTokenId == tid ? 'active' : '') + '" onclick="switchTab(' + tid + ')">NFT #' + tid + ' Chart</div>';
+          return '<div class="tab-btn ' + (activeTokenId == tid ? 'active' : '') + '" onclick="switchTab(\'' + tid + '\')">NFT #' + tid + ' Chart</div>';
         }).join('');
       }
 
@@ -2266,7 +2266,7 @@
 
         var tokenIds = Object.keys(activePositionsConfig);
         if (tokenIds.length > 0) {
-          activeTokenId = parseInt(tokenIds[0]);
+          activeTokenId = tokenIds[0];
           renderTabs();
         }
 

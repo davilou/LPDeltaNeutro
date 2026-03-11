@@ -7,7 +7,7 @@ import { ethers } from 'ethers';
 import { getStoreForUser, ActivatePositionRequest, SaveCredentialsRequest } from './store';
 import type { DiscoveredPosition, BotState } from '../types';
 import { createWalletScanner } from '../lp/walletScannerFactory';
-import type { ChainId, DexId } from '../lp/types';
+import type { ChainId, DexId, PositionId } from '../lp/types';
 import { isChainDexSupported } from '../lp/chainRegistry';
 import { getZapperComplexPositions } from '../lp/zapperClient';
 import { logger } from '../utils/logger';
@@ -18,6 +18,13 @@ import { configurePassport } from '../auth/passport';
 import { requireAuth } from '../auth/middleware';
 import { saveCredentials } from '../auth/userStore';
 import '../auth/types';
+
+/** Validate and coerce tokenId: number for EVM, non-empty string for Solana. */
+function parsePositionId(raw: unknown): PositionId | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  return null;
+}
 
 const _EVM_COMBOS_ALL: Array<{ chain: ChainId; dex: DexId }> = [
   { chain: 'base', dex: 'uniswap-v3' },
@@ -399,12 +406,13 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
   // API: lookup a single position by tokenId (bypasses wallet ownership check)
   app.post('/api/lookup-position', async (req, res) => {
-    const { tokenId, chain = 'base', dex = 'uniswap-v3' } = req.body as {
-      tokenId?: number;
+    const { tokenId: rawTid, chain = 'base', dex = 'uniswap-v3' } = req.body as {
+      tokenId?: number | string;
       chain?: string;
       dex?: string;
     };
-    if (typeof tokenId !== 'number') {
+    const tokenId = parsePositionId(rawTid);
+    if (tokenId === null) {
       res.status(400).json({ error: 'tokenId required' });
       return;
     }
@@ -428,20 +436,27 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
   // API: activate protection for a position
   app.post('/api/activate-position', (req, res) => {
     const body = req.body as Partial<ActivatePositionRequest>;
-    if (
-      typeof body.tokenId !== 'number' ||
-      typeof body.poolAddress !== 'string' ||
-      !/^0x[0-9a-fA-F]{40,64}$/.test(body.poolAddress)
-    ) {
+    const isSolana = body.chain === 'solana';
+    const isValidTokenId = isSolana
+      ? typeof body.tokenId === 'string' && body.tokenId.length > 0
+      : typeof body.tokenId === 'number';
+    const isValidPool = typeof body.poolAddress === 'string' && (
+      isSolana
+        ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(body.poolAddress)
+        : /^0x[0-9a-fA-F]{40,64}$/.test(body.poolAddress)
+    );
+    if (!isValidTokenId || !isValidPool) {
       logger.warn(`[Dashboard] Invalid activation request: tokenId=${body.tokenId} poolAddress=${body.poolAddress}`);
       res.status(400).json({ error: 'Invalid activation request', detail: `poolAddress=${body.poolAddress}` });
       return;
     }
     const protocolVersion = body.protocolVersion || 'v3';
+    const tokenId = isSolana ? String(body.tokenId) : Number(body.tokenId);
+    const poolAddress = body.poolAddress!;
     const request: ActivatePositionRequest = {
-      tokenId: body.tokenId,
+      tokenId,
       protocolVersion,
-      poolAddress: body.poolAddress,
+      poolAddress,
       token0Symbol: body.token0Symbol ?? '',
       token1Symbol: body.token1Symbol ?? '',
       fee: body.fee,
@@ -453,7 +468,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       emergencyPriceMovementThreshold: body.emergencyPriceMovementThreshold,
       chain: (body.chain ?? 'base') as ChainId,
       dex: (body.dex ?? (protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId,
-      positionId: body.tokenId,
+      positionId: tokenId,
     };
     const store = getStoreForUser(req.session.userId!);
     store.requestActivation(request);
@@ -462,8 +477,9 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
   // API: update config for active position
   app.post('/api/update-config', (req, res) => {
-    const { tokenId, ...cfg } = req.body;
-    if (typeof tokenId !== 'number') {
+    const { tokenId: rawTid, ...cfg } = req.body;
+    const tokenId = parsePositionId(rawTid);
+    if (tokenId === null) {
       res.status(400).json({ error: 'tokenId required' });
       return;
     }
@@ -473,8 +489,9 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
   });
 
   app.post('/api/deactivate-position', (req, res) => {
-    const { tokenId } = req.body;
-    if (typeof tokenId !== 'number') {
+    const { tokenId: rawTid } = req.body;
+    const tokenId = parsePositionId(rawTid);
+    if (tokenId === null) {
       res.status(400).json({ error: 'tokenId required' });
       return;
     }
@@ -484,8 +501,9 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
   });
 
   app.post('/api/refresh-lp', (req, res) => {
-    const { tokenId } = req.body;
-    if (typeof tokenId !== 'number') {
+    const { tokenId: rawTid } = req.body;
+    const tokenId = parsePositionId(rawTid);
+    if (tokenId === null) {
       res.status(400).json({ error: 'tokenId required' });
       return;
     }
@@ -533,12 +551,13 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
   // API: reset PnL baseline for a position
   app.post('/api/reset-pnl', (req, res) => {
-    const { tokenId, initialLpUsd, initialHlUsd } = req.body as {
-      tokenId?: number;
+    const { tokenId: rawTid, initialLpUsd, initialHlUsd } = req.body as {
+      tokenId?: number | string;
       initialLpUsd?: number;
       initialHlUsd?: number;
     };
-    if (typeof tokenId !== 'number' || typeof initialLpUsd !== 'number' || typeof initialHlUsd !== 'number') {
+    const tokenId = parsePositionId(rawTid);
+    if (tokenId === null || typeof initialLpUsd !== 'number' || typeof initialHlUsd !== 'number') {
       res.status(400).json({ error: 'tokenId, initialLpUsd and initialHlUsd required' });
       return;
     }

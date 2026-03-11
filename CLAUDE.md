@@ -299,6 +299,7 @@ Provedores de referência (sem API key):
 - **`DiscoveredPosition` não tem `priceLowerUsd`/`priceUpperUsd`**: esses campos só existem em `HistoricalPosition`. Range bounds do scanner devem ser calculados dos ticks: `raw = 1.0001^tick * 10^(dec0-dec1)`.
 - **Concurrency guards em `UserEngineContext`**: `setupUserEventHandlers` é definida fora de `main()` e não acessa variáveis locais dela. Guards de concorrência (ex: `cycleInProgress`) devem estar no `UserEngineContext`, nunca como `Set`/variável local de `main()`.
 - **Modais async com fetch**: desabilitar o botão de submit (`disabled = true`) antes do `await fetch(...)` e re-habilitar após — senão o usuário submete com `input.value = ''` → `parseFloat('') = NaN` → JSON envia `null` → servidor usa default.
+- **HL `userFunding` response tem wrapper `delta`**: a API retorna `[{ delta: { coin, usdc, szi, fundingRate }, hash, time }]`. Sempre acessar `f.delta.coin` / `f.delta.usdc`, não `f.coin` / `f.usdc` diretamente. Ver tipos SDK: `UserFundingEntry.delta: UserFundingDelta`.
 
 ## Limitações conhecidas (multi-chain)
 - `EvmScanner.scanV3()` usa Multicall3 — ≤5 RPC round trips independente do número de NFTs

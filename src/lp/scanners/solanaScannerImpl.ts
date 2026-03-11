@@ -22,23 +22,33 @@ import type { DiscoveredPosition } from '../../types';
 import type { IWalletScanner, DexId, PositionId } from '../types';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
+import { SolanaBaseReader } from '../readers/solanaBaseReader';
 
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'BUSD', 'DAI']);
 
 // Raydium CLMM program (mainnet). Seed for PersonalPosition PDA: ["position", nftMint]
 const RAYDIUM_CLMM_PROGRAM_ID = new PublicKey('CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK');
 
-// Metaplex Token Metadata program
-const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+/**
+ * Concrete subclass of SolanaBaseReader used only for symbol resolution in the scanner.
+ * readPosition is not needed here — the scanner only discovers positions, doesn't read them.
+ */
+class SolanaSymbolResolver extends SolanaBaseReader {
+  // Public accessor so SolanaScannerImpl can call resolveTokenSymbol
+  async resolve(mint: PublicKey): Promise<string> {
+    return this.resolveTokenSymbol(mint);
+  }
+}
 
 export class SolanaScannerImpl implements IWalletScanner {
   private readonly dex: DexId;
   private readonly connection: Connection;
-  private readonly symbolCache = new Map<string, string>();
+  private readonly symbolResolver: SolanaSymbolResolver;
 
   constructor(dex: DexId) {
     this.dex = dex;
-    this.connection = new Connection(config.solanaHttpRpcUrl, 'confirmed');
+    this.connection = new Connection(config.lpFreeSolRpcUrl ?? config.solanaHttpRpcUrl, 'confirmed');
+    this.symbolResolver = new SolanaSymbolResolver();
   }
 
   async scanWallet(address: string): Promise<DiscoveredPosition[]> {
@@ -98,8 +108,8 @@ export class SolanaScannerImpl implements IWalletScanner {
         const decimalsB = mintInfoB?.decimals ?? 6;
 
         const [symA, symB] = await Promise.all([
-          this.resolveTokenSymbol(poolData.tokenMintA),
-          this.resolveTokenSymbol(poolData.tokenMintB),
+          this.symbolResolver.resolve(poolData.tokenMintA),
+          this.symbolResolver.resolve(poolData.tokenMintB),
         ]);
 
         const amounts = PoolUtil.getTokenAmountsFromLiquidity(
@@ -197,8 +207,8 @@ export class SolanaScannerImpl implements IWalletScanner {
         } catch { /* fee stays 0 */ }
 
         const [symA, symB] = await Promise.all([
-          this.resolveTokenSymbol(poolData.mintA),
-          this.resolveTokenSymbol(poolData.mintB),
+          this.symbolResolver.resolve(poolData.mintA),
+          this.symbolResolver.resolve(poolData.mintB),
         ]);
 
         const sqrtLower = SqrtPriceMath.getSqrtPriceX64FromTick(posData.tickLower);
@@ -269,8 +279,8 @@ export class SolanaScannerImpl implements IWalletScanner {
       const decimalsY = tokenY.mint.decimals;
 
       const [symX, symY] = await Promise.all([
-        this.resolveTokenSymbol(tokenX.publicKey),
-        this.resolveTokenSymbol(tokenY.publicKey),
+        this.symbolResolver.resolve(tokenX.publicKey),
+        this.symbolResolver.resolve(tokenY.publicKey),
       ]);
 
       for (const posEntry of lbPairPositionsData) {
@@ -321,44 +331,6 @@ export class SolanaScannerImpl implements IWalletScanner {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-
-  /**
-   * Resolve token symbol via Metaplex Token Metadata program.
-   * Falls back to short mint address if metadata is unavailable.
-   * Results are cached in-memory for the lifetime of this scanner instance.
-   */
-  private async resolveTokenSymbol(mint: PublicKey): Promise<string> {
-    const key = mint.toBase58();
-    if (this.symbolCache.has(key)) return this.symbolCache.get(key)!;
-
-    try {
-      const [metadataPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from('metadata'), METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-        METADATA_PROGRAM_ID,
-      );
-      const accountInfo = await this.connection.getAccountInfo(metadataPDA);
-      if (accountInfo) {
-        const data = accountInfo.data;
-        // Metaplex borsh layout: key(1) + update_authority(32) + mint(32) + name(4+str) + symbol(4+str)
-        let offset = 1 + 32 + 32;
-        const nameLen = data.readUInt32LE(offset); offset += 4 + nameLen;
-        const symbolLen = data.readUInt32LE(offset); offset += 4;
-        const symbol = data
-          .subarray(offset, offset + symbolLen)
-          .toString('utf8')
-          .replace(/\0/g, '')
-          .trim();
-        if (symbol) {
-          this.symbolCache.set(key, symbol);
-          return symbol;
-        }
-      }
-    } catch { /* fall through */ }
-
-    const fallback = key.slice(0, 6);
-    this.symbolCache.set(key, fallback);
-    return fallback;
-  }
 
   private calcRangeStatus(current: number, lower: number, upper: number): DiscoveredPosition['rangeStatus'] {
     if (current < lower)  return 'below-range';

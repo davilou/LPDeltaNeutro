@@ -4,8 +4,12 @@ import BN from 'bn.js';
 import {
   PoolInfoLayout,
   PositionInfoLayout,
+  TickArrayLayout,
   LiquidityMath,
   SqrtPriceMath,
+  PositionUtils,
+  TickUtils,
+  TICK_ARRAY_SIZE,
 } from '@raydium-io/raydium-sdk-v2';
 import type { LPPosition } from '../../../types';
 import type { ILPReader, PositionId } from '../../types';
@@ -14,6 +18,11 @@ import { logger } from '../../../utils/logger';
 
 // Raydium CLMM program ID (mainnet)
 const CLMM_PROGRAM_ID = new PublicKey('CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK');
+
+/** Derive the PDA for a tick array using the SDK's own method. */
+function getTickArrayPda(poolId: PublicKey, tickIndex: number, tickSpacing: number): PublicKey {
+  return TickUtils.getTickArrayAddressByTick(CLMM_PROGRAM_ID, poolId, tickIndex, tickSpacing);
+}
 
 export class RaydiumReader extends SolanaBaseReader implements ILPReader {
   async readPosition(id: PositionId, poolAddress: string): Promise<LPPosition> {
@@ -54,6 +63,7 @@ export class RaydiumReader extends SolanaBaseReader implements ILPReader {
     const tickLower = posData.tickLower;
     const tickUpper = posData.tickUpper;
     const liquidity = posData.liquidity as unknown as BN;
+    const tickSpacing = poolData.tickSpacing;
 
     // Compute current amounts from liquidity
     const sqrtPriceCurrent = poolData.sqrtPriceX64 as unknown as BN;
@@ -69,7 +79,6 @@ export class RaydiumReader extends SolanaBaseReader implements ILPReader {
     );
 
     // Price: tokenB per tokenA in human-readable units
-    // sqrtPriceX64ToPrice returns a Decimal
     const priceDecimal = SqrtPriceMath.sqrtPriceX64ToPrice(sqrtPriceCurrent, decimalsA, decimalsB);
     const price = priceDecimal.toNumber();
 
@@ -78,20 +87,72 @@ export class RaydiumReader extends SolanaBaseReader implements ILPReader {
       : tickCurrent >= tickUpper ? 'above-range'
       : 'in-range';
 
-    const tokensOwedA = posData.tokenFeesOwedA as unknown as BN;
-    const tokensOwedB = posData.tokenFeesOwedB as unknown as BN;
+    // Resolve token symbols (Metaplex → DexScreener → fallback)
+    const [symbolA, symbolB] = await Promise.all([
+      this.resolveTokenSymbol(poolData.mintA),
+      this.resolveTokenSymbol(poolData.mintB),
+    ]);
+    logger.info(`[RaydiumReader] Resolved symbols: ${symbolA}/${symbolB} for position ${key}`);
+
+    // Compute uncollected fees via tick array data + PositionUtils.GetPositionFeesV2
+    let feesA = Number((posData.tokenFeesOwedA as unknown as BN).toString()) / Math.pow(10, decimalsA);
+    let feesB = Number((posData.tokenFeesOwedB as unknown as BN).toString()) / Math.pow(10, decimalsB);
+
+    try {
+      const lowerTickArrayPda = getTickArrayPda(poolPubkey, tickLower, tickSpacing);
+      const upperTickArrayPda = getTickArrayPda(poolPubkey, tickUpper, tickSpacing);
+
+      const [lowerTickArrayInfo, upperTickArrayInfo] = await Promise.all([
+        this.connection.getAccountInfo(lowerTickArrayPda),
+        this.connection.getAccountInfo(upperTickArrayPda),
+      ]);
+
+      if (lowerTickArrayInfo && upperTickArrayInfo) {
+        const lowerTickArray = TickArrayLayout.decode(lowerTickArrayInfo.data);
+        const upperTickArray = TickArrayLayout.decode(upperTickArrayInfo.data);
+
+        // Extract the specific tick from the array
+        const lowerOffset = TickUtils.getTickOffsetInArray(tickLower, tickSpacing);
+        const upperOffset = TickUtils.getTickOffsetInArray(tickUpper, tickSpacing);
+        const tickLowerState = lowerTickArray.ticks[lowerOffset];
+        const tickUpperState = upperTickArray.ticks[upperOffset];
+
+        if (tickLowerState && tickUpperState) {
+          const fees = PositionUtils.GetPositionFeesV2(
+            {
+              tickCurrent: poolData.tickCurrent,
+              feeGrowthGlobalX64A: poolData.feeGrowthGlobalX64A as unknown as BN,
+              feeGrowthGlobalX64B: poolData.feeGrowthGlobalX64B as unknown as BN,
+            },
+            posData,
+            tickLowerState,
+            tickUpperState,
+          );
+
+          feesA = Number(fees.tokenFeeAmountA.toString()) / Math.pow(10, decimalsA);
+          feesB = Number(fees.tokenFeeAmountB.toString()) / Math.pow(10, decimalsB);
+          logger.debug(`[RaydiumReader] Fees (with uncollected): A=${feesA.toFixed(6)} B=${feesB.toFixed(6)}`);
+        } else {
+          logger.warn(`[RaydiumReader] Tick offset out of bounds — using checkpointed fees only`);
+        }
+      } else {
+        logger.warn(`[RaydiumReader] Could not fetch tick arrays for fee calculation — using checkpointed fees only`);
+      }
+    } catch (err) {
+      logger.warn(`[RaydiumReader] Fee calculation error, using checkpointed fees: ${err}`);
+    }
 
     const result: LPPosition = {
       token0: {
         address: poolData.mintA.toBase58(),
-        symbol: 'TOKEN_A',
+        symbol: symbolA,
         decimals: decimalsA,
         amount: BigInt(amountA.toString()),
         amountFormatted: Number(amountA.toString()) / Math.pow(10, decimalsA),
       },
       token1: {
         address: poolData.mintB.toBase58(),
-        symbol: 'TOKEN_B',
+        symbol: symbolB,
         decimals: decimalsB,
         amount: BigInt(amountB.toString()),
         amountFormatted: Number(amountB.toString()) / Math.pow(10, decimalsB),
@@ -101,8 +162,8 @@ export class RaydiumReader extends SolanaBaseReader implements ILPReader {
       tickLower,
       tickUpper,
       tickCurrent,
-      tokensOwed0: Number(tokensOwedA.toString()) / Math.pow(10, decimalsA),
-      tokensOwed1: Number(tokensOwedB.toString()) / Math.pow(10, decimalsB),
+      tokensOwed0: feesA,
+      tokensOwed1: feesB,
       liquidity: BigInt(liquidity.toString()),
     };
 

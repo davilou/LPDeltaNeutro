@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] — 2026-03-11
+
+### Bug Fix — HL Funding always zero
+
+`getIsolatedPnl()` em `hyperliquidExchange.ts` acessava `f.coin` / `f.usdc` diretamente na resposta de `userFunding`, mas a API do HL retorna com wrapper `delta`: `{ delta: { coin, usdc, ... }, hash, time }`. O filtro por `f.coin` dava `undefined` → nenhuma entry passava → funding cumulativo sempre zero para todas as posições ativas.
+
+**Correção**: acessa `f.delta?.coin ?? f.coin` e `f.delta?.usdc ?? f.usdc` para suportar ambos os formatos (SDK `getUserFunding` e raw API `hlInfo` para HIP-3 dexes).
+
+**Arquivo**: `src/hedge/hyperliquidExchange.ts` (linhas 429-443)
+
+---
+
 ## [Unreleased] — 2026-03-07
 
 ### Multi-Chain + Multi-DEX Expansion (Phase 1 — EVM)

@@ -2,9 +2,15 @@
 import { PublicKey, Keypair } from '@solana/web3.js';
 import {
   buildWhirlpoolClient,
+  collectFeesQuote,
   IGNORE_CACHE,
+  NO_TOKEN_EXTENSION_CONTEXT,
+  ORCA_WHIRLPOOL_PROGRAM_ID,
+  PDAUtil,
   PoolUtil,
   PriceMath,
+  TickUtil,
+  TickArrayUtil,
   WhirlpoolContext,
 } from '@orca-so/whirlpools-sdk';
 import { AnchorProvider } from '@coral-xyz/anchor';
@@ -65,17 +71,61 @@ export class OrcaReader extends SolanaBaseReader implements ILPReader {
       : tickCurrent >= tickUpper ? 'above-range'
       : 'in-range';
 
+    // Resolve token symbols (Metaplex → DexScreener → fallback)
+    const [symbolA, symbolB] = await Promise.all([
+      this.resolveTokenSymbol(poolData.tokenMintA),
+      this.resolveTokenSymbol(poolData.tokenMintB),
+    ]);
+    logger.info(`[OrcaReader] Resolved symbols: ${symbolA}/${symbolB} for position ${key}`);
+
+    // Compute uncollected fees via tick data + collectFeesQuote
+    let feesA = Number(posData.feeOwedA.toString()) / Math.pow(10, decimalsA);
+    let feesB = Number(posData.feeOwedB.toString()) / Math.pow(10, decimalsB);
+
+    try {
+      const tickSpacing = poolData.tickSpacing;
+      const lowerStartIndex = TickUtil.getStartTickIndex(tickLower, tickSpacing);
+      const upperStartIndex = TickUtil.getStartTickIndex(tickUpper, tickSpacing);
+
+      const lowerTickArrayPda = PDAUtil.getTickArray(ORCA_WHIRLPOOL_PROGRAM_ID, posData.whirlpool, lowerStartIndex);
+      const upperTickArrayPda = PDAUtil.getTickArray(ORCA_WHIRLPOOL_PROGRAM_ID, posData.whirlpool, upperStartIndex);
+
+      const tickArrayAddresses = [lowerTickArrayPda.publicKey, upperTickArrayPda.publicKey];
+      const tickArrays = await ctx.fetcher.getTickArrays(tickArrayAddresses, IGNORE_CACHE);
+
+      if (tickArrays[0] && tickArrays[1]) {
+        const tickLowerData = TickArrayUtil.getTickFromArray(tickArrays[0], tickLower, tickSpacing);
+        const tickUpperData = TickArrayUtil.getTickFromArray(tickArrays[1], tickUpper, tickSpacing);
+
+        const feesQuote = collectFeesQuote({
+          whirlpool: poolData,
+          position: posData,
+          tickLower: tickLowerData,
+          tickUpper: tickUpperData,
+          tokenExtensionCtx: NO_TOKEN_EXTENSION_CONTEXT,
+        });
+
+        feesA = Number(feesQuote.feeOwedA.toString()) / Math.pow(10, decimalsA);
+        feesB = Number(feesQuote.feeOwedB.toString()) / Math.pow(10, decimalsB);
+        logger.debug(`[OrcaReader] Fees (with uncollected): A=${feesA.toFixed(6)} B=${feesB.toFixed(6)}`);
+      } else {
+        logger.warn(`[OrcaReader] Could not fetch tick arrays for fee calculation — using checkpointed fees only`);
+      }
+    } catch (err) {
+      logger.warn(`[OrcaReader] Fee calculation error, using checkpointed fees: ${err}`);
+    }
+
     const result: LPPosition = {
       token0: {
         address: poolData.tokenMintA.toBase58(),
-        symbol: 'TOKEN_A',
+        symbol: symbolA,
         decimals: decimalsA,
         amount: BigInt(amounts.tokenA.toString()),
         amountFormatted: Number(amounts.tokenA.toString()) / Math.pow(10, decimalsA),
       },
       token1: {
         address: poolData.tokenMintB.toBase58(),
-        symbol: 'TOKEN_B',
+        symbol: symbolB,
         decimals: decimalsB,
         amount: BigInt(amounts.tokenB.toString()),
         amountFormatted: Number(amounts.tokenB.toString()) / Math.pow(10, decimalsB),
@@ -85,8 +135,8 @@ export class OrcaReader extends SolanaBaseReader implements ILPReader {
       tickLower,
       tickUpper,
       tickCurrent,
-      tokensOwed0: Number(posData.feeOwedA.toString()) / Math.pow(10, decimalsA),
-      tokensOwed1: Number(posData.feeOwedB.toString()) / Math.pow(10, decimalsB),
+      tokensOwed0: feesA,
+      tokensOwed1: feesB,
       liquidity: BigInt(posData.liquidity.toString()),
     };
 

@@ -39,7 +39,13 @@ const COINGECKO_PLATFORM: Record<string, string> = {
   // hyperliquid-l1 not yet indexed by CoinGecko
 };
 
+/** Solana uses base58 (case-sensitive); EVM uses hex (case-insensitive). */
+function isSolana(chain: string): boolean {
+  return chain === 'solana';
+}
+
 function normalizeForApi(addr: string, chain: string): string {
+  if (isSolana(chain)) return addr; // base58 is case-sensitive
   return addr.toLowerCase() === ETH_NATIVE ? (WRAPPED_NATIVE[chain] ?? WRAPPED_NATIVE['base']) : addr;
 }
 
@@ -66,11 +72,13 @@ async function fetchPoolPriceDexScreener(
   chain: string,
 ): Promise<{ priceNative: number; baseTokenAddress: string } | null> {
   // V4 PoolId (32 bytes = 66 chars with 0x prefix) cannot be queried by pool address
-  if (poolAddress.length > 42) return null;
+  if (poolAddress.startsWith('0x') && poolAddress.length > 42) return null;
   const chainSlug = DEX_SCREENER_CHAIN[chain];
   if (!chainSlug) return null;
   try {
-    const url = `https://api.dexscreener.com/latest/dex/pairs/${chainSlug}/${poolAddress.toLowerCase()}`;
+    // Solana base58 addresses are case-sensitive — don't lowercase
+    const addrParam = isSolana(chain) ? poolAddress : poolAddress.toLowerCase();
+    const url = `https://api.dexscreener.com/latest/dex/pairs/${chainSlug}/${addrParam}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
     if (!res.ok) {
       logger.debug(`[PriceApi] DexScreener pairs HTTP ${res.status} for ${chainSlug}/${poolAddress}`);
@@ -86,9 +94,10 @@ async function fetchPoolPriceDexScreener(
     const priceNative = parseFloat(pair?.priceNative as string);
     if (!isFinite(priceNative) || priceNative <= 0) return null;
     const baseToken = pair?.baseToken as Record<string, unknown>;
+    const baseAddr = baseToken?.address as string ?? '';
     return {
       priceNative,
-      baseTokenAddress: (baseToken?.address as string ?? '').toLowerCase(),
+      baseTokenAddress: isSolana(chain) ? baseAddr : baseAddr.toLowerCase(),
     };
   } catch {
     return null;
@@ -106,7 +115,9 @@ async function fetchTokenPriceCoingecko(tokenAddress: string, chain: string): Pr
     const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
     if (!res.ok) return null;
     const data = await res.json() as Record<string, unknown>;
-    const entry = data?.[addr.toLowerCase()] as Record<string, unknown> | undefined;
+    // CoinGecko keys response by lowercase address for EVM; Solana uses original case
+    const key = isSolana(chain) ? addr : addr.toLowerCase();
+    const entry = data?.[key] as Record<string, unknown> | undefined;
     const price = entry?.usd;
     if (typeof price !== 'number' || price <= 0) return null;
     return price;
@@ -122,11 +133,12 @@ async function fetchTokenUsdDexScreener(tokenAddress: string, chain: string): Pr
   if (!chainSlug) return null;
   const addr = normalizeForApi(tokenAddress, chain);
   try {
-    const url = `https://api.dexscreener.com/latest/dex/tokens/${chainSlug}/${addr}`;
+    const url = `https://api.dexscreener.com/tokens/v1/${chainSlug}/${addr}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
     if (!res.ok) return null;
-    const data = await res.json() as Record<string, unknown>;
-    const pairs = data?.pairs as unknown[];
+    // /tokens/v1/ returns a JSON array of pair objects directly
+    const data = await res.json() as unknown;
+    const pairs = Array.isArray(data) ? data : (data as Record<string, unknown>)?.pairs;
     if (!Array.isArray(pairs) || pairs.length === 0) return null;
     // Take priceUsd from the most liquid pair (DexScreener returns them sorted by liquidity)
     const pair = pairs[0] as Record<string, unknown>;
@@ -164,7 +176,8 @@ export async function fetchPoolPrice(
   if (dex !== null) {
     // priceNative = price of baseToken in quoteToken (human-readable)
     // Uniswap price = human-readable token1 per token0
-    if (dex.baseTokenAddress === token0Address.toLowerCase()) {
+    const t0Cmp = isSolana(chain) ? token0Address : token0Address.toLowerCase();
+    if (dex.baseTokenAddress === t0Cmp) {
       // baseToken is token0 → priceNative already is (token1 per token0)
       return dex.priceNative;
     } else {

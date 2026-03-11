@@ -63,6 +63,7 @@ export const config = {
   get lpFreePolygonRpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_POLYGON_RPC_URL); },
   get lpFreeAvaxRpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_AVAX_RPC_URL); },
   get lpFreeHlL1RpcUrls(): string[] { return parseRpcList(process.env.LP_FREE_HL_L1_RPC_URL); },
+  get lpFreeSolRpcUrl(): string | undefined { return process.env.LP_FREE_SOL_RPC_URL || undefined; },
 
   /** Intervalo do ciclo de leitura de LP via RPCs gratuitos (minutos). Default: 5. */
   lpReadIntervalMin: numEnv('LP_READ_INTERVAL_MIN', 5),

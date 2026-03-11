@@ -95,21 +95,29 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       const mapped = HL_SYMBOL_MAP[rawVolatileSymbol] ?? rawVolatileSymbol;
       const hedgeToken: 'token0' | 'token1' = rawVolatileSymbol === t0Symbol ? 'token0' : 'token1';
 
-      // Resolve final HL symbol: strip trailing 'x' (e.g. NVDAx → NVDA), fallback to original
+      // Resolve final HL symbol: strip trailing 'x' (e.g. NVDAx → NVDA), try dex-prefixed variants (xyz:AMZN, cash:AMZN)
       let hedgeSymbol: string;
       if (mapped.endsWith('x') && mapped.length > 1) {
         const stripped = mapped.slice(0, -1);
-        if (await ctx.exchange.isSymbolSupported(stripped)) {
-          hedgeSymbol = stripped;
-          logger.info(`[Activation] Symbol resolved: ${mapped} → ${stripped}`);
-        } else if (await ctx.exchange.isSymbolSupported(mapped)) {
-          hedgeSymbol = mapped;
-          logger.info(`[Activation] Symbol resolved (with x): ${mapped}`);
+        const resolvedStripped = await ctx.exchange.resolveSymbol(stripped);
+        const resolvedMapped = resolvedStripped ? null : await ctx.exchange.resolveSymbol(mapped);
+        if (resolvedStripped) {
+          hedgeSymbol = resolvedStripped;
+          logger.info(`[Activation] Symbol resolved: ${mapped} → ${hedgeSymbol}`);
+        } else if (resolvedMapped) {
+          hedgeSymbol = resolvedMapped;
+          logger.info(`[Activation] Symbol resolved (with x): ${mapped} → ${hedgeSymbol}`);
         } else {
-          throw new Error(`Symbol not found in Hyperliquid universe: tried "${stripped}" and "${mapped}"`);
+          throw new Error(`Symbol not found in Hyperliquid universe: tried "${stripped}" and "${mapped}" (checked all dexes)`);
         }
       } else {
-        hedgeSymbol = mapped;
+        const resolved = await ctx.exchange.resolveSymbol(mapped);
+        if (resolved) {
+          hedgeSymbol = resolved;
+          if (resolved !== mapped) logger.info(`[Activation] Symbol resolved: ${mapped} → ${hedgeSymbol}`);
+        } else {
+          throw new Error(`Symbol "${mapped}" not found in any Hyperliquid dex universe`);
+        }
       }
 
       const volatilePriceUsd = hedgeToken === 'token0' ? position.price : 1 / position.price;
@@ -525,7 +533,7 @@ async function main() {
   async function runCycleForUser(userId: string, ctx: UserEngineContext): Promise<void> {
     const store = getStoreForUser(userId);
     const positionsState = ctx.rebalancer.fullState.positions;
-    const tokenIds = Object.keys(positionsState).map(Number);
+    const tokenIds: PositionId[] = Object.keys(positionsState);
 
     if (tokenIds.length === 0) return;
 
@@ -546,7 +554,8 @@ async function main() {
         const cycleReader = getOrCreateReader(ctx, cycleChain, cycleDex);
         const position = await cycleReader.readPosition(tokenId, cfg.poolAddress);
 
-        const v4PoolId = cfg.protocolVersion === 'v4' ? (cycleReader as EvmV4Reader).getV4PoolId(tokenId) : null;
+        const v4PoolId = cfg.protocolVersion === 'v4' && typeof tokenId === 'number'
+          ? (cycleReader as EvmV4Reader).getV4PoolId(tokenId) : null;
         const needsBackfill = !cfg.token0Address || (v4PoolId !== null && cfg.poolAddress !== v4PoolId);
         if (needsBackfill) {
           const backfilled: ActivePositionConfig = {
@@ -579,7 +588,7 @@ async function main() {
 
   // ── LP Read Cycle (RPCs gratuitos, sem Alchemy) ─────────────────────────────
 
-  async function runLpReadForToken(userId: string, ctx: UserEngineContext, tokenId: number): Promise<void> {
+  async function runLpReadForToken(userId: string, ctx: UserEngineContext, tokenId: PositionId): Promise<void> {
     const store = getStoreForUser(userId);
     const ps = ctx.rebalancer.fullState.positions[tokenId];
     if (!ps) return;
@@ -686,7 +695,7 @@ async function main() {
   }
 
   async function runLpReadForUser(userId: string, ctx: UserEngineContext): Promise<void> {
-    const tokenIds = Object.keys(ctx.rebalancer.fullState.positions).map(Number);
+    const tokenIds: PositionId[] = Object.keys(ctx.rebalancer.fullState.positions);
     for (const tokenId of tokenIds) {
       try {
         await runLpReadForToken(userId, ctx, tokenId);

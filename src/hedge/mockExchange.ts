@@ -79,6 +79,10 @@ export class MockExchange implements IHedgeExchange {
     return true;
   }
 
+  async resolveSymbol(symbol: string): Promise<string | null> {
+    return symbol;
+  }
+
   setMockFundingRate(rate: number): void {
     this.mockFundingRate = rate;
     logger.info(`[MOCK] Funding rate updated to ${(rate * 100).toFixed(2)}%`);
