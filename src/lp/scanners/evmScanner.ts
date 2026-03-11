@@ -131,6 +131,7 @@ export class EvmScanner implements IWalletScanner {
       tickLower: number;
       tickUpper: number;
       liquidity: bigint;
+      zerionPoolAddress?: string;
     }
 
     logger.info(`[EvmScanner][${this.chain}:${this.dex}] querying ${posDataList.length} tokenId(s): [${posDataList.map(p => p.tokenId).join(', ')}]`);
@@ -158,12 +159,14 @@ export class EvmScanner implements IWalletScanner {
           tickLower: Number(raw.tickLower),
           tickUpper: Number(raw.tickUpper),
           liquidity,
+          zerionPoolAddress: posDataList[i].zPos.poolAddress || undefined,
         });
       }
       return out;
     });
 
     if (livePositions.length === 0) return [];
+    logger.info(`[EvmScanner][${this.chain}:${this.dex}] ${livePositions.length} position(s) with liquidity — resolving pools`);
 
     // Safety net: fetch metadata for any token Zerion didn't cover
     const tokenAddrs = new Set<string>();
@@ -185,7 +188,10 @@ export class EvmScanner implements IWalletScanner {
       });
     }
 
-    // Resolve pool addresses (CREATE2 if initCodeHash available, else multicall factory.getPool)
+    // Resolve pool addresses:
+    // Priority 1 — Zerion provided pool address directly (reliable, no RPC needed)
+    // Priority 2 — CREATE2 derivation (if initCodeHash known)
+    // Priority 3 — factory.getPool multicall
     type PoolKey = `${string}:${string}:${number}`;
     const poolKeyMap = new Map<PoolKey, { t0: string; t1: string; fee: number }>();
     for (const p of livePositions) {
@@ -195,22 +201,35 @@ export class EvmScanner implements IWalletScanner {
     }
 
     const poolAddrs = new Map<PoolKey, string>();
-    if (addresses.initCodeHashV3 && addresses.factoryV3) {
-      for (const [key, { t0, t1, fee }] of poolKeyMap) {
-        const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [t0, t1, fee]);
-        poolAddrs.set(key, ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3));
+
+    // Priority 1: Zerion pool address
+    for (const p of livePositions) {
+      if (p.zerionPoolAddress) {
+        const [tA, tB] = p.token0 < p.token1 ? [p.token0, p.token1] : [p.token1, p.token0];
+        const key: PoolKey = `${tA}:${tB}:${p.fee}`;
+        if (!poolAddrs.has(key)) poolAddrs.set(key, p.zerionPoolAddress);
       }
-    } else if (addresses.factoryV3) {
-      await fallback.call(async (provider) => {
-        const factory = new ethers.Contract(addresses.factoryV3!, FACTORY_V3_ABI, provider);
-        const poolKeys = [...poolKeyMap.entries()];
-        const calls = poolKeys.map(([, { t0, t1, fee }]) => buildCall3(factory, 'getPool', [t0, t1, fee]));
-        const results = await multicall3(provider, calls);
-        for (let i = 0; i < poolKeys.length; i++) {
-          const addr = decodeCall3Result<string>(factory, 'getPool', results[i]);
-          if (addr && addr !== ethers.ZeroAddress) poolAddrs.set(poolKeys[i][0], addr);
+    }
+
+    // Priority 2 & 3: resolve remaining pools via CREATE2 or factory.getPool
+    const unresolvedKeys = [...poolKeyMap.entries()].filter(([key]) => !poolAddrs.has(key));
+    if (unresolvedKeys.length > 0) {
+      if (addresses.initCodeHashV3 && addresses.factoryV3) {
+        for (const [key, { t0, t1, fee }] of unresolvedKeys) {
+          const salt = ethers.solidityPackedKeccak256(['address', 'address', 'uint24'], [t0, t1, fee]);
+          poolAddrs.set(key, ethers.getCreate2Address(addresses.factoryV3, salt, addresses.initCodeHashV3));
         }
-      });
+      } else if (addresses.factoryV3) {
+        await fallback.call(async (provider) => {
+          const factory = new ethers.Contract(addresses.factoryV3!, FACTORY_V3_ABI, provider);
+          const calls = unresolvedKeys.map(([, { t0, t1, fee }]) => buildCall3(factory, 'getPool', [t0, t1, fee]));
+          const results = await multicall3(provider, calls);
+          for (let i = 0; i < unresolvedKeys.length; i++) {
+            const addr = decodeCall3Result<string>(factory, 'getPool', results[i]);
+            if (addr && addr !== ethers.ZeroAddress) poolAddrs.set(unresolvedKeys[i][0], addr);
+          }
+        });
+      }
     }
 
     const getPoolAddr = (p: PosData): string | null => {
@@ -219,7 +238,10 @@ export class EvmScanner implements IWalletScanner {
     };
 
     const posWithPools = livePositions.filter(p => getPoolAddr(p) !== null);
-    if (posWithPools.length === 0) return [];
+    if (posWithPools.length === 0) {
+      logger.warn(`[EvmScanner][${this.chain}:${this.dex}] pool address not resolved for any position — factory.getPool returned ZeroAddress or no factory configured`);
+      return [];
+    }
 
     // Round 2 (or 3 without CREATE2): slot0 for unique pools — 1 multicall
     const uniquePoolAddrs = [...new Set(posWithPools.map(p => getPoolAddr(p)!))];
