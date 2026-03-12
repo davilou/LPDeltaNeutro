@@ -742,9 +742,9 @@ async function main() {
         : (lpPnlNet < -totalLpUsd * 0.05) ? 'WARNING' : 'HEALTHY';
 
       logger.info({ message: 'lp.position.update', user: ctx.email ?? userId, nft_id: String(tokenId),
-        pool: { chain, dex, pair: `${position.token0.symbol}/${position.token1.symbol}` },
+        chain, dex, pair: `${position.token0.symbol}/${position.token1.symbol}`,
         lp_value_usd: +totalLpUsd.toFixed(2), daily_fees_usd: +netLpFees.toFixed(4),
-        impermanent_loss: { unrealized: +pnl.unrealizedVirtualPnlUsd.toFixed(2), realized: +pnl.realizedVirtualPnlUsd.toFixed(2), max_il: +maxIl.toFixed(2) },
+        il_unrealized: +pnl.unrealizedVirtualPnlUsd.toFixed(2), il_realized: +pnl.realizedVirtualPnlUsd.toFixed(2), il_max: +maxIl.toFixed(2),
         breakeven_days: breakevenDays !== null ? +breakevenDays.toFixed(1) : null, status,
       });
     } else {
@@ -902,11 +902,13 @@ async function main() {
               price_usd: displayUsd !== null ? +displayUsd.toFixed(2) : null,
               chain,
             });
-            priceLogger.info({ message: 'price.update', user: u(ctx, userId), nft_id: String(cfg.tokenId),
+            const priceLogEntry = { message: 'price.update', user: u(ctx, userId), nft_id: String(cfg.tokenId),
               symbol: cfg.hedgeSymbol ?? null, price_usd: displayUsd !== null ? +displayUsd.toFixed(2) : null,
               ratio: displayUsd === null ? +price.toFixed(8) : undefined,
               chain, pair: `${cfg.token0Symbol ?? ''}/${cfg.token1Symbol ?? ''}`,
-            });
+            };
+            logger.info(priceLogEntry);        // → Loki + bot log
+            priceLogger.info(priceLogEntry);   // → price log file (dedicated)
 
             if (!ctx.rebalancer.fullState.positions[cfg.tokenId]) continue;
 

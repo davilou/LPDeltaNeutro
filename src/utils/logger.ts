@@ -97,39 +97,29 @@ if (fileLoggingEnabled) {
   }));
 }
 
-// Loki transport (optional — lazy-loaded to avoid crashing when dependency is missing)
+// Loki transport (custom HTTP transport — batches entries in order to avoid Loki out-of-order rejections)
 if (LOKI_ENABLED && LOKI_URL) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const LokiTransport = require('winston-loki');
-    const lokiOptions: Record<string, unknown> = {
+    const { LokiHttpTransport } = require('./lokiTransport');
+    const lokiLabels: Record<string, string> = { job: 'lpdeltaneutro', category: 'main', environment: NODE_ENV };
+    const lokiOpts: Record<string, unknown> = {
       host: LOKI_URL,
-      labels: { job: 'lpdeltaneutro', category: 'main', environment: NODE_ENV },
-      json: true,
-      batching: false,
-      replaceTimestamp: true,
-      gracefulShutdown: true,
-      format: jsonFormat,
-      onConnectionError: (err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error('[Logger] Loki main connection error:', err);
-      },
+      labels: lokiLabels,
     };
     if (LOKI_TENANT_ID) {
-      lokiOptions.tenantId = LOKI_TENANT_ID;
+      lokiOpts.tenantId = LOKI_TENANT_ID;
     }
     if (LOKI_USERNAME && LOKI_PASSWORD) {
-      lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
+      lokiOpts.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
     }
     // eslint-disable-next-line no-console
-    console.log('[Logger] Loki main basicAuth configured:', !!LOKI_USERNAME && !!LOKI_PASSWORD);
-    loggerTransports.push(new LokiTransport(lokiOptions));
+    console.log('[Logger] Loki basicAuth configured:', !!LOKI_USERNAME && !!LOKI_PASSWORD);
+    loggerTransports.push(new LokiHttpTransport(lokiOpts));
     // eslint-disable-next-line no-console
-    console.log('[Logger] Loki main transport enabled →', LOKI_URL);
+    console.log('[Logger] Loki custom transport enabled →', LOKI_URL);
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('[Logger] Failed to load winston-loki:', err);
+    console.error('[Logger] Failed to load Loki transport:', err);
   }
 }
 
@@ -159,9 +149,9 @@ priceTransports.push(new winston.transports.Console({
 }));
 
 // Price logger: file transport for dedicated price log files + console.
-// Loki transport is NOT added here — price logs go to Loki via the main logger instead,
-// since Grafana Cloud doesn't support multiple winston-loki streams reliably.
-// Filter in Grafana with: {category="main"} |= "price.update"
+// Loki transport is NOT added here — price.update is emitted via BOTH loggers in index.ts:
+// logger (→ Loki + bot log) and priceLogger (→ dedicated price file).
+// Filter in Grafana with: {job="lpdeltaneutro"} | json | message="price.update"
 export const priceLogger = winston.createLogger({
   level: 'info',
   format: jsonFormat,
