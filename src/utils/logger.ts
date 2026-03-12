@@ -38,10 +38,15 @@ const contextFormat = winston.format((info) => {
   return info;
 });
 
-/** JSON format for files and prod console. */
-const jsonFormat = winston.format.combine(
+/** Base format: adds timestamp + async context fields (no serialization). */
+const baseFormat = winston.format.combine(
   winston.format.timestamp(),
   contextFormat(),
+);
+
+/** JSON format for files and prod console (base + JSON serialization). */
+const jsonFormat = winston.format.combine(
+  baseFormat,
   winston.format.json(),
 );
 
@@ -125,7 +130,7 @@ if (LOKI_ENABLED && LOKI_URL) {
 
 export const logger = winston.createLogger({
   level: LOG_LEVEL,
-  format: jsonFormat,
+  format: baseFormat,
   transports: loggerTransports,
 });
 
@@ -154,7 +159,7 @@ priceTransports.push(new winston.transports.Console({
 // Filter in Grafana with: {job="lpdeltaneutro"} | json | message="price.update"
 export const priceLogger = winston.createLogger({
   level: 'info',
-  format: jsonFormat,
+  format: baseFormat,
   transports: priceTransports,
 });
 
