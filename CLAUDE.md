@@ -1,5 +1,8 @@
 # CLAUDE.md — APRDeltaNeuto
 
+## Idioma
+Sempre responder em **português brasileiro (pt-BR)**. Nunca responder em inglês. Nomes de variáveis, funções e interfaces permanecem em inglês (padrão do código).
+
 ## Projeto
 Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains (Base, Ethereum, BSC, Arbitrum, Polygon, Avalanche, HyperEVM). Lê LP positions on-chain (Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL e outros) e executa hedges em perpétuos na Hyperliquid. Inclui dashboard de monitoramento e módulo de backtesting.
 
