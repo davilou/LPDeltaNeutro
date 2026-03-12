@@ -105,7 +105,7 @@ if (LOKI_ENABLED && LOKI_URL) {
     const LokiTransport = require('winston-loki');
     const lokiOptions: Record<string, unknown> = {
       host: LOKI_URL,
-      labels: { job: 'lpdeltaneutro', environment: NODE_ENV },
+      labels: { job: 'lpdeltaneutro', category: 'main', environment: NODE_ENV },
       json: true,
       batching: true,
       interval: 5,
