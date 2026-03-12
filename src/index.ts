@@ -120,7 +120,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       const initialHlUsd = await ctx.exchange.getAccountEquity();
 
       const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD']);
-      const HL_SYMBOL_MAP: Record<string, string> = { WETH: 'ETH', WBTC: 'BTC', cbBTC: 'BTC', cbETH: 'ETH', wstETH: 'ETH', WHYPE: 'HYPE' };
+      const HL_SYMBOL_MAP: Record<string, string> = { WETH: 'ETH', WBTC: 'BTC', cbBTC: 'BTC', cbETH: 'ETH', wstETH: 'ETH', WHYPE: 'HYPE', WBNB: 'BNB' };
 
       const t0Symbol = position.token0.symbol;
       const t1Symbol = position.token1.symbol;
