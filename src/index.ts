@@ -865,6 +865,7 @@ async function main() {
 
       // One price fetch per unique pool; apply result to all tokenIds sharing it
       let firstPool = true;
+      const priceSummary: Array<{ nft_id: string; symbol: string | null; price_usd: number | null; chain: string }> = [];
       for (const [, entries] of poolGroups.entries()) {
         if (!firstPool) await new Promise(r => setTimeout(r, PRICE_POLL_INTER_REQUEST_MS));
         firstPool = false;
@@ -893,13 +894,18 @@ async function main() {
             let displayUsd: number | null = null;
             if (cfg.hedgeToken === 'token0' && t1Stable) displayUsd = price;
             else if (cfg.hedgeToken === 'token1' && t0Stable) displayUsd = 1 / price;
-            const priceLogData = { message: 'price.update', user: u(ctx, userId), nft_id: String(cfg.tokenId),
+
+            priceSummary.push({
+              nft_id: String(cfg.tokenId),
+              symbol: cfg.hedgeSymbol ?? null,
+              price_usd: displayUsd !== null ? +displayUsd.toFixed(2) : null,
+              chain,
+            });
+            priceLogger.info({ message: 'price.update', user: u(ctx, userId), nft_id: String(cfg.tokenId),
               symbol: cfg.hedgeSymbol ?? null, price_usd: displayUsd !== null ? +displayUsd.toFixed(2) : null,
               ratio: displayUsd === null ? +price.toFixed(8) : undefined,
               chain, pair: `${cfg.token0Symbol ?? ''}/${cfg.token1Symbol ?? ''}`,
-            };
-            logger.info(priceLogData);        // → Loki (via main transport)
-            priceLogger.info(priceLogData);   // → dedicated price log file
+            });
 
             if (!ctx.rebalancer.fullState.positions[cfg.tokenId]) continue;
 
@@ -946,6 +952,10 @@ async function main() {
         } catch (err) {
           logger.error({ message: 'price.pool_error', pool: rep.poolAddress.slice(0, 10), chain, error: String(err) });
         }
+      }
+      // Single aggregated log per poll cycle → avoids Loki out-of-order rejection
+      if (priceSummary.length > 0) {
+        logger.info({ message: 'price.poll', count: priceSummary.length, prices: priceSummary });
       }
     } finally {
       pricePollRunning = false;
