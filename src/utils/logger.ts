@@ -153,38 +153,15 @@ if (fileLoggingEnabled) {
   }));
 }
 
-// Send price logs to Loki with distinct label so they can be filtered: {category="price"}
-if (LOKI_ENABLED && LOKI_URL) {
-  try {
-    const LokiTransport = require('winston-loki');
-    const lokiOptions: Record<string, unknown> = {
-      host: LOKI_URL,
-      labels: { job: 'lpdeltaneutro', category: 'price', environment: NODE_ENV },
-      json: true,
-      batching: false,
-      replaceTimestamp: true,
-      gracefulShutdown: true,
-      format: jsonFormat,
-      onConnectionError: (err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error('[Logger] Loki price connection error:', err);
-      },
-    };
-    if (LOKI_TENANT_ID) lokiOptions.tenantId = LOKI_TENANT_ID;
-    if (LOKI_USERNAME && LOKI_PASSWORD) lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
-    priceTransports.push(new LokiTransport(lokiOptions));
-    // eslint-disable-next-line no-console
-    console.log('[Logger] Loki price transport enabled →', LOKI_URL);
-  } catch {
-    // winston-loki not available — file-only
-  }
-}
-
 // Console transport: dev uses human-readable, prod uses JSON (same as main logger).
 priceTransports.push(new winston.transports.Console({
   format: IS_PROD ? jsonFormat : devConsoleFormat,
 }));
 
+// Price logger: file transport for dedicated price log files + console.
+// Loki transport is NOT added here — price logs go to Loki via the main logger instead,
+// since Grafana Cloud doesn't support multiple winston-loki streams reliably.
+// Filter in Grafana with: {category="main"} |= "price.update"
 export const priceLogger = winston.createLogger({
   level: 'info',
   format: jsonFormat,
