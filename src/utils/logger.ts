@@ -120,9 +120,14 @@ if (LOKI_ENABLED && LOKI_URL) {
     if (LOKI_USERNAME && LOKI_PASSWORD) {
       lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
     }
-    loggerTransports.push(new LokiTransport(lokiOptions));
+    const lokiTransport = new LokiTransport(lokiOptions);
+    lokiTransport.on('error', (err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[Logger] Loki main transport error:', err);
+    });
+    loggerTransports.push(lokiTransport);
     // eslint-disable-next-line no-console
-    console.log('[Logger] Loki transport enabled →', LOKI_URL);
+    console.log('[Logger] Loki main transport enabled →', LOKI_URL);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[Logger] Failed to load winston-loki:', err);
@@ -166,7 +171,14 @@ if (LOKI_ENABLED && LOKI_URL) {
     };
     if (LOKI_TENANT_ID) lokiOptions.tenantId = LOKI_TENANT_ID;
     if (LOKI_USERNAME && LOKI_PASSWORD) lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
-    priceTransports.push(new LokiTransport(lokiOptions));
+    const priceLokiTransport = new LokiTransport(lokiOptions);
+    priceLokiTransport.on('error', (err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[Logger] Loki price transport error:', err);
+    });
+    priceTransports.push(priceLokiTransport);
+    // eslint-disable-next-line no-console
+    console.log('[Logger] Loki price transport enabled →', LOKI_URL);
   } catch {
     // winston-loki not available — file-only
   }
