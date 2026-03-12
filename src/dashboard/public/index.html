@@ -2321,12 +2321,18 @@
 
         es.addEventListener('activationResult', function (e) {
           var r = JSON.parse(e.data);
+          var scanRow = scannerPositions.find(function (x) { return String(x.tokenId) === String(r.tokenId); });
           if (r.success) {
             activePositionsConfig[r.tokenId] = { tokenId: r.tokenId };
             if (!activeTokenId) activeTokenId = r.tokenId;
             renderTabs();
             renderAllMetrics();
             if (currentPage === 'history') renderActivePositionsInHistory();
+            if (scanRow) { scanRow.isActive = true; scanRow.isPending = false; renderScannerTable(scannerPositions); }
+          } else {
+            // Activation failed on HL — rollback scanner state and show error
+            if (scanRow) { scanRow.isActive = false; scanRow.isPending = false; renderScannerTable(scannerPositions); }
+            alert('Falha ao ativar proteção para #' + r.tokenId + ':\n' + (r.error || 'Erro desconhecido'));
           }
         });
 
@@ -3086,7 +3092,9 @@
         var safeTokenId = sanitizeHtml(p.tokenId);
         var actionHtml = p.isActive
           ? '<span class="badge-protected">✓ PROTEGIDA</span>'
-          : '<button class="btn-protect" onclick="openProtectModal(&#39;' + safeTokenId + '&#39;)">▶ PROTECT</button>';
+          : p.isPending
+            ? '<span class="badge-protected" style="background:rgba(255,170,0,0.15);color:#ffaa00;border-color:rgba(255,170,0,0.3);">⏳ ATIVANDO...</span>'
+            : '<button class="btn-protect" onclick="openProtectModal(&#39;' + safeTokenId + '&#39;)">▶ PROTECT</button>';
 
         var dexChain = sanitizeHtml(dexLabel(p.dex) + ' · ' + chainLabel(p.chain));
 
@@ -3325,6 +3333,9 @@
         emergencyPriceMovementThreshold: emergency,
       };
 
+      var submitBtn = document.getElementById('pm-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Ativando...';
       try {
         var res = await fetch('/api/activate-position', {
           method: 'POST',
@@ -3333,11 +3344,15 @@
         });
         if (!res.ok) throw new Error(await res.text());
         closeProtectModal();
+        // Mark as pending — will be confirmed or rolled back by activationResult SSE event
         var row = scannerPositions.find(function (x) { return String(x.tokenId) === String(p.tokenId); });
-        if (row) row.isActive = true;
+        if (row) row.isPending = true;
         renderScannerTable(scannerPositions);
       } catch (err) {
         alert('Erro ao ativar: ' + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'ATIVAR PROTEÇÃO';
       }
     }
 

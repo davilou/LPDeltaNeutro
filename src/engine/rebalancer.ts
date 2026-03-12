@@ -12,13 +12,13 @@ import path from 'path';
 
 export class Rebalancer {
   private state: BotState;
-  private exchange: IHedgeExchange;
+  private exchange: IHedgeExchange | null;
   private lastRangeStatusMap: Record<string, string> = {};
   private pnlTrackers: Record<string, PnlTracker> = {};
   private readonly userId: string;
   private readonly stateFile: string;
 
-  constructor(exchange: IHedgeExchange, userId = 'default') {
+  constructor(exchange: IHedgeExchange | null, userId = 'default') {
     this.exchange = exchange;
     this.userId = userId;
     const stateDir = process.env.DATA_DIR || path.resolve(__dirname, '..', '..');
@@ -106,9 +106,9 @@ export class Rebalancer {
     return this.pnlTrackers[tokenId];
   }
 
-  setExchange(exchange: IHedgeExchange): void {
+  setExchange(exchange: IHedgeExchange | null): void {
     this.exchange = exchange;
-    logger.info('[Rebalancer] Exchange swapped to live HyperliquidExchange');
+    if (exchange) logger.info('[Rebalancer] Exchange swapped to live HyperliquidExchange');
   }
 
   activatePosition(cfg: ActivePositionConfig): void {
@@ -261,6 +261,9 @@ export class Rebalancer {
   }
 
   async cycle(tokenId: PositionId, position: LPPosition): Promise<void> {
+    if (!this.exchange) {
+      throw new Error(`[Rebalancer] No exchange configured — cannot run cycle for NFT #${tokenId}. User must set HL credentials first.`);
+    }
     const ps = this.state.positions[tokenId];
     if (!ps) {
       logger.warn(`[Rebalancer] No state for tokenId ${tokenId} — skipping cycle`);
@@ -511,7 +514,7 @@ export class Rebalancer {
       }
     } catch (exchangeErr) {
       logger.error(`[NFT#${tokenId}] Exchange error — rebalance aborted, state unchanged: ${exchangeErr}`);
-      return; // do NOT update state, cooldown or insert to Supabase
+      throw exchangeErr; // propagate so callers (activation, timer, poller) can react
     }
 
     // Per-trade closed PnL using HL entryPx as ground truth

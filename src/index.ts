@@ -23,7 +23,8 @@ const PRICE_POLL_INTER_REQUEST_MS = 500; // delay between pool price requests
 
 interface UserEngineContext {
   rebalancer: Rebalancer;
-  exchange: IHedgeExchange;
+  /** null until user provides HL credentials (no MockExchange fallback). */
+  exchange: IHedgeExchange | null;
   /** Reusable readers keyed by "chain:dex" — preserves internal TTL cache across cycles. */
   readers: Map<string, ILPReader>;
   activationsInProgress: Set<PositionId>;
@@ -40,7 +41,7 @@ function getOrCreateReader(ctx: UserEngineContext, chain: ChainId, dex: DexId): 
 
 const engineContexts = new Map<string, UserEngineContext>();
 
-async function createExchangeForUser(userId: string): Promise<IHedgeExchange> {
+async function createExchangeForUser(userId: string): Promise<IHedgeExchange | null> {
   // Try DB credentials first
   if (supabaseServiceClient) {
     try {
@@ -55,12 +56,18 @@ async function createExchangeForUser(userId: string): Promise<IHedgeExchange> {
   }
 
   // Fall back to env credentials (only for default/single-user mode)
-  if (!config.dryRun && config.hlPrivateKey && userId === 'default') {
-    return new HyperliquidExchange(config.hlPrivateKey, config.hlWalletAddress);
+  if (userId === 'default') {
+    if (config.dryRun) {
+      logger.info(`[Init] DRY_RUN=true — using MockExchange for default user`);
+      return new MockExchange(0.01);
+    }
+    if (config.hlPrivateKey) {
+      return new HyperliquidExchange(config.hlPrivateKey, config.hlWalletAddress);
+    }
   }
 
-  logger.info(`[Init] No credentials found for user ${userId} — using MockExchange`);
-  return new MockExchange(0.01);
+  logger.info(`[Init] No HL credentials for user ${userId} — exchange not available until credentials are configured`);
+  return null;
 }
 
 function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
@@ -78,6 +85,32 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
     }
     ctx.activationsInProgress.add(activReq.tokenId);
     logger.info(`[Activation] Request for NFT #${activReq.tokenId}, pool ${activReq.poolAddress} (user: ${userId})`);
+
+    // Prevent activation without exchange — attempt to reload credentials first
+    if (!ctx.exchange) {
+      logger.warn(`[Activation] No exchange for user ${userId} — attempting to load credentials`);
+      try {
+        const reloaded = await createExchangeForUser(userId);
+        if (reloaded) {
+          ctx.exchange = reloaded;
+          ctx.rebalancer.setExchange(reloaded);
+          logger.info(`[Activation] Successfully loaded live exchange for user ${userId}`);
+        }
+      } catch (reloadErr) {
+        logger.error(`[Activation] Failed to load credentials for user ${userId}: ${reloadErr}`);
+      }
+
+      if (!ctx.exchange) {
+        logger.error(`[Activation] Cannot activate NFT #${activReq.tokenId} — no HL credentials available. User must configure credentials first.`);
+        ctx.activationsInProgress.delete(activReq.tokenId);
+        store.notifyActivationResult({
+          success: false,
+          tokenId: activReq.tokenId,
+          error: 'No Hyperliquid credentials configured. Please add your HL credentials in Settings before activating protection.',
+        });
+        return;
+      }
+    }
 
     try {
       const activChain = (activReq.chain ?? 'base') as ChainId;
@@ -156,6 +189,30 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
 
       ctx.rebalancer.getPnlTracker(activReq.tokenId).reinitialize(initialLpUsd, initialHlUsd, initialFeesUsd);
 
+      // Activate in rebalancer state first (needed for cycle to run)
+      ctx.rebalancer.activatePosition(cfg);
+
+      // Run first cycle — hedge must be placed on HL before we confirm activation
+      logger.info(`[Activation] Running immediate first cycle for NFT #${activReq.tokenId}...`);
+      ctx.cycleInProgress = true;
+      try {
+        await ctx.rebalancer.cycle(activReq.tokenId, position);
+      } catch (cycleErr) {
+        // Hedge failed on exchange — rollback activation
+        logger.error(`[Activation] Initial cycle failed for NFT #${activReq.tokenId}, rolling back: ${cycleErr}`);
+        ctx.rebalancer.deactivatePosition(activReq.tokenId);
+        ctx.cycleInProgress = false;
+        store.notifyActivationResult({
+          success: false,
+          tokenId: activReq.tokenId,
+          error: `Hedge failed on Hyperliquid: ${cycleErr}`,
+        });
+        return;
+      } finally {
+        ctx.cycleInProgress = false;
+      }
+
+      // Hedge confirmed — now save to Supabase and notify UI
       void upsertProtectionActivation({
         user_id: userId !== 'default' ? userId : undefined,
         token_id: activReq.tokenId,
@@ -173,23 +230,12 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         tick_upper: activReq.tickUpper ?? null,
       });
 
-      ctx.rebalancer.activatePosition(cfg);
       store.setActivePositionConfig(activReq.tokenId, cfg);
 
       logger.info(
         `[Activation] NFT #${activReq.tokenId} (${activReq.protocolVersion}) activated: LP=$${initialLpUsd.toFixed(2)} HL=$${initialHlUsd.toFixed(2)} hedge=${hedgeSymbol}`
       );
       store.notifyActivationResult({ success: true, tokenId: activReq.tokenId, initialLpUsd, initialHlUsd });
-
-      logger.info(`[Activation] Running immediate first cycle for NFT #${activReq.tokenId}...`);
-      ctx.cycleInProgress = true;
-      try {
-        await ctx.rebalancer.cycle(activReq.tokenId, position);
-      } catch (cycleErr) {
-        logger.error(`[Activation] Initial cycle failed for NFT #${activReq.tokenId}: ${cycleErr}`);
-      } finally {
-        ctx.cycleInProgress = false;
-      }
     } catch (err) {
       logger.error(`[Activation] Failed for user ${userId}: ${err}`);
       store.notifyActivationResult({
@@ -242,6 +288,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
     } else if (ps && hedgeSymbol) {
       logger.info(`[Deactivation] NFT #${tokenId}: store data is stale (post-restart), fetching real P&L from exchange`);
       try {
+        if (!ctx.exchange) throw new Error('No exchange configured');
         const tracker = ctx.rebalancer.getPnlTracker(tokenId);
         const sinceTs = ps.pnl?.initialTimestamp ?? Date.now();
         const [hlEquity, currentHedge, isolatedPnl] = await Promise.all([
@@ -315,7 +362,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
           .some(pos => pos.config.hedgeSymbol === hedgeSymbol);
         if (otherUsesSymbol) {
           logger.warn(`[Deactivation] NFT #${tokenId}: skipping HL close — symbol ${hedgeSymbol} also used by another active position`);
-        } else {
+        } else if (ctx.exchange) {
           const currentHedge = await ctx.exchange.getPosition(hedgeSymbol);
           if (currentHedge.size > 0) {
             logger.info(`[Activation] NFT #${tokenId}: closing full HL position of ${currentHedge.size.toFixed(4)} ${hedgeSymbol}`);
@@ -323,6 +370,8 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
           } else {
             logger.info(`[Activation] NFT #${tokenId}: no open HL position to close`);
           }
+        } else {
+          logger.warn(`[Deactivation] NFT #${tokenId}: no exchange available — cannot close HL position for ${hedgeSymbol}`);
         }
       }
     } catch (err) {
@@ -633,7 +682,7 @@ async function main() {
 
     const totalLpUsd = token0Usd + token1Usd;
 
-    if (cfg.hedgeSymbol) {
+    if (cfg.hedgeSymbol && ctx.exchange) {
       const sinceTs = ps.pnl?.initialTimestamp ?? Date.now();
       const [hlEquity, currentHedge, isolatedPnl] = await Promise.all([
         ctx.exchange.getAccountEquity(),
