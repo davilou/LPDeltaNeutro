@@ -1,6 +1,5 @@
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
-import LokiTransport from 'winston-loki';
 import path from 'path';
 import fs from 'fs';
 import { getLogContext } from './correlation';
@@ -98,26 +97,33 @@ if (fileLoggingEnabled) {
   }));
 }
 
-// Loki transport (optional)
+// Loki transport (optional — lazy-loaded to avoid crashing when dependency is missing)
 if (LOKI_ENABLED && LOKI_URL) {
-  const lokiOptions: Record<string, unknown> = {
-    host: LOKI_URL,
-    labels: { job: 'lpdeltaneutro', environment: NODE_ENV },
-    json: true,
-    batching: true,
-    interval: 5,
-    replaceTimestamp: true,
-    gracefulShutdown: true,
-    clearOnError: false,
-    format: jsonFormat,
-  };
-  if (LOKI_TENANT_ID) {
-    lokiOptions.tenantId = LOKI_TENANT_ID;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const LokiTransport = require('winston-loki');
+    const lokiOptions: Record<string, unknown> = {
+      host: LOKI_URL,
+      labels: { job: 'lpdeltaneutro', environment: NODE_ENV },
+      json: true,
+      batching: true,
+      interval: 5,
+      replaceTimestamp: true,
+      gracefulShutdown: true,
+      clearOnError: false,
+      format: jsonFormat,
+    };
+    if (LOKI_TENANT_ID) {
+      lokiOptions.tenantId = LOKI_TENANT_ID;
+    }
+    if (LOKI_USERNAME && LOKI_PASSWORD) {
+      lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
+    }
+    loggerTransports.push(new LokiTransport(lokiOptions));
+  } catch (err) {
+    // winston-loki not available — skip silently
   }
-  if (LOKI_USERNAME && LOKI_PASSWORD) {
-    lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
-  }
-  loggerTransports.push(new LokiTransport(lokiOptions as unknown as ConstructorParameters<typeof LokiTransport>[0]));
 }
 
 export const logger = winston.createLogger({
