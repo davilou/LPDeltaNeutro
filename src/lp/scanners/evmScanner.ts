@@ -21,8 +21,21 @@ const FACTORY_V3_ABI = [
   'function getPool(address tokenA, address tokenB, uint24 fee) view returns (address pool)',
 ];
 
+// Aerodrome CL factory uses int24 tickSpacing instead of uint24 fee — different function selector
+const FACTORY_CL_ABI = [
+  'function getPool(address tokenA, address tokenB, int24 tickSpacing) view returns (address pool)',
+];
+
+// DEXes whose factory uses int24 tickSpacing in getPool instead of uint24 fee
+const TICK_SPACING_FACTORY_DEXES: ReadonlySet<DexId> = new Set(['aerodrome-cl']);
+
 const POOL_V3_ABI = [
   'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
+];
+
+// Aerodrome CL pools return 6 fields in slot0 (no feeProtocol)
+const POOL_CL_ABI = [
+  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, bool unlocked)',
 ];
 
 const ERC20_ABI = [
@@ -71,10 +84,16 @@ export class EvmScanner implements IWalletScanner {
   private readonly dex: DexId;
   /** Cache: positionManager address → factory address resolved via pm.factory() */
   private readonly _pmFactoryCache = new Map<string, string>();
+  /** Factory ABI: int24 tickSpacing for Aerodrome CL, uint24 fee for standard V3 */
+  private readonly factoryAbi: string[];
+  /** Pool ABI: 6-field slot0 for Aerodrome CL, 7-field for standard V3 */
+  private readonly poolAbi: string[];
 
   constructor(chain: ChainId, dex: DexId) {
     this.chain = chain;
     this.dex = dex;
+    this.factoryAbi = TICK_SPACING_FACTORY_DEXES.has(dex) ? FACTORY_CL_ABI : FACTORY_V3_ABI;
+    this.poolAbi = TICK_SPACING_FACTORY_DEXES.has(dex) ? POOL_CL_ABI : POOL_V3_ABI;
     const known = KNOWN_TOKENS_BY_CHAIN[chain];
     if (known) seedTokenCache(chain, known);
   }
@@ -223,7 +242,7 @@ export class EvmScanner implements IWalletScanner {
     } else {
       logger.info(`${tag} [Pool Resolution] factory.getPool() multicall for ${poolKeys.length} pool(s) (factory=${addresses.factoryV3})`);
       await fallback.call(async (provider) => {
-        const factory = new ethers.Contract(addresses.factoryV3!, FACTORY_V3_ABI, provider);
+        const factory = new ethers.Contract(addresses.factoryV3!, this.factoryAbi, provider);
         const calls = poolKeys.map(([, { t0, t1, fee }]) => buildCall3(factory, 'getPool', [t0, t1, fee]));
         const results = await multicall3(provider, calls);
         for (let i = 0; i < poolKeys.length; i++) {
@@ -511,7 +530,7 @@ export class EvmScanner implements IWalletScanner {
           this.getTokenInfo(provider, t1Addr),
         ]);
         const resolvedAddr = await this.resolvePoolAddress(provider, addresses, pos.token0, pos.token1, fee);
-        const pool = new ethers.Contract(resolvedAddr, POOL_V3_ABI, provider);
+        const pool = new ethers.Contract(resolvedAddr, this.poolAbi, provider);
         const slot0 = await pool.slot0();
         return { t0: t0Info, t1: t1Info, poolAddr: resolvedAddr, tickCurrent: Number(slot0.tick) };
       });
@@ -862,7 +881,7 @@ export class EvmScanner implements IWalletScanner {
 
       for (const [key, { t0, t1, fee }] of poolKeys) {
         if (addresses.factoryV3) {
-          const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, p);
+          const factory = new ethers.Contract(addresses.factoryV3, this.factoryAbi, p);
           const callIdx = tokenCalls.length + extraCalls.length;
           extraCalls.push(buildCall3(factory, 'getPool', [t0, t1, fee]));
           factoryCalls.push({ key, callIdx });
@@ -888,7 +907,7 @@ export class EvmScanner implements IWalletScanner {
 
       // Parse pool addresses from factory calls
       if (addresses.factoryV3) {
-        const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, p);
+        const factory = new ethers.Contract(addresses.factoryV3, this.factoryAbi, p);
         for (const fc of factoryCalls) {
           if (!fc) continue;
           const addr = decodeCall3Result<string>(factory, 'getPool', results[fc.callIdx]);
@@ -959,7 +978,7 @@ export class EvmScanner implements IWalletScanner {
     // 1. Try the configured factory address
     if (addresses.factoryV3) {
       try {
-        const factory = new ethers.Contract(addresses.factoryV3, FACTORY_V3_ABI, provider);
+        const factory = new ethers.Contract(addresses.factoryV3, this.factoryAbi, provider);
         const addr: string = await factory.getPool(token0, token1, fee);
         if (addr !== ethers.ZeroAddress) return addr;
       } catch (err) {
@@ -992,7 +1011,7 @@ export class EvmScanner implements IWalletScanner {
       }
       if (resolvedFactory) {
         try {
-          const factory = new ethers.Contract(resolvedFactory, FACTORY_V3_ABI, provider);
+          const factory = new ethers.Contract(resolvedFactory, this.factoryAbi, provider);
           const addr: string = await factory.getPool(token0, token1, fee);
           if (addr !== ethers.ZeroAddress) return addr;
           logger.debug(`[EvmScanner] pm-resolved factory.getPool returned ZeroAddress for ${token0}/${token1} fee=${fee}`);

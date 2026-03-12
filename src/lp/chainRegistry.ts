@@ -20,13 +20,13 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     factoryV3:         '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',
   },
   'base:uniswap-v4': {
-    positionManagerV4: '0x7c5f5a4bbd8fd63184577525326123b519429bdc',
-    poolManagerV4:     '0x498581ff718922c3f8e6a244956af099b2652b2b',
-    stateViewV4:       '0xa3c0c9b65bad0b08107aa264b0f3db444b867a71',
+    positionManagerV4: '0x7C5f5A4bBd8fD63184577525326123B519429bDc',
+    poolManagerV4:     '0x498581fF718922c3f8e6A244956aF099B2652b2b',
+    stateViewV4:       '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71',
   },
   'base:aerodrome-cl': {
-    positionManagerV3: '0x827922686190790b37229fd06084350e74485b72',
-    factoryV3:         '0x5e7BB104d84c7CB9B682AaC2F3d509f890406f6d',
+    positionManagerV3: '0x827922686190790b37229fd06084350E74485b72',
+    factoryV3:         '0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A',
   },
 
   // ── ETHEREUM MAINNET ────────────────────────────────────────────────────
@@ -35,9 +35,9 @@ const REGISTRY: Partial<Record<RegistryKey, ChainDexAddresses>> = {
     factoryV3:         '0x1F98431c8aD98523631AE4a59f267346ea31F984',
   },
   'eth:uniswap-v4': {
-    positionManagerV4: '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e',
+    positionManagerV4: '0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e',
     poolManagerV4:     '0x000000000004444c5dc75cB358380D2e3dE08A90',
-    stateViewV4:       '0x7ffe42c4a5deea5b0fec41c94c136cf115597227',
+    stateViewV4:       '0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227',
   },
   'eth:pancake-v3': {
     positionManagerV3: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',

@@ -7,7 +7,7 @@ import { ChainDexAddresses, getChainDexAddresses } from '../chainRegistry';
 import { getLpProvider } from '../chainProviders';
 import { getTokenCache, TokenMeta, KNOWN_TOKENS_BY_CHAIN, seedTokenCache } from '../tokenCache';
 import { config } from '../../config';
-import { ERC20_ABI, POOL_V3_ABI, POSITION_MANAGER_V3_ABI } from '../abis';
+import { ERC20_ABI, POOL_V3_ABI, POOL_CL_ABI, POSITION_MANAGER_V3_ABI } from '../abis';
 
 interface CachedPositionData {
   liquidity: bigint;
@@ -29,12 +29,14 @@ export class EvmClReader implements ILPReader {
   private readonly chain: ChainId;
   private readonly dex: DexId;
   private readonly addresses: ChainDexAddresses;
+  private readonly slotAbi: string[];
   private readonly positionDataCache: Map<number, CachedPositionData> = new Map();
 
   constructor(chain: ChainId, dex: DexId) {
     this.chain = chain;
     this.dex = dex;
     this.addresses = getChainDexAddresses(chain, dex);
+    this.slotAbi = dex === 'aerodrome-cl' ? POOL_CL_ABI : POOL_V3_ABI;
 
     if (!this.addresses.positionManagerV3) {
       throw new Error(`EvmClReader: no positionManagerV3 address for ${chain}:${dex}`);
@@ -137,7 +139,7 @@ export class EvmClReader implements ILPReader {
         const rawPrice = cachedPrice / Math.pow(10, decimalAdj);
         tickCurrent = Math.round(Math.log(rawPrice) / Math.log(1.0001));
       } else {
-        const poolContract = new ethers.Contract(poolAddress, POOL_V3_ABI, provider);
+        const poolContract = new ethers.Contract(poolAddress, this.slotAbi, provider);
         const slot0 = await poolContract.slot0();
         tickCurrent = Number(slot0.tick);
       }

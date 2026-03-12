@@ -12,6 +12,11 @@ export const POOL_V3_ABI = [
   'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
 ];
 
+// Aerodrome CL pools return 6 fields in slot0 (no feeProtocol)
+export const POOL_CL_ABI = [
+  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, bool unlocked)',
+];
+
 export const POSITION_MANAGER_V4_ABI = [
   'function getPoolAndPositionInfo(uint256 tokenId) view returns (tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bytes32 info)',
   'function getPositionLiquidity(uint256 tokenId) view returns (uint128 liquidity)',
