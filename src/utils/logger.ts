@@ -113,6 +113,10 @@ if (LOKI_ENABLED && LOKI_URL) {
       gracefulShutdown: true,
       clearOnError: false,
       format: jsonFormat,
+      onConnectionError: (err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error('[Logger] Loki main connection error:', err);
+      },
     };
     if (LOKI_TENANT_ID) {
       lokiOptions.tenantId = LOKI_TENANT_ID;
@@ -120,12 +124,9 @@ if (LOKI_ENABLED && LOKI_URL) {
     if (LOKI_USERNAME && LOKI_PASSWORD) {
       lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
     }
-    const lokiTransport = new LokiTransport(lokiOptions);
-    lokiTransport.on('error', (err: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error('[Logger] Loki main transport error:', err);
-    });
-    loggerTransports.push(lokiTransport);
+    // eslint-disable-next-line no-console
+    console.log('[Logger] Loki main basicAuth configured:', !!LOKI_USERNAME && !!LOKI_PASSWORD);
+    loggerTransports.push(new LokiTransport(lokiOptions));
     // eslint-disable-next-line no-console
     console.log('[Logger] Loki main transport enabled →', LOKI_URL);
   } catch (err) {
@@ -168,15 +169,14 @@ if (LOKI_ENABLED && LOKI_URL) {
       gracefulShutdown: true,
       clearOnError: false,
       format: jsonFormat,
+      onConnectionError: (err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error('[Logger] Loki price connection error:', err);
+      },
     };
     if (LOKI_TENANT_ID) lokiOptions.tenantId = LOKI_TENANT_ID;
     if (LOKI_USERNAME && LOKI_PASSWORD) lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
-    const priceLokiTransport = new LokiTransport(lokiOptions);
-    priceLokiTransport.on('error', (err: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error('[Logger] Loki price transport error:', err);
-    });
-    priceTransports.push(priceLokiTransport);
+    priceTransports.push(new LokiTransport(lokiOptions));
     // eslint-disable-next-line no-console
     console.log('[Logger] Loki price transport enabled →', LOKI_URL);
   } catch {
