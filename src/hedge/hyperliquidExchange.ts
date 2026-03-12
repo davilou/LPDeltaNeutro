@@ -24,11 +24,12 @@ interface AssetMeta {
 export class HyperliquidExchange implements IHedgeExchange {
   private sdk: Hyperliquid;
   public readonly walletAddress: string;
+  private userLabel: string;
   /** Maps full coin name (e.g. "BTC", "xyz:AMZN") → AssetMeta */
   private assetMetaCache: Map<string, AssetMeta> = new Map();
   private allDexesLoaded = false;
 
-  constructor(privateKey: string, walletAddress: string) {
+  constructor(privateKey: string, walletAddress: string, userLabel?: string) {
     if (!privateKey || !walletAddress) {
       throw new Error(
         'HyperliquidExchange requires HL_PRIVATE_KEY and HL_WALLET_ADDRESS when DRY_RUN=false'
@@ -39,6 +40,7 @@ export class HyperliquidExchange implements IHedgeExchange {
     const isAgentSetup = signerAddress.toLowerCase() !== walletAddress.toLowerCase();
 
     this.walletAddress = walletAddress;
+    this.userLabel = userLabel ?? walletAddress;
     this.sdk = new Hyperliquid({
       privateKey,
       walletAddress,
@@ -46,9 +48,9 @@ export class HyperliquidExchange implements IHedgeExchange {
     });
 
     if (isAgentSetup) {
-      logger.info(`HyperliquidExchange (agent setup): signer=${signerAddress} master=${walletAddress}`);
+      logger.info({ message: 'hl.init', user: this.userLabel, mode: 'agent', signer: signerAddress, wallet: walletAddress });
     } else {
-      logger.info(`HyperliquidExchange initialized for wallet ${walletAddress}`);
+      logger.info({ message: 'hl.init', user: this.userLabel, wallet: walletAddress });
     }
   }
 
@@ -222,7 +224,7 @@ export class HyperliquidExchange implements IHedgeExchange {
         break;
       }
     }
-    logger.info(`[HL] Account equity (spot USDC): $${equity.toFixed(2)}`);
+    logger.info({ message: 'hl.equity', user: this.userLabel, usdc: +equity.toFixed(2) });
     return equity;
   }
 
@@ -265,10 +267,9 @@ export class HyperliquidExchange implements IHedgeExchange {
       unrealizedPnlUsd: unrealizedPnl,
     };
 
-    logger.info(
-      `[HL] Position: ${coin} size=${hedgeState.size} notional=$${hedgeState.notionalUsd.toFixed(2)} side=${hedgeState.side} ` +
-      `entryPx=${entryPx?.toFixed(6) ?? 'n/a'} unrealizedPnl=$${unrealizedPnl?.toFixed(4) ?? 'n/a'}`,
-    );
+    logger.info({ message: 'hl.position', user: this.userLabel, coin, size: hedgeState.size,
+      notional_usd: +hedgeState.notionalUsd.toFixed(2), side: hedgeState.side,
+      entry_px: entryPx ?? null, unrealized_pnl: unrealizedPnl ?? null });
     return hedgeState;
   }
 

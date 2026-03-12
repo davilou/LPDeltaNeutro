@@ -48,17 +48,18 @@ function getOrCreateReader(ctx: UserEngineContext, chain: ChainId, dex: DexId): 
 
 const engineContexts = new Map<string, UserEngineContext>();
 
-async function createExchangeForUser(userId: string): Promise<IHedgeExchange | null> {
+async function createExchangeForUser(userId: string, email?: string): Promise<IHedgeExchange | null> {
+  const label = email ?? userId;
   // Try DB credentials first
   if (supabaseServiceClient) {
     try {
       const creds = await loadDbCredentials(supabaseServiceClient, userId);
       if (creds) {
-        logger.info({ message: 'exchange.created', user: userId, source: 'db' });
-        return new HyperliquidExchange(creds.privateKey, creds.walletAddress);
+        logger.info({ message: 'exchange.created', user: label, source: 'db' });
+        return new HyperliquidExchange(creds.privateKey, creds.walletAddress, label);
       }
     } catch (err) {
-      logger.warn({ message: 'exchange.db_creds_failed', user: userId, error: String(err) });
+      logger.warn({ message: 'exchange.db_creds_failed', user: label, error: String(err) });
     }
   }
 
@@ -69,7 +70,7 @@ async function createExchangeForUser(userId: string): Promise<IHedgeExchange | n
       return new MockExchange(0.01);
     }
     if (config.hlPrivateKey) {
-      return new HyperliquidExchange(config.hlPrivateKey, config.hlWalletAddress);
+      return new HyperliquidExchange(config.hlPrivateKey, config.hlWalletAddress, label);
     }
   }
 
@@ -96,7 +97,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
     // Prevent activation without exchange — attempt to reload credentials first
     if (!ctx.exchange) {
       try {
-        const reloaded = await createExchangeForUser(userId);
+        const reloaded = await createExchangeForUser(userId, ctx.email);
         if (reloaded) {
           ctx.exchange = reloaded;
           ctx.rebalancer.setExchange(reloaded);
@@ -402,7 +403,7 @@ async function getOrCreateEngineContext(userId: string): Promise<UserEngineConte
     email = (await getUserEmail(supabaseServiceClient, userId)) ?? undefined;
   }
 
-  const exchange = await createExchangeForUser(userId);
+  const exchange = await createExchangeForUser(userId, email);
   const rebalancer = new Rebalancer(exchange, userId, email);
 
   const ctx: UserEngineContext = { rebalancer, exchange, readers: new Map(), activationsInProgress: new Set(), deactivationsInProgress: new Set(), cycleInProgress: false, email };
@@ -560,7 +561,7 @@ async function main() {
         return;
       }
       try {
-        const newExchange = new HyperliquidExchange(privateKey, walletAddress);
+        const newExchange = new HyperliquidExchange(privateKey, walletAddress, ctx.email ?? userId);
         ctx.exchange = newExchange;
         ctx.rebalancer.setExchange(newExchange);
         getStoreForUser(userId).setCredentialsStatus(walletAddress);
@@ -772,6 +773,7 @@ async function main() {
 
   async function runLpReadForUser(userId: string, ctx: UserEngineContext): Promise<void> {
     const tokenIds: PositionId[] = Object.keys(ctx.rebalancer.fullState.positions);
+    logger.info({ message: 'lp.read.start', user: u(ctx, userId), positions: tokenIds.length });
     for (const tokenId of tokenIds) {
       try {
         await runLpReadForToken(userId, ctx, tokenId);

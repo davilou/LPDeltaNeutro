@@ -172,10 +172,10 @@ if (LOKI_ENABLED && LOKI_URL) {
   }
 }
 
-// No console transport in prod — only file + Loki. Dev fallback to console.
-if (!priceTransports.length) {
-  priceTransports.push(new winston.transports.Console({ format: devConsoleFormat }));
-}
+// Console transport: dev uses human-readable, prod uses JSON (same as main logger).
+priceTransports.push(new winston.transports.Console({
+  format: IS_PROD ? jsonFormat : devConsoleFormat,
+}));
 
 export const priceLogger = winston.createLogger({
   level: 'info',
