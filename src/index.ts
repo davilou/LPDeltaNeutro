@@ -896,14 +896,15 @@ async function main() {
             if (cfg.hedgeToken === 'token0' && t1Stable) displayUsd = price;
             else if (cfg.hedgeToken === 'token1' && t0Stable) displayUsd = 1 / price;
 
+            const fmtPrice = (v: number) => +v.toFixed(Math.max(2, -Math.floor(Math.log10(Math.abs(v) || 1)) + 3));
             priceSummary.push({
               nft_id: String(cfg.tokenId),
               symbol: cfg.hedgeSymbol ?? null,
-              price_usd: displayUsd !== null ? +displayUsd.toFixed(2) : null,
+              price_usd: displayUsd !== null ? fmtPrice(displayUsd) : null,
               chain,
             });
             const priceLogEntry = { message: 'price.update', user: u(ctx, userId), nft_id: String(cfg.tokenId),
-              symbol: cfg.hedgeSymbol ?? null, price_usd: displayUsd !== null ? +displayUsd.toFixed(2) : null,
+              symbol: cfg.hedgeSymbol ?? null, price_usd: displayUsd !== null ? fmtPrice(displayUsd) : null,
               ratio: displayUsd === null ? +price.toFixed(8) : undefined,
               chain, pair: `${cfg.token0Symbol ?? ''}/${cfg.token1Symbol ?? ''}`,
             };
