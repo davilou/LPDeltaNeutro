@@ -121,8 +121,11 @@ if (LOKI_ENABLED && LOKI_URL) {
       lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
     }
     loggerTransports.push(new LokiTransport(lokiOptions));
+    // eslint-disable-next-line no-console
+    console.log('[Logger] Loki transport enabled →', LOKI_URL);
   } catch (err) {
-    // winston-loki not available — skip silently
+    // eslint-disable-next-line no-console
+    console.error('[Logger] Failed to load winston-loki:', err);
   }
 }
 
