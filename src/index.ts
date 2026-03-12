@@ -581,6 +581,10 @@ async function main() {
   } else {
     // Multi-user mode: restore contexts for users with active positions in state files
     await autoRestoreEngineContexts();
+    // Seed active_positions_count gauge for all restored users
+    for (const [uid, ctx] of engineContexts.entries()) {
+      activePositionsCount.set({ userId: uid }, Object.keys(ctx.rebalancer.fullState.positions).length);
+    }
   }
 
   async function runCycleForUser(userId: string, ctx: UserEngineContext): Promise<void> {
