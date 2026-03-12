@@ -1,46 +1,133 @@
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
+import LokiTransport from 'winston-loki';
 import path from 'path';
 import fs from 'fs';
+import { getLogContext } from './correlation';
+
+// Config values read directly from env to avoid circular import with config.ts
+const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+const LOKI_ENABLED = (process.env.LOKI_ENABLED || '').toLowerCase() === 'true';
+const LOKI_URL = process.env.LOKI_URL || 'http://localhost:3100';
+const LOKI_TENANT_ID = process.env.LOKI_TENANT_ID || '';
+const LOKI_USERNAME = process.env.LOKI_USERNAME || '';
+const LOKI_PASSWORD = process.env.LOKI_PASSWORD || '';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PROD = NODE_ENV === 'production';
 
 const logDir = process.env.LOG_DIR || path.resolve(__dirname, '..', '..', 'logs');
 
-// Try to create the log directory; fall back to console-only if it fails (e.g. Railway read-only FS)
 let fileLoggingEnabled = false;
 try {
   fs.mkdirSync(logDir, { recursive: true });
   fileLoggingEnabled = true;
 } catch {
-  // no-op — console-only mode
+  // Console-only mode (e.g. Railway read-only FS)
 }
 
-const logFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.printf(({ timestamp, level, message, ...meta }) => {
-    const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-    return `[${timestamp}] ${level.toUpperCase()}: ${message}${metaStr}`;
-  })
+// ── Formats ──────────────────────────────────────────────────────────────
+
+/** Injects AsyncLocalStorage context fields into the log info object. */
+const contextFormat = winston.format((info) => {
+  const ctx = getLogContext();
+  if (ctx.userId) info.userId = ctx.userId;
+  if (ctx.correlationId) info.correlationId = ctx.correlationId;
+  if (ctx.tokenId !== undefined) info.tokenId = ctx.tokenId;
+  if (ctx.chain) info.chain = ctx.chain;
+  if (ctx.dex) info.dex = ctx.dex;
+  info.service = 'lpdeltaneutro';
+  return info;
+});
+
+/** JSON format for files and prod console. */
+const jsonFormat = winston.format.combine(
+  winston.format.timestamp(),
+  contextFormat(),
+  winston.format.json(),
 );
 
-const loggerTransports: winston.transport[] = [new winston.transports.Console()];
+/** Human-readable format for dev console. */
+const devConsoleFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  contextFormat(),
+  winston.format.colorize(),
+  winston.format.printf(({ timestamp, level, message, service: _service, ...meta }) => {
+    // Build context prefix from async context fields
+    const parts: string[] = [];
+    if (meta.userId) parts.push(`u:${meta.userId}`);
+    if (meta.tokenId !== undefined) parts.push(`#${meta.tokenId}`);
+    if (meta.correlationId) parts.push(meta.correlationId as string);
+    const ctxStr = parts.length ? ` [${parts.join(' ')}]` : '';
+
+    // Remaining metadata (non-context fields)
+    const { userId, correlationId, tokenId, chain, dex, ...rest } = meta;
+    const metaStr = Object.keys(rest).length ? ` ${JSON.stringify(rest)}` : '';
+
+    return `[${timestamp}] ${level}:${ctxStr} ${message}${metaStr}`;
+  }),
+);
+
+// ── Transports ───────────────────────────────────────────────────────────
+
+const loggerTransports: winston.transport[] = [
+  new winston.transports.Console({
+    format: IS_PROD ? jsonFormat : devConsoleFormat,
+  }),
+];
+
 if (fileLoggingEnabled) {
+  // Main bot log (JSON)
   loggerTransports.push(new DailyRotateFile({
     dirname: logDir,
     filename: 'bot-%DATE%.log',
     datePattern: 'YYYY-MM-DD',
     maxFiles: '14d',
     maxSize: '20m',
-    format: logFormat,
+    format: jsonFormat,
+  }));
+
+  // Error-only log
+  loggerTransports.push(new DailyRotateFile({
+    dirname: logDir,
+    filename: 'error-%DATE%.log',
+    datePattern: 'YYYY-MM-DD',
+    maxFiles: '14d',
+    maxSize: '20m',
+    level: 'error',
+    format: jsonFormat,
   }));
 }
 
+// Loki transport (optional)
+if (LOKI_ENABLED && LOKI_URL) {
+  const lokiOptions: Record<string, unknown> = {
+    host: LOKI_URL,
+    labels: { job: 'lpdeltaneutro', environment: NODE_ENV },
+    json: true,
+    batching: true,
+    interval: 5,
+    replaceTimestamp: true,
+    gracefulShutdown: true,
+    clearOnError: false,
+    format: jsonFormat,
+  };
+  if (LOKI_TENANT_ID) {
+    lokiOptions.tenantId = LOKI_TENANT_ID;
+  }
+  if (LOKI_USERNAME && LOKI_PASSWORD) {
+    lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
+  }
+  loggerTransports.push(new LokiTransport(lokiOptions as unknown as ConstructorParameters<typeof LokiTransport>[0]));
+}
+
 export const logger = winston.createLogger({
-  level: 'info',
-  format: logFormat,
+  level: LOG_LEVEL,
+  format: jsonFormat,
   transports: loggerTransports,
 });
 
-// Dedicated price logger — writes every poll (10s) to logs/price-YYYY-MM-DD.log
+// ── Price Logger (separate file, no Loki — high volume) ──────────────────
+
 const priceTransports: winston.transport[] = [];
 if (fileLoggingEnabled) {
   priceTransports.push(new DailyRotateFile({
@@ -49,15 +136,17 @@ if (fileLoggingEnabled) {
     datePattern: 'YYYY-MM-DD',
     maxFiles: '7d',
     maxSize: '10m',
-    format: logFormat,
+    format: jsonFormat,
   }));
 }
 
 export const priceLogger = winston.createLogger({
   level: 'info',
-  format: logFormat,
-  transports: priceTransports.length ? priceTransports : [new winston.transports.Console()],
+  format: jsonFormat,
+  transports: priceTransports.length ? priceTransports : [new winston.transports.Console({ format: devConsoleFormat })],
 });
+
+// ── logCycle (preserves signature, now emits JSON with context) ──────────
 
 export function logCycle(data: {
   token0Amount: number;
@@ -74,17 +163,18 @@ export function logCycle(data: {
   lpFees0?: number;
   lpFees1?: number;
 }) {
-  const feesStr = (data.lpFees0 !== undefined && data.lpFees1 !== undefined)
-    ? ` | fees0: ${data.lpFees0.toFixed(6)} | fees1: ${data.lpFees1.toFixed(6)}`
-    : '';
-
-  logger.info(
-    `CYCLE | ${data.token0Symbol}: ${data.token0Amount.toFixed(4)} | ` +
-    `${data.token1Symbol}: ${data.token1Amount.toFixed(4)} | ` +
-    `price: ${data.price.toFixed(6)} | positionUSD: $${data.totalPositionUsd.toFixed(2)} | ` +
-    `hedgeNotional: $${data.hedgeNotionalUsd.toFixed(2)} | ` +
-    `funding: ${(data.fundingRate * 100).toFixed(2)}% | ` +
-    `hedge: ${data.hedgeSize.toFixed(4)} | netDelta: ${data.netDelta.toFixed(4)} | ` +
-    `range: ${data.rangeStatus}${feesStr}`
-  );
+  logger.info('Cycle data', {
+    action: 'cycle_data',
+    token0: { symbol: data.token0Symbol, amount: data.token0Amount },
+    token1: { symbol: data.token1Symbol, amount: data.token1Amount },
+    price: data.price,
+    totalPositionUsd: data.totalPositionUsd,
+    hedgeNotionalUsd: data.hedgeNotionalUsd,
+    fundingRate: data.fundingRate,
+    hedgeSize: data.hedgeSize,
+    netDelta: data.netDelta,
+    rangeStatus: data.rangeStatus,
+    lpFees0: data.lpFees0,
+    lpFees1: data.lpFees1,
+  });
 }

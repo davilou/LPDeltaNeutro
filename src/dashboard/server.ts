@@ -17,6 +17,7 @@ import { HistoricalPosition } from '../types';
 import { configurePassport } from '../auth/passport';
 import { requireAuth } from '../auth/middleware';
 import { saveCredentials } from '../auth/userStore';
+import { register } from '../utils/metrics';
 import '../auth/types';
 
 /** Validate and coerce tokenId: number for EVM, non-empty string for Solana. */
@@ -172,6 +173,16 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     } catch (err) {
       logger.error(`[UploadState] Failed: ${err}`);
       res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Prometheus metrics endpoint (no auth — standard for scraping)
+  app.get('/metrics', async (_req, res) => {
+    try {
+      res.set('Content-Type', register.contentType);
+      res.end(await register.metrics());
+    } catch (err) {
+      res.status(500).end(String(err));
     }
   });
 

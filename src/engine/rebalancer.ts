@@ -5,6 +5,9 @@ import { calculateHedge, HedgeTarget } from '../hedge/hedgeCalculator';
 import { insertRebalance } from '../db/supabase';
 import { runAllSafetyChecks, checkMinNotional, checkMaxNotional, checkDuplicate, checkDailyLimit } from '../utils/safety';
 import { logger, logCycle } from '../utils/logger';
+import { withContext, generateCorrelationId, getLogContext } from '../utils/correlation';
+import { rebalancesTotal, rebalanceErrorsTotal, hedgeExecutionDuration } from '../utils/metrics';
+import { notifyCriticalError } from '../utils/alerts';
 import { getStoreForUser } from '../dashboard/store';
 import { PnlTracker } from '../pnl/tracker';
 import fs from 'fs';
@@ -270,6 +273,12 @@ export class Rebalancer {
       return;
     }
 
+    // Capture exchange ref for use inside withContext (TS can't narrow `this.exchange` across closures)
+    const exchange = this.exchange;
+
+    const correlationId = generateCorrelationId('reb');
+    return withContext({ correlationId }, async () => {
+
     const cfg = ps.config;
     const hedgeSymbol = cfg.hedgeSymbol;
     const hedgeToken = cfg.hedgeToken ?? 'token0';
@@ -287,7 +296,7 @@ export class Rebalancer {
     }
 
     // Get funding rate
-    const fundingRate = await this.exchange.getFundingRate(hedgeSymbol);
+    const fundingRate = await exchange.getFundingRate(hedgeSymbol);
 
     // Calculate target hedge (uses global config for hedgeToken/hedgeFloor, we override below)
     const target: HedgeTarget = calculateHedge(position, fundingRate, hedgeToken);
@@ -297,7 +306,7 @@ export class Rebalancer {
     target.notionalUsd *= hedgeRatio;
 
     // Get current hedge position for this symbol
-    const currentHedge = await this.exchange.getPosition(hedgeSymbol);
+    const currentHedge = await exchange.getPosition(hedgeSymbol);
 
     // Forced close: LP saiu do range (100% stablecoin para token0, 100% volátil para token1)
     const rangeRequiresClose =
@@ -388,11 +397,11 @@ export class Rebalancer {
     ps.lastLiquidity = currLiqStr;
 
     // PnL tracking
-    const hlEquity = await this.exchange.getAccountEquity();
+    const hlEquity = await exchange.getAccountEquity();
     const pnlTracker = this.getPnlTracker(tokenId);
 
     const initialTimestamp = ps.pnl?.initialTimestamp ?? Date.now();
-    const isolatedPnlFromApi = await this.exchange.getIsolatedPnl(hedgeSymbol, initialTimestamp);
+    const isolatedPnlFromApi = await exchange.getIsolatedPnl(hedgeSymbol, initialTimestamp);
     const hlPnl: HlIsolatedPnl = {
       ...isolatedPnlFromApi,
       unrealizedPnlUsd: currentHedge.unrealizedPnlUsd ?? 0,
@@ -507,13 +516,31 @@ export class Rebalancer {
 
     let fillResult: FillResult | null = null;
     try {
+      const logCtx = getLogContext();
+      const endHedgeTimer = hedgeExecutionDuration.startTimer({
+        chain: logCtx.chain ?? 'unknown',
+        dex: logCtx.dex ?? 'unknown',
+      });
       if (effectiveSize <= 0) {
-        fillResult = await this.exchange.closePosition(hedgeSymbol);
+        fillResult = await exchange.closePosition(hedgeSymbol);
       } else {
-        fillResult = await this.exchange.setPosition(hedgeSymbol, effectiveSize, effectiveNotional);
+        fillResult = await exchange.setPosition(hedgeSymbol, effectiveSize, effectiveNotional);
       }
+      endHedgeTimer();
     } catch (exchangeErr) {
-      logger.error(`[NFT#${tokenId}] Exchange error — rebalance aborted, state unchanged: ${exchangeErr}`);
+      const logCtx = getLogContext();
+      logger.error(`[NFT#${tokenId}] Exchange error — rebalance aborted, state unchanged`, {
+        action: 'rebalance_failed',
+        severity: 'critical',
+        error: String(exchangeErr),
+      });
+      rebalanceErrorsTotal.inc({
+        userId: logCtx.userId ?? 'unknown',
+        chain: logCtx.chain ?? 'unknown',
+        dex: logCtx.dex ?? 'unknown',
+        severity: 'critical',
+      });
+      void notifyCriticalError(correlationId, exchangeErr);
       throw exchangeErr; // propagate so callers (activation, timer, poller) can react
     }
 
@@ -610,7 +637,22 @@ export class Rebalancer {
       `[NFT#${tokenId}] Rebalance complete. Daily count: ${ps.dailyRebalanceCount}/${config.maxDailyRebalances}`
     );
 
+    const logCtx = getLogContext();
+    const triggerLabel = isForcedClose ? 'forced_close'
+      : isForcedHedge ? 'forced_hedge'
+      : liquidityChangeReason ? 'liquidity_change'
+      : emergencyReason ? 'emergency'
+      : 'timer';
+    rebalancesTotal.inc({
+      userId: logCtx.userId ?? 'unknown',
+      chain: logCtx.chain ?? 'unknown',
+      dex: logCtx.dex ?? 'unknown',
+      trigger: triggerLabel,
+    });
+
     this.saveState();
+
+    }); // end withContext
   }
 
   // Computes LP value in USD for a given liquidity at the current price/tick.

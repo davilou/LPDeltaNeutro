@@ -113,6 +113,20 @@ export const config = {
   // Mode
   dryRun: optionalEnv('DRY_RUN', 'true').toLowerCase() === 'true',
 
+  // Logging
+  logLevel: optionalEnv('LOG_LEVEL', 'info'),
+
+  // Loki
+  lokiEnabled: optionalEnv('LOKI_ENABLED', 'false').toLowerCase() === 'true',
+  lokiUrl: optionalEnv('LOKI_URL', 'http://localhost:3100'),
+  lokiTenantId: optionalEnv('LOKI_TENANT_ID', ''),
+  lokiUsername: optionalEnv('LOKI_USERNAME', ''),
+  lokiPassword: optionalEnv('LOKI_PASSWORD', ''),
+
+  // Telegram Alerts
+  telegramBotToken: optionalEnv('TELEGRAM_BOT_TOKEN', ''),
+  telegramChatId: optionalEnv('TELEGRAM_CHAT_ID', ''),
+
   // Supabase (optional — deixar em branco para desativar persistência)
   supabaseUrl: optionalEnv('SUPABASE_URL', ''),
   supabaseKey: optionalEnv('SUPABASE_KEY', ''),

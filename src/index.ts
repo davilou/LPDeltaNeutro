@@ -16,6 +16,8 @@ import { insertClosedPosition, supabaseServiceClient, upsertProtectionActivation
 import { loadCredentials as loadDbCredentials } from './auth/userStore';
 import { fetchPoolPrice, poolPriceCache, getCachedPrice, isChainPriceSupported, STABLE_SYMBOLS } from './utils/priceApi';
 import { IHedgeExchange, HlIsolatedPnl } from './hedge/types';
+import { withContext } from './utils/correlation';
+import { activePositionsCount, lpReadDuration } from './utils/metrics';
 import './auth/types';
 
 const PRICE_POLL_INTERVAL_MS = 30_000; // 30s — keep below API rate limits
@@ -236,6 +238,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         `[Activation] NFT #${activReq.tokenId} (${activReq.protocolVersion}) activated: LP=$${initialLpUsd.toFixed(2)} HL=$${initialHlUsd.toFixed(2)} hedge=${hedgeSymbol}`
       );
       store.notifyActivationResult({ success: true, tokenId: activReq.tokenId, initialLpUsd, initialHlUsd });
+      activePositionsCount.set({ userId }, Object.keys(ctx.rebalancer.fullState.positions).length);
     } catch (err) {
       logger.error(`[Activation] Failed for user ${userId}: ${err}`);
       store.notifyActivationResult({
@@ -378,6 +381,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       logger.error(`[Activation] Error closing hedge during deactivation for NFT #${tokenId}: ${err}`);
     }
 
+    activePositionsCount.set({ userId }, Object.keys(ctx.rebalancer.fullState.positions).length);
     ctx.deactivationsInProgress.delete(tokenId);
     logger.info(`[Activation] NFT #${tokenId} deactivation complete`);
   });
@@ -586,53 +590,58 @@ async function main() {
 
     if (tokenIds.length === 0) return;
 
-    for (const tokenId of tokenIds) {
-      const posState = positionsState[tokenId];
-      if (!posState) continue;
-      const cfg = posState.config;
+    await withContext({ userId }, async () => {
+      for (const tokenId of tokenIds) {
+        const posState = positionsState[tokenId];
+        if (!posState) continue;
+        const cfg = posState.config;
 
-      if (!store.getActivePositionConfig(tokenId)) {
-        logger.warn(`[Cycle] NFT #${tokenId} present in rebalancer state but missing from dashboard — re-syncing`);
-        store.setActivePositionConfig(tokenId, cfg);
-      }
+        if (!store.getActivePositionConfig(tokenId)) {
+          logger.warn(`[Cycle] NFT #${tokenId} present in rebalancer state but missing from dashboard — re-syncing`);
+          store.setActivePositionConfig(tokenId, cfg);
+        }
 
-      try {
-        logger.info(`[Cycle] User ${userId} — Processing NFT #${tokenId} (${cfg.protocolVersion})...`);
         const cycleChain = (cfg.chain ?? 'base') as ChainId;
         const cycleDex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
-        const cycleReader = getOrCreateReader(ctx, cycleChain, cycleDex);
-        const position = await cycleReader.readPosition(tokenId, cfg.poolAddress);
 
-        const v4PoolId = cfg.protocolVersion === 'v4' && typeof tokenId === 'number'
-          ? (cycleReader as EvmV4Reader).getV4PoolId(tokenId) : null;
-        const needsBackfill = !cfg.token0Address || (v4PoolId !== null && cfg.poolAddress !== v4PoolId);
-        if (needsBackfill) {
-          const backfilled: ActivePositionConfig = {
-            ...cfg,
-            poolAddress: v4PoolId ?? cfg.poolAddress,
-            token0Address: position.token0.address,
-            token1Address: position.token1.address,
-            token0Decimals: position.token0.decimals,
-            token1Decimals: position.token1.decimals,
-          };
-          ctx.rebalancer.updateConfig(tokenId, backfilled);
-          store.setActivePositionConfig(tokenId, backfilled);
-        }
+        await withContext({ tokenId, chain: cycleChain, dex: cycleDex }, async () => {
+          try {
+            logger.info(`[Cycle] Processing NFT #${tokenId} (${cfg.protocolVersion})...`);
+            const cycleReader = getOrCreateReader(ctx, cycleChain, cycleDex);
+            const position = await cycleReader.readPosition(tokenId, cfg.poolAddress);
 
-        if (position.liquidity === 0n) {
-          logger.warn(`[Cycle] NFT #${tokenId} liquidity is 0 — LP position closed. Auto-deactivating...`);
-          cycleReader.invalidateCache(tokenId);
-          if (!ctx.deactivationsInProgress.has(tokenId)) {
-            store.requestDeactivation(tokenId);
+            const v4PoolId = cfg.protocolVersion === 'v4' && typeof tokenId === 'number'
+              ? (cycleReader as EvmV4Reader).getV4PoolId(tokenId) : null;
+            const needsBackfill = !cfg.token0Address || (v4PoolId !== null && cfg.poolAddress !== v4PoolId);
+            if (needsBackfill) {
+              const backfilled: ActivePositionConfig = {
+                ...cfg,
+                poolAddress: v4PoolId ?? cfg.poolAddress,
+                token0Address: position.token0.address,
+                token1Address: position.token1.address,
+                token0Decimals: position.token0.decimals,
+                token1Decimals: position.token1.decimals,
+              };
+              ctx.rebalancer.updateConfig(tokenId, backfilled);
+              store.setActivePositionConfig(tokenId, backfilled);
+            }
+
+            if (position.liquidity === 0n) {
+              logger.warn(`[Cycle] NFT #${tokenId} liquidity is 0 — LP position closed. Auto-deactivating...`);
+              cycleReader.invalidateCache(tokenId);
+              if (!ctx.deactivationsInProgress.has(tokenId)) {
+                store.requestDeactivation(tokenId);
+              }
+              return;
+            }
+
+            await ctx.rebalancer.cycle(tokenId, position);
+          } catch (err) {
+            logger.error(`[Cycle] Cycle error for NFT #${tokenId}: ${err}`);
           }
-          continue;
-        }
-
-        await ctx.rebalancer.cycle(tokenId, position);
-      } catch (err) {
-        logger.error(`[NFT#${tokenId}] Cycle error: ${err}`);
+        });
       }
-    }
+    });
   }
 
   // ── LP Read Cycle (RPCs gratuitos, sem Alchemy) ─────────────────────────────
@@ -648,7 +657,9 @@ async function main() {
     const reader = getOrCreateReader(ctx, chain, dex);
 
     reader.refreshFees?.(tokenId);
+    const endLpTimer = lpReadDuration.startTimer({ chain, dex });
     const position = await reader.readPosition(tokenId, cfg.poolAddress);
+    endLpTimer();
 
     if (position.liquidity === 0n) {
       logger.warn(`[LpRead] NFT #${tokenId} liquidity is 0 — LP position closed. Auto-deactivating...`);
