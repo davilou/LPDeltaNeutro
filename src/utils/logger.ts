@@ -107,11 +107,9 @@ if (LOKI_ENABLED && LOKI_URL) {
       host: LOKI_URL,
       labels: { job: 'lpdeltaneutro', category: 'main', environment: NODE_ENV },
       json: true,
-      batching: true,
-      interval: 5,
+      batching: false,
       replaceTimestamp: true,
       gracefulShutdown: true,
-      clearOnError: false,
       format: jsonFormat,
       onConnectionError: (err: unknown) => {
         // eslint-disable-next-line no-console
@@ -163,11 +161,9 @@ if (LOKI_ENABLED && LOKI_URL) {
       host: LOKI_URL,
       labels: { job: 'lpdeltaneutro', category: 'price', environment: NODE_ENV },
       json: true,
-      batching: true,
-      interval: 5,
+      batching: false,
       replaceTimestamp: true,
       gracefulShutdown: true,
-      clearOnError: false,
       format: jsonFormat,
       onConnectionError: (err: unknown) => {
         // eslint-disable-next-line no-console
