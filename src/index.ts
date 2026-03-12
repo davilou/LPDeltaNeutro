@@ -836,6 +836,7 @@ async function main() {
   setInterval(async () => {
     if (pricePollRunning || !running) return;
     pricePollRunning = true;
+    logger.info({ message: 'price.heartbeat', ts: Date.now() });
     try {
       // Collect all valid configs across all users, keyed for dedup by chain+poolAddress
       interface PollEntry { cfg: ActivePositionConfig; ctx: UserEngineContext; userId: string; }
@@ -953,9 +954,9 @@ async function main() {
           logger.error({ message: 'price.pool_error', pool: rep.poolAddress.slice(0, 10), chain, error: String(err) });
         }
       }
-      // Single aggregated log per poll cycle → avoids Loki out-of-order rejection
+      // Single small log per poll cycle
       if (priceSummary.length > 0) {
-        logger.info({ message: 'price.poll', count: priceSummary.length, prices: priceSummary });
+        logger.info({ message: 'price.poll', count: priceSummary.length });
       }
     } finally {
       pricePollRunning = false;
