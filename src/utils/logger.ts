@@ -135,7 +135,7 @@ export const logger = winston.createLogger({
   transports: loggerTransports,
 });
 
-// ── Price Logger (separate file, no Loki — high volume) ──────────────────
+// ── Price Logger (separate file + Loki with category label — high volume, filterable) ──
 
 const priceTransports: winston.transport[] = [];
 if (fileLoggingEnabled) {
@@ -149,10 +149,38 @@ if (fileLoggingEnabled) {
   }));
 }
 
+// Send price logs to Loki with distinct label so they can be filtered: {category="price"}
+if (LOKI_ENABLED && LOKI_URL) {
+  try {
+    const LokiTransport = require('winston-loki');
+    const lokiOptions: Record<string, unknown> = {
+      host: LOKI_URL,
+      labels: { job: 'lpdeltaneutro', category: 'price', environment: NODE_ENV },
+      json: true,
+      batching: true,
+      interval: 5,
+      replaceTimestamp: true,
+      gracefulShutdown: true,
+      clearOnError: false,
+      format: jsonFormat,
+    };
+    if (LOKI_TENANT_ID) lokiOptions.tenantId = LOKI_TENANT_ID;
+    if (LOKI_USERNAME && LOKI_PASSWORD) lokiOptions.basicAuth = `${LOKI_USERNAME}:${LOKI_PASSWORD}`;
+    priceTransports.push(new LokiTransport(lokiOptions));
+  } catch {
+    // winston-loki not available — file-only
+  }
+}
+
+// No console transport in prod — only file + Loki. Dev fallback to console.
+if (!priceTransports.length) {
+  priceTransports.push(new winston.transports.Console({ format: devConsoleFormat }));
+}
+
 export const priceLogger = winston.createLogger({
   level: 'info',
   format: jsonFormat,
-  transports: priceTransports.length ? priceTransports : [new winston.transports.Console({ format: devConsoleFormat })],
+  transports: priceTransports,
 });
 
 // ── logCycle (preserves signature, now emits JSON with context) ──────────

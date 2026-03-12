@@ -65,7 +65,7 @@ export class EvmClReader implements ILPReader {
       let tokensOwed1: number;
 
       if (needsFullRefresh) {
-        logger.info(`[Cache][${this.chain}:${this.dex}] Full refresh for V3 NFT #${tokenId}`);
+        logger.debug(`[Cache][${this.chain}:${this.dex}] Full refresh V3 #${tokenId}`);
         const pos = await pm.positions(tokenId);
         tickLower = Number(pos.tickLower);
         tickUpper = Number(pos.tickUpper);
@@ -111,7 +111,7 @@ export class EvmClReader implements ILPReader {
         ]);
 
         if (cached.feesCycleCount >= config.positionCacheRefreshCycles) {
-          logger.info(`[Cache][${this.chain}:${this.dex}] Refreshing fees for V3 NFT #${tokenId}`);
+          logger.debug(`[Cache][${this.chain}:${this.dex}] Fee refresh V3 #${tokenId}`);
           try {
             const MAX_UINT128 = (1n << 128n) - 1n;
             const res = await pm.collect.staticCall({
@@ -125,7 +125,7 @@ export class EvmClReader implements ILPReader {
           } catch { }
           cached.feesCycleCount = 0;
         } else {
-          logger.info(`[Cache][${this.chain}:${this.dex}] Using cached position #${tokenId} (fee cycle ${cached.feesCycleCount}/${config.positionCacheRefreshCycles})`);
+          logger.debug(`[Cache][${this.chain}:${this.dex}] Cached V3 #${tokenId} (${cached.feesCycleCount}/${config.positionCacheRefreshCycles})`);
         }
 
         tokensOwed0 = cached.tokensOwed0;

@@ -30,7 +30,7 @@ export function configurePassport(): void {
           if (!email) return done(new Error('No email from Google profile'));
 
           if (ALLOWED_EMAILS && !ALLOWED_EMAILS.has(email.toLowerCase())) {
-            logger.warn(`[Auth] Login attempt from non-allowed email: ${email}`);
+            logger.warn({ message: 'auth.denied', user: email, reason: 'not_in_allowed_list' });
             return done(null, false);
           }
 
@@ -47,7 +47,7 @@ export function configurePassport(): void {
 
           if (!user) return done(new Error('Failed to find or create user'));
 
-          logger.info(`[Auth] Login: ${email} (id=${user.id})`);
+          logger.info({ message: 'auth.login', user: email });
           return done(null, user);
         } catch (err) {
           return done(err instanceof Error ? err : new Error(String(err)));
@@ -57,12 +57,16 @@ export function configurePassport(): void {
   );
 
   passport.serializeUser((user: Express.User, done) => {
-    const u = user as { id: string };
-    done(null, u.id);
+    const u = user as { id: string; email?: string };
+    done(null, JSON.stringify({ id: u.id, email: u.email }));
   });
 
-  passport.deserializeUser(async (id: string, done) => {
-    // Minimal deserialization — just pass the id, full user loaded on demand
-    done(null, { id } as Express.User);
+  passport.deserializeUser(async (serialized: string, done) => {
+    try {
+      const { id, email } = JSON.parse(serialized);
+      done(null, { id, email } as Express.User);
+    } catch {
+      done(null, { id: serialized } as Express.User);
+    }
   });
 }

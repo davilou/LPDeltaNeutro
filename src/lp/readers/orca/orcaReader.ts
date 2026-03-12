@@ -76,7 +76,7 @@ export class OrcaReader extends SolanaBaseReader implements ILPReader {
       this.resolveTokenSymbol(poolData.tokenMintA),
       this.resolveTokenSymbol(poolData.tokenMintB),
     ]);
-    logger.info(`[OrcaReader] Resolved symbols: ${symbolA}/${symbolB} for position ${key}`);
+    logger.debug(`[OrcaReader] ${symbolA}/${symbolB} position ${key}`);
 
     // Compute uncollected fees via tick data + collectFeesQuote
     let feesA = Number(posData.feeOwedA.toString()) / Math.pow(10, decimalsA);

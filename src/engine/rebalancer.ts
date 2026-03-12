@@ -19,11 +19,13 @@ export class Rebalancer {
   private lastRangeStatusMap: Record<string, string> = {};
   private pnlTrackers: Record<string, PnlTracker> = {};
   private readonly userId: string;
+  private readonly email?: string;
   private readonly stateFile: string;
 
-  constructor(exchange: IHedgeExchange | null, userId = 'default') {
+  constructor(exchange: IHedgeExchange | null, userId = 'default', email?: string) {
     this.exchange = exchange;
     this.userId = userId;
+    this.email = email;
     const stateDir = process.env.DATA_DIR || path.resolve(__dirname, '..', '..');
     this.stateFile = path.join(stateDir, `state-${userId}.json`);
     this.state = this.loadState();
@@ -33,6 +35,9 @@ export class Rebalancer {
       this.pnlTrackers[tokenIdStr] = new PnlTracker(posState.pnl);
     }
   }
+
+  /** User label for structured logs: email when available, userId as fallback. */
+  private get u(): string { return this.email ?? this.userId; }
 
   public get fullState(): BotState {
     return this.state;
@@ -111,7 +116,7 @@ export class Rebalancer {
 
   setExchange(exchange: IHedgeExchange | null): void {
     this.exchange = exchange;
-    if (exchange) logger.info('[Rebalancer] Exchange swapped to live HyperliquidExchange');
+    if (exchange) logger.info({ message: 'exchange.swapped', user: this.u });
   }
 
   activatePosition(cfg: ActivePositionConfig): void {
@@ -133,14 +138,13 @@ export class Rebalancer {
     }
 
     this.saveState();
-    logger.info(`[Rebalancer] Position NFT #${tokenId} activated with hedgeSymbol=${hedgeSymbol}, hedgeRatio=${cfg.hedgeRatio ?? 1.0}`);
+    logger.info({ message: 'position.activated', user: this.u, nft_id: String(tokenId), hedge_symbol: hedgeSymbol, hedge_ratio: cfg.hedgeRatio ?? 1.0 });
   }
 
   updateConfig(tokenId: PositionId, cfg: ActivePositionConfig): void {
     if (this.state.positions[tokenId]) {
       this.state.positions[tokenId].config = cfg;
       this.saveState();
-      logger.info(`[Rebalancer] Configuration updated for NFT #${tokenId}`);
     }
   }
 
@@ -149,7 +153,7 @@ export class Rebalancer {
       delete this.state.positions[tokenId];
       delete this.pnlTrackers[tokenId];
       this.saveState();
-      logger.info(`[Rebalancer] Position NFT #${tokenId} deactivated and state cleared`);
+      logger.info({ message: 'position.deactivated', user: this.u, nft_id: String(tokenId) });
     }
   }
 
@@ -214,7 +218,7 @@ export class Rebalancer {
     this.state.history.push(record);
     this.saveState();
 
-    logger.info(`[Rebalancer] Position NFT #${tokenId} archived to history`);
+    logger.info({ message: 'position.archived', user: this.u, nft_id: String(tokenId), pnl_usd: +finalPnl.virtualPnlUsd.toFixed(2), pnl_pct: +finalPnl.virtualPnlPercent.toFixed(2) });
     return record;
   }
 
@@ -227,7 +231,6 @@ export class Rebalancer {
         }
       }
       fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2));
-      logger.info(`State saved to ${this.stateFile}`);
     } catch (err) {
       logger.error(`Failed to save state: ${err}`);
     }
@@ -269,7 +272,7 @@ export class Rebalancer {
     }
     const ps = this.state.positions[tokenId];
     if (!ps) {
-      logger.warn(`[Rebalancer] No state for tokenId ${tokenId} — skipping cycle`);
+      logger.warn({ message: 'cycle.no_state', user: this.u, nft_id: String(tokenId) });
       return;
     }
 
@@ -292,7 +295,6 @@ export class Rebalancer {
     if (ps.dailyResetDate !== today) {
       ps.dailyRebalanceCount = 0;
       ps.dailyResetDate = today;
-      logger.info(`[NFT#${tokenId}] Daily rebalance counter reset`);
     }
 
     // Get funding rate
@@ -377,7 +379,7 @@ export class Rebalancer {
 
     // Safety check for insane prices (often from RPC decimal errors)
     if (volatilePriceUsd < 0.001) {
-      logger.error(`[NFT#${tokenId}] ABORTING CYCLE: Insane price detected (volatileUsd=$${volatilePriceUsd}, rawPrice=$${position.price}). Check RPC decimals.`);
+      logger.error({ message: 'cycle.insane_price', user: this.u, nft_id: String(tokenId), volatile_usd: volatilePriceUsd, raw_price: position.price });
       return;
     }
 
@@ -389,10 +391,7 @@ export class Rebalancer {
       const prevLpUsd = this.computeLpUsd(prevLiquidity, position, hedgeToken, volatilePriceUsd);
       const deltaLpUsd = totalPositionUsd - prevLpUsd;
       this.getPnlTracker(tokenId).adjustBaseline(deltaLpUsd);
-      logger.warn(
-        `[NFT#${tokenId}] Liquidity changed (${ps.lastLiquidity} → ${currLiqStr}), ` +
-        `P&L baseline adjusted ${deltaLpUsd >= 0 ? '+' : ''}$${deltaLpUsd.toFixed(2)}`
-      );
+      logger.warn({ message: 'liquidity.changed', user: this.u, nft_id: String(tokenId), from: ps.lastLiquidity, to: currLiqStr, baseline_adj_usd: +deltaLpUsd.toFixed(2) });
     }
     ps.lastLiquidity = currLiqStr;
 
@@ -461,11 +460,11 @@ export class Rebalancer {
       priceUpper,
     });
 
-    // Log time until next rebalance on every cycle
-    this.logTimeUntilNextRebalance(tokenId, ps, rebalanceIntervalMin);
-
     if (!needsRebalance) {
-      logger.info(`[NFT#${tokenId}] No rebalance needed`);
+      const elapsedMs = Date.now() - ps.lastRebalanceTimestamp;
+      const remainingMs = rebalanceIntervalMin * 60_000 - elapsedMs;
+      const nextMin = remainingMs > 0 ? Math.ceil(remainingMs / 60_000) : 0;
+      logger.info({ message: 'rebalance.skipped', user: this.u, nft_id: String(tokenId), next_rebalance_min: nextMin });
       this.lastRangeStatusMap[tokenId] = position.rangeStatus;
       ps.lastPrice = position.price;
       return;
@@ -500,19 +499,18 @@ export class Rebalancer {
       });
 
     if (!safetyResult.allowed) {
-      logger.info(`[NFT#${tokenId}] Rebalance blocked by safety: ${safetyResult.reason}`);
+      logger.info({ message: 'rebalance.blocked', user: this.u, nft_id: String(tokenId), reason: safetyResult.reason });
       this.lastRangeStatusMap[tokenId] = position.rangeStatus;
       ps.lastPrice = position.price;
       return;
     }
 
     // Execute rebalance
-    const rebalanceLabel = isForcedClose ? 'FORCED CLOSE' : isForcedHedge ? 'FORCED HEDGE' : liquidityChangeReason !== null ? 'LIQUIDITY REBALANCE' : isEmergency ? 'EMERGENCY REBALANCE' : 'REBALANCING';
-    logger.info(
-      `[NFT#${tokenId}] ${rebalanceLabel} [trigger: ${triggerReason}]: ` +
-      `${currentHedge.size.toFixed(4)} → ${effectiveSize.toFixed(4)} ` +
-      `($${currentHedge.notionalUsd.toFixed(2)} → $${effectiveNotional.toFixed(2)})`
-    );
+    const triggerLabel = isForcedClose ? 'forced_close'
+      : isForcedHedge ? 'forced_hedge'
+      : liquidityChangeReason ? 'liquidity_change'
+      : emergencyReason ? 'emergency'
+      : 'timer';
 
     let fillResult: FillResult | null = null;
     try {
@@ -529,11 +527,7 @@ export class Rebalancer {
       endHedgeTimer();
     } catch (exchangeErr) {
       const logCtx = getLogContext();
-      logger.error(`[NFT#${tokenId}] Exchange error — rebalance aborted, state unchanged`, {
-        action: 'rebalance_failed',
-        severity: 'critical',
-        error: String(exchangeErr),
-      });
+      logger.error({ message: 'rebalance.error', user: this.u, nft_id: String(tokenId), error: String(exchangeErr), severity: 'critical' });
       rebalanceErrorsTotal.inc({
         userId: logCtx.userId ?? 'unknown',
         chain: logCtx.chain ?? 'unknown',
@@ -633,16 +627,15 @@ export class Rebalancer {
       activation_id: cfg.activationId ?? null,
     });
 
-    logger.info(
-      `[NFT#${tokenId}] Rebalance complete. Daily count: ${ps.dailyRebalanceCount}/${config.maxDailyRebalances}`
-    );
+    logger.info({ message: 'rebalance.complete', user: this.u, nft_id: String(tokenId),
+      type: triggerLabel, trigger: triggerReason,
+      from_size: +currentHedge.size.toFixed(4), to_size: +effectiveSize.toFixed(4),
+      from_notional_usd: +currentHedge.notionalUsd.toFixed(2), to_notional_usd: +effectiveNotional.toFixed(2),
+      fill: fillResult ? { action: fillResult.action, sz: fillResult.sz, avg_px: fillResult.avgPx } : null,
+      daily_count: ps.dailyRebalanceCount,
+    });
 
     const logCtx = getLogContext();
-    const triggerLabel = isForcedClose ? 'forced_close'
-      : isForcedHedge ? 'forced_hedge'
-      : liquidityChangeReason ? 'liquidity_change'
-      : emergencyReason ? 'emergency'
-      : 'timer';
     rebalancesTotal.inc({
       userId: logCtx.userId ?? 'unknown',
       chain: logCtx.chain ?? 'unknown',
@@ -693,9 +686,7 @@ export class Rebalancer {
     if (lastRebalancePrice <= 0) return null;
     const movement = Math.abs(currentPrice - lastRebalancePrice) / lastRebalancePrice;
     if (movement > threshold) {
-      const reason = `emergency: price moved ${(movement * 100).toFixed(2)}% ($${lastRebalancePrice.toFixed(4)} → $${currentPrice.toFixed(4)}), cooldown bypassed`;
-      logger.warn(`[NFT#${tokenId}] EMERGENCY: ${reason}`);
-      return reason;
+      return `emergency: price moved ${(movement * 100).toFixed(2)}% ($${lastRebalancePrice.toFixed(4)} → $${currentPrice.toFixed(4)}), cooldown bypassed`;
     }
     return null;
   }
@@ -713,21 +704,8 @@ export class Rebalancer {
 
     if (elapsedMs < intervalMs) return null;
 
-    const reason = `timer: ${(elapsedMs / 60000).toFixed(1)}min elapsed ≥ ${intervalMin}min interval`;
-    logger.info(`[NFT#${tokenId}] Time-based rebalance: ${reason}`);
-    return reason;
+    return `timer: ${(elapsedMs / 60000).toFixed(1)}min elapsed ≥ ${intervalMin}min interval`;
   }
 
-  private logTimeUntilNextRebalance(tokenId: PositionId, ps: PositionState, intervalMin: number): void {
-    const elapsedMs = Date.now() - ps.lastRebalanceTimestamp;
-    const remainingMs = intervalMin * 60 * 1000 - elapsedMs;
-    if (remainingMs > 0) {
-      const h = Math.floor(remainingMs / 3600000);
-      const m = Math.floor((remainingMs % 3600000) / 60000);
-      logger.info(`[NFT#${tokenId}] Next rebalance in ${h}h ${m}m`);
-    } else {
-      logger.info(`[NFT#${tokenId}] Next rebalance window: open`);
-    }
-  }
 
 }

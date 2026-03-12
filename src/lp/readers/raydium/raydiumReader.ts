@@ -92,7 +92,7 @@ export class RaydiumReader extends SolanaBaseReader implements ILPReader {
       this.resolveTokenSymbol(poolData.mintA),
       this.resolveTokenSymbol(poolData.mintB),
     ]);
-    logger.info(`[RaydiumReader] Resolved symbols: ${symbolA}/${symbolB} for position ${key}`);
+    logger.debug(`[RaydiumReader] ${symbolA}/${symbolB} position ${key}`);
 
     // Compute uncollected fees via tick array data + PositionUtils.GetPositionFeesV2
     let feesA = Number((posData.tokenFeesOwedA as unknown as BN).toString()) / Math.pow(10, decimalsA);

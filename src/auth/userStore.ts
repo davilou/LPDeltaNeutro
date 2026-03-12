@@ -68,6 +68,24 @@ export async function findOrCreateUser(
   }
 }
 
+export async function getUserEmail(
+  client: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data, error } = await client
+      .from('users')
+      .select('email')
+      .eq('id', userId)
+      .single();
+
+    if (error || !data) return null;
+    return (data as { email: string }).email;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadCredentials(
   client: SupabaseClient,
   userId: string

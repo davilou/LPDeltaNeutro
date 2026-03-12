@@ -124,13 +124,14 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     '/auth/callback',
     passport.authenticate('google', { failureRedirect: '/login.html' }),
     async (req, res) => {
-      const user = req.user as { id: string };
+      const user = req.user as { id: string; email?: string };
       req.session.userId = user.id;
+      req.session.userEmail = user.email ?? '';
 
       try {
         await callbacks.onUserAuthenticated(user.id);
       } catch (err) {
-        logger.error(`[Auth] onUserAuthenticated failed for ${user.id}: ${err}`);
+        logger.error({ message: 'auth.callback_failed', user: user.id, error: String(err) });
       }
 
       res.redirect('/');
@@ -195,7 +196,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     try {
       await callbacks.onUserAuthenticated(req.session.userId!);
     } catch (err) {
-      logger.error(`[Auth] Failed to initialize engine context for ${req.session.userId}: ${err}`);
+      logger.error({ message: 'auth.context_init_failed', user: req.session.userEmail ?? req.session.userId, error: String(err) });
     }
     next();
   });
@@ -309,7 +310,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       res.status(400).json({ error: 'Invalid wallet address' });
       return;
     }
-    logger.info(`[Dashboard] scan-wallet chain=${chain} dex=${dex} addr=${walletAddress}`);
+    logger.info({ message: 'scan.wallet', user: req.session.userEmail ?? req.session.userId!, chain, dex, wallet: walletAddress });
     try {
       const scanner = createWalletScanner(chain as ChainId, dex as DexId);
       const positions = await scanner.scanWallet(walletAddress);
@@ -317,7 +318,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       store.setDiscoveredPositions(positions);
       res.json({ count: positions.length, positions });
     } catch (err) {
-      logger.error(`[Dashboard] Wallet scan failed: ${err}`);
+      logger.error({ message: 'scan.failed', user: req.session.userEmail ?? req.session.userId!, error: String(err) });
       res.status(500).json({ error: 'Scan failed', detail: String(err) });
     }
   });
@@ -354,7 +355,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     const store = getStoreForUser(userId);
     const ctx = callbacks.getEngineContext(userId);
 
-    logger.info(`[Scanner] scan-all network=${network} addr=${walletAddress}`);
+    logger.info({ message: 'scan.all', user: req.session.userEmail ?? userId, network, wallet: walletAddress });
 
     try {
       let combos: Array<{ chain: ChainId; dex: DexId }>;
@@ -367,7 +368,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
             const [chain, dex] = key.split(':') as [ChainId, DexId];
             return { chain, dex };
           });
-          logger.info(`[Scanner] Zapper detected ${combos.length} chain:dex combo(s): [${[...zapperCombos].join(', ')}]`);
+          logger.info({ message: 'scan.zapper_detected', user: req.session.userEmail ?? userId, combos: [...zapperCombos] });
         } else {
           combos = EVM_CHAIN_DEX_COMBOS;
         }
@@ -392,7 +393,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
             }
           }
         } catch (err) {
-          logger.warn(`[Scanner] ${chain}:${dex} failed — ${err}`);
+          logger.warn({ message: 'scan.chain_failed', chain, dex, error: String(err) });
         } finally {
           done++;
           store.emitScanProgress({ done, total, chain: `${chain}:${dex}` });
@@ -410,7 +411,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
 
       res.json({ count: filtered.length, positions: filtered });
     } catch (err) {
-      logger.error(`[Scanner] scan-all failed: ${err}`);
+      logger.error({ message: 'scan.all_failed', user: req.session.userEmail ?? userId, error: String(err) });
       res.status(500).json({ error: 'Scan failed', detail: String(err) });
     }
   });
@@ -439,7 +440,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
       store.setDiscoveredPositions(positions);
       res.json({ found: true, position });
     } catch (err) {
-      logger.error(`[Dashboard] Position lookup failed: ${err}`);
+      logger.error({ message: 'lookup.failed', user: req.session.userEmail ?? req.session.userId!, error: String(err) });
       res.status(500).json({ error: 'Lookup failed', detail: String(err) });
     }
   });
@@ -457,7 +458,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
         : /^0x[0-9a-fA-F]{40,64}$/.test(body.poolAddress)
     );
     if (!isValidTokenId || !isValidPool) {
-      logger.warn(`[Dashboard] Invalid activation request: tokenId=${body.tokenId} poolAddress=${body.poolAddress}`);
+      logger.warn({ message: 'activation.invalid_request', user: req.session.userEmail ?? req.session.userId!, tokenId: body.tokenId, poolAddress: body.poolAddress });
       res.status(400).json({ error: 'Invalid activation request', detail: `poolAddress=${body.poolAddress}` });
       return;
     }
@@ -608,7 +609,7 @@ export function startDashboard(port: number, callbacks: DashboardCallbacks): voi
     // Persist credentials to DB so they survive server restarts
     if (supabaseServiceClient) {
       saveCredentials(supabaseServiceClient, userId, privateKey, walletAddress).catch(err =>
-        logger.error(`[Credentials] Failed to persist for ${userId}: ${err}`)
+        logger.error({ message: 'credentials.persist_failed', user: req.session.userEmail ?? userId, error: String(err) })
       );
     }
 

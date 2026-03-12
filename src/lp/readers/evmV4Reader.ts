@@ -64,7 +64,7 @@ export class EvmV4Reader implements ILPReader {
       let poolId = '';
 
       if (needsFullRefresh) {
-        logger.info(`[Cache][${this.chain}:${this.dex}] Full refresh for V4 NFT #${tokenId}`);
+        logger.debug(`[Cache][${this.chain}:${this.dex}] Full refresh V4 #${tokenId}`);
         const { poolKey, info } = await pm.getPoolAndPositionInfo(tokenId);
 
         const infoBig = BigInt(info as string);
