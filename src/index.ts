@@ -922,6 +922,9 @@ async function main() {
               const tickCurrent = Math.round(Math.log(rawPrice) / Math.log(1.0001));
               if (tickCurrent < cfg.tickLower || tickCurrent >= cfg.tickUpper) {
                 triggerReason = `out of range (tick ${tickCurrent})`;
+              } else if (ctx.rebalancer.fullState.positions[cfg.tokenId]?.preExitHedge) {
+                // Range re-entry: tick voltou ao range e temos hedge anterior salvo
+                triggerReason = `range re-entry (tick ${tickCurrent}), restoring pre-exit hedge`;
               }
             }
 

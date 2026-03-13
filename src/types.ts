@@ -150,6 +150,7 @@ export interface PositionState {
   config: ActivePositionConfig;
   rebalances?: any[]; // Store history in state
   lastLiquidity?: string; // serialized bigint — detect add/remove liquidity events
+  preExitHedge?: HedgeState; // hedge salvo antes da saída do range — restaurado ao re-entrar
 }
 
 export interface BotState {

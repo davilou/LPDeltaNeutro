@@ -318,16 +318,29 @@ export class Rebalancer {
     // Forced hedge: LP abaixo do range (100% token volátil), aumenta hedge até o target imediatamente
     const isForcedHedge = position.rangeStatus === 'below-range' && target.size > currentHedge.size + 1e-8;
 
+    // Range re-entry: LP voltou ao range e temos hedge anterior salvo — restaurar
+    const isRangeReEntry = position.rangeStatus === 'in-range' && ps.preExitHedge !== undefined;
+
+    // Salvar hedge atual antes de ajustar por saída do range (apenas na primeira saída)
+    if ((isForcedClose || isForcedHedge) && !ps.preExitHedge) {
+      ps.preExitHedge = { ...ps.lastHedge };
+      logger.info({ message: 'range.exit_hedge_saved', user: this.u, nft_id: String(tokenId),
+        saved_size: ps.lastHedge.size, saved_notional: ps.lastHedge.notionalUsd, range_status: position.rangeStatus });
+    }
+
     // Detect liquidity change early — used as a bypass-cooldown trigger
     const liquidityChanged = ps.lastLiquidity !== undefined && ps.lastLiquidity !== position.liquidity.toString();
 
     const lastRebalancePrice = ps.lastRebalancePrice ?? 0;
 
     // Check triggers — cada um retorna reason string ou null
-    const emergencyReason = !isForcedClose && !isForcedHedge && !liquidityChanged
+    const rangeReEntryReason = isRangeReEntry
+      ? `range re-entry: restoring pre-exit hedge (size=${ps.preExitHedge!.size.toFixed(4)}, notional=${ps.preExitHedge!.notionalUsd.toFixed(2)})`
+      : null;
+    const emergencyReason = !isForcedClose && !isForcedHedge && !isRangeReEntry && !liquidityChanged
       ? this.checkEmergencyPriceMovement(tokenId, position.price, lastRebalancePrice, emergencyPriceMovThreshold)
       : null;
-    const timeReason = !isForcedClose && !isForcedHedge && !liquidityChanged && !emergencyReason
+    const timeReason = !isForcedClose && !isForcedHedge && !isRangeReEntry && !liquidityChanged && !emergencyReason
       ? this.checkTimeRebalance(tokenId, ps, rebalanceIntervalMin)
       : null;
     const forcedCloseReason = isForcedClose
@@ -340,8 +353,8 @@ export class Rebalancer {
       ? `liquidity changed (${ps.lastLiquidity} → ${position.liquidity.toString()}): rebalancing to new delta`
       : null;
 
-    const triggerReason = forcedCloseReason ?? forcedHedgeReason ?? liquidityChangeReason ?? emergencyReason ?? timeReason ?? null;
-    const isEmergency = isForcedClose || isForcedHedge || liquidityChangeReason !== null || emergencyReason !== null;
+    const triggerReason = forcedCloseReason ?? forcedHedgeReason ?? rangeReEntryReason ?? liquidityChangeReason ?? emergencyReason ?? timeReason ?? null;
+    const isEmergency = isForcedClose || isForcedHedge || isRangeReEntry || liquidityChangeReason !== null || emergencyReason !== null;
     const needsRebalance = triggerReason !== null;
 
     // Compute net delta and total position value
@@ -470,8 +483,9 @@ export class Rebalancer {
       return;
     }
 
-    const effectiveSize = target.size;
-    const effectiveNotional = target.notionalUsd;
+    // Range re-entry: usar hedge salvo antes da saída do range em vez do target calculado
+    const effectiveSize = isRangeReEntry ? ps.preExitHedge!.size : target.size;
+    const effectiveNotional = isRangeReEntry ? ps.preExitHedge!.notionalUsd : target.notionalUsd;
 
     // Run safety checks — emergency bypasses cooldown; forced close also bypasses daily/hourly limits and minNotional
     const changeUsd = Math.abs(effectiveNotional - currentHedge.notionalUsd);
@@ -481,7 +495,7 @@ export class Rebalancer {
           checkMaxNotional(effectiveNotional),
           checkDuplicate(effectiveSize, currentHedge.size),
         ];
-        const rateLimitChecks = (isForcedClose || isForcedHedge) ? [] : [
+        const rateLimitChecks = (isForcedClose || isForcedHedge || isRangeReEntry) ? [] : [
           checkMinNotional(changeUsd),
           checkDailyLimit(ps.dailyRebalanceCount),
         ];
@@ -508,6 +522,7 @@ export class Rebalancer {
     // Execute rebalance
     const triggerLabel = isForcedClose ? 'forced_close'
       : isForcedHedge ? 'forced_hedge'
+      : isRangeReEntry ? 'range_reentry'
       : liquidityChangeReason ? 'liquidity_change'
       : emergencyReason ? 'emergency'
       : 'timer';
@@ -587,6 +602,13 @@ export class Rebalancer {
     ps.lastRebalanceTimestamp = Date.now();
     ps.dailyRebalanceCount++;
     this.lastRangeStatusMap[tokenId] = position.rangeStatus;
+
+    // Limpar preExitHedge após restauração bem-sucedida do range re-entry
+    if (isRangeReEntry) {
+      logger.info({ message: 'range.reentry_restored', user: this.u, nft_id: String(tokenId),
+        restored_size: effectiveSize, restored_notional: effectiveNotional });
+      delete ps.preExitHedge;
+    }
 
     // Persist to Supabase (fire-and-forget)
     void insertRebalance({
