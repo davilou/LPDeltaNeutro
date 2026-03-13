@@ -1441,6 +1441,34 @@
           <div class="panel">
             <div class="panel-title">Parâmetros</div>
 
+            <!-- Lookup NFT -->
+            <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+              <label style="font-size:0.7rem;color:var(--tx-muted);margin-bottom:6px;display:block;">Preencher via NFT</label>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                <select id="calc-lookup-chain" onchange="populateCalcLookupDex()" style="flex:1;min-width:80px;" class="t-in">
+                  <option value="">Chain...</option>
+                  <option value="base">Base</option>
+                  <option value="eth">Ethereum</option>
+                  <option value="bsc">BNB Chain</option>
+                  <option value="arbitrum">Arbitrum</option>
+                  <option value="polygon">Polygon</option>
+                  <option value="avalanche">Avalanche</option>
+                  <option value="hyperliquid-l1">HyperEVM</option>
+                  <option value="solana">Solana</option>
+                </select>
+                <select id="calc-lookup-dex" disabled style="flex:1;min-width:90px;" class="t-in">
+                  <option value="">DEX...</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <input id="calc-lookup-nft" type="text" class="t-in" placeholder="NFT / Position ID"
+                  style="flex:1;" autocomplete="off" spellcheck="false"
+                  onkeydown="if(event.key==='Enter')calcLookup()" />
+                <button class="btn" id="calc-lookup-btn" onclick="calcLookup()" style="padding:0 12px;white-space:nowrap;">LOOKUP</button>
+              </div>
+              <div id="calc-lookup-msg" style="margin-top:4px;font-size:0.7rem;min-height:14px;"></div>
+            </div>
+
             <div class="calc-field">
               <label>Pool Value (USD)</label>
               <input id="calc-poolValue" type="number" class="t-in" placeholder="30000" min="0" />
@@ -2895,6 +2923,125 @@
       'raydium': 'Raydium CLMM',
       'meteora': 'Meteora DLMM',
     };
+
+    // ─────────────────────────────────────────────────────────
+
+    // ── CALCULATOR LOOKUP ──────────────────────────────────
+    var CALC_DEX_BY_CHAIN = {
+      'base':            ['uniswap-v3', 'uniswap-v4', 'aerodrome-cl'],
+      'eth':             ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'bsc':             ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'arbitrum':        ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'polygon':         ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
+      'avalanche':       ['uniswap-v3', 'uniswap-v4'],
+      'hyperliquid-l1':  ['project-x'],
+      'solana':          ['orca', 'raydium', 'meteora'],
+    };
+
+    function populateCalcLookupDex() {
+      var chain = document.getElementById('calc-lookup-chain').value;
+      var sel = document.getElementById('calc-lookup-dex');
+      sel.innerHTML = '<option value="">DEX...</option>';
+      var dexes = CALC_DEX_BY_CHAIN[chain] || [];
+      for (var i = 0; i < dexes.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = dexes[i];
+        opt.textContent = DEX_LABELS[dexes[i]] || dexes[i];
+        sel.appendChild(opt);
+      }
+      sel.disabled = dexes.length === 0;
+      if (dexes.length === 1) sel.value = dexes[0];
+    }
+
+    async function calcLookup() {
+      var chain = document.getElementById('calc-lookup-chain').value;
+      var dex = document.getElementById('calc-lookup-dex').value;
+      var nftId = document.getElementById('calc-lookup-nft').value.trim();
+      var msgEl = document.getElementById('calc-lookup-msg');
+      msgEl.textContent = '';
+      msgEl.style.color = 'var(--tx-muted)';
+
+      if (!chain) { msgEl.textContent = 'Selecione a chain.'; msgEl.style.color = 'var(--red)'; return; }
+      if (!dex)   { msgEl.textContent = 'Selecione o DEX.'; msgEl.style.color = 'var(--red)'; return; }
+      if (!nftId) { msgEl.textContent = 'Informe o ID da posição.'; msgEl.style.color = 'var(--red)'; return; }
+
+      var isSolana = chain === 'solana';
+      var tokenId = isSolana ? nftId : Number(nftId);
+      if (!isSolana && isNaN(tokenId)) { msgEl.textContent = 'Token ID inválido.'; msgEl.style.color = 'var(--red)'; return; }
+
+      var btn = document.getElementById('calc-lookup-btn');
+      btn.disabled = true;
+      btn.textContent = '...';
+      msgEl.textContent = 'Buscando posição...';
+
+      try {
+        var res = await fetch('/api/lookup-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: tokenId, chain: chain, dex: dex }),
+        });
+        var data = await res.json();
+        if (!res.ok || !data.found) {
+          msgEl.textContent = 'Posição não encontrada ou sem liquidez.';
+          msgEl.style.color = 'var(--red)';
+          return;
+        }
+
+        var pos = data.position;
+
+        // Pool Value
+        document.getElementById('calc-poolValue').value = pos.estimatedUsd > 0 ? pos.estimatedUsd.toFixed(2) : '';
+
+        // Current Price (USD)
+        var priceUsd = pos.priceUsd || pos.price || 0;
+        document.getElementById('calc-price').value = priceUsd > 0 ? smartRound(priceUsd) : '';
+
+        // Compute range USD from priceLowerUsd/priceUpperUsd or fallback from ticks
+        var paUsd = pos.priceLowerUsd || 0;
+        var pbUsd = pos.priceUpperUsd || 0;
+        if ((!paUsd || !pbUsd) && pos.tickLower !== undefined && pos.tickUpper !== undefined && priceUsd > 0) {
+          // Fallback: derive from ticks relative to current price ratio
+          var rawLower = Math.pow(1.0001, pos.tickLower) * Math.pow(10, (pos.token0Decimals || 18) - (pos.token1Decimals || 18));
+          var rawUpper = Math.pow(1.0001, pos.tickUpper) * Math.pow(10, (pos.token0Decimals || 18) - (pos.token1Decimals || 18));
+          var ratio = pos.price || 1;
+          var scale = ratio > 0 ? priceUsd / ratio : 1;
+          if (!paUsd) paUsd = rawLower * scale;
+          if (!pbUsd) pbUsd = rawUpper * scale;
+        }
+
+        // Range Min (Pa) — switch to USD mode, then fill value
+        var paToggle = document.getElementById('pa-mode-toggle');
+        if (paToggle && window.setRangeMode) {
+          var paBtns = paToggle.querySelectorAll('.range-mode-btn');
+          window.setRangeMode('pa', 'usd', paBtns[0]);
+        }
+        if (paUsd > 0) document.getElementById('calc-pa').value = smartRound(paUsd);
+
+        // Range Max (Pb) — switch to USD mode, then fill value
+        var pbToggle = document.getElementById('pb-mode-toggle');
+        if (pbToggle && window.setRangeMode) {
+          var pbBtns = pbToggle.querySelectorAll('.range-mode-btn');
+          window.setRangeMode('pb', 'usd', pbBtns[0]);
+        }
+        if (pbUsd > 0) document.getElementById('calc-pb').value = smartRound(pbUsd);
+
+        var pair = pos.token0Symbol + '/' + pos.token1Symbol;
+        msgEl.textContent = pair + ' — dados preenchidos.';
+        msgEl.style.color = 'var(--green)';
+      } catch (err) {
+        msgEl.textContent = 'Erro: ' + err.message;
+        msgEl.style.color = 'var(--red)';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'LOOKUP';
+      }
+    }
+
+    function smartRound(v) {
+      if (v >= 1) return parseFloat(v.toFixed(2));
+      if (v >= 0.001) return parseFloat(v.toFixed(6));
+      return parseFloat(v.toPrecision(4));
+    }
 
     // ─────────────────────────────────────────────────────────
 
