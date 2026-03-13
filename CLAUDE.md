@@ -4,15 +4,16 @@
 Sempre responder em **português brasileiro (pt-BR)**. Nunca responder em inglês. Nomes de variáveis, funções e interfaces permanecem em inglês (padrão do código).
 
 ## Projeto
-Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains (Base, Ethereum, BSC, Arbitrum, Polygon, Avalanche, HyperEVM). Lê LP positions on-chain (Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL e outros) e executa hedges em perpétuos na Hyperliquid. Inclui dashboard de monitoramento e módulo de backtesting.
+Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains (Base, Ethereum, BSC, Arbitrum, Polygon, Avalanche, HyperEVM, Solana). Lê LP positions on-chain (Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL, Orca, Raydium, Meteora) e executa hedges em perpétuos na Hyperliquid (incluindo HIP-3: xyz/cash dexes). Inclui dashboard de monitoramento, módulo de backtesting e observabilidade (Loki + Prometheus + Telegram).
 
 ## Stack
 - **Runtime**: Node.js + TypeScript (strict, ES2022, CommonJS)
-- **Blockchain**: Base, ETH, BSC, Arbitrum, Polygon, Avalanche · ethers.js v6
-- **DEXes**: Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL (V3-compat)
-- **Exchange**: Hyperliquid SDK v1.7.7 (perpétuos — hedge para todas as chains)
+- **Blockchain EVM**: Base, ETH, BSC, Arbitrum, Polygon, Avalanche, HyperEVM · ethers.js v6
+- **Blockchain Solana**: @solana/web3.js, @orca-so/whirlpools-sdk, @raydium-io/raydium-sdk-v2, @meteora-ag/dlmm, @coral-xyz/anchor
+- **DEXes**: Uniswap V3/V4, PancakeSwap V3/V4, Aerodrome CL, Orca (Whirlpool), Raydium CLMM, Meteora DLMM
+- **Exchange**: Hyperliquid SDK v1.7.7 (perpétuos — hedge para todas as chains, incluindo HIP-3 multi-dex)
 - **Server**: Express v5 (dashboard)
-- **Logging**: Winston + daily rotation
+- **Logging**: Winston + daily rotation + custom Loki HTTP transport + Prometheus (prom-client) + Telegram alerts
 - **Package manager**: npm
 - **Build**: tsc → `dist/` | Dev: ts-node
 
@@ -38,7 +39,10 @@ src/
 │   ├── readers/
 │   │   ├── evmClReader.ts     # Base class V3-compat (Uniswap V3, PancakeSwap V3, Aerodrome CL)
 │   │   ├── evmV4Reader.ts     # Base class V4-compat
-│   │   └── solanaReader.ts    # Stub (readPosition não implementado — só scanner é funcional)
+│   │   ├── solanaBaseReader.ts # Base class Solana: Connection + cache TTL 30s + resolveTokenSymbol()
+│   │   ├── orca/orcaReader.ts     # OrcaReader: readPosition() implementado (Whirlpool CLMM)
+│   │   ├── raydium/raydiumReader.ts # RaydiumReader: readPosition() implementado (CLMM)
+│   │   └── meteora/meteoraReader.ts # MeteoraReader: readPosition() implementado (DLMM)
 │   ├── scanners/
 │   │   ├── evmScanner.ts      # IWalletScanner parametrizado por chain/dex
 │   │   └── solanaScanner.ts   # Re-export de solanaScannerImpl.ts (Orca, Raydium, Meteora — implementado)
@@ -56,7 +60,7 @@ src/
 │   └── public/
 │       ├── index.html   # Dashboard principal (MONITOR, HISTORY, CALCULATOR, SETTINGS)
 │       └── login.html   # Página de login Google
-└── utils/            # logger, fallbackProvider, safety, multicall
+└── utils/            # logger, fallbackProvider, safety, multicall, alerts, metrics, correlation, lokiTransport
 ```
 
 **Padrão**: feature-based, separação clara lp → engine → hedge. Factory pattern para Mock vs. Live exchange (dry-run) e para readers/scanners por chain/dex. Strategy pattern no backtest. Multi-user via `UserEngineContext` map em `index.ts`.
@@ -153,7 +157,7 @@ A camada LP usa o **Thin Adapter Pattern**: classes base parametrizadas por ende
 ### Interfaces centrais (`src/lp/types.ts`)
 ```typescript
 type ChainId    = 'base' | 'eth' | 'bsc' | 'arbitrum' | 'polygon' | 'avalanche' | 'hyperliquid-l1' | 'solana';
-type DexId      = 'uniswap-v3' | 'uniswap-v4' | 'pancake-v3' | 'pancake-v4' | 'aerodrome-cl' | 'project-x';
+type DexId      = 'uniswap-v3' | 'uniswap-v4' | 'pancake-v3' | 'pancake-v4' | 'aerodrome-cl' | 'project-x' | 'orca' | 'raydium' | 'meteora';
 type PositionId = number | string; // EVM: NFT tokenId (number), Solana: pubkey (string)
 
 interface ILPReader {
@@ -169,7 +173,7 @@ interface IWalletScanner {
 ```
 
 ### Factories (ponto de entrada)
-- `createLPReader(chain, dex)` — roteamento: solana → SolanaReader (readPosition stub), V4 dexes → EvmV4Reader, demais → EvmClReader
+- `createLPReader(chain, dex)` — roteamento: solana → OrcaReader/RaydiumReader/MeteoraReader, V4 dexes → EvmV4Reader, demais → EvmClReader
 - `createWalletScanner(chain, dex)` — roteamento: solana → SolanaScannerImpl (Orca/Raydium/Meteora implementados), demais → EvmScanner
 
 ### Chain Registry (`src/lp/chainRegistry.ts`)
@@ -199,10 +203,14 @@ if (pos.config.positionId === undefined) pos.config.positionId = pos.config.toke
 ```
 
 ### Solana — estado atual
-- **Scanner** (`SolanaScannerImpl`): totalmente implementado. Suporta Orca (Whirlpool), Raydium CLMM e Meteora DLMM. Resolve símbolos via Metaplex Token Metadata. `PositionId = string` (pubkey base58).
-- **Reader** (`SolanaReader`): `readPosition()` e `getBlockOrSlot()` ainda lançam `Error` — posições Solana podem ser descobertas pelo scanner mas não monitoradas em ciclo contínuo ainda.
-- **Base**: `SolanaBaseReader` — Connection + cache TTL 30s (implementado, usado por readers futuros).
-- `ChainId` já inclui `'solana'`; `DexId` inclui `'orca'`, `'raydium'`, `'meteora'`.
+- **Scanner** (`SolanaScannerImpl`): totalmente implementado. Suporta Orca (Whirlpool), Raydium CLMM e Meteora DLMM. Resolve símbolos via Metaplex Token Metadata → DexScreener → fallback (6 chars). `PositionId = string` (pubkey base58).
+- **Readers**: todos implementados com `readPosition()` funcional:
+  - `OrcaReader` (`src/lp/readers/orca/orcaReader.ts`) — Whirlpool CLMM
+  - `RaydiumReader` (`src/lp/readers/raydium/raydiumReader.ts`) — Raydium CLMM
+  - `MeteoraReader` (`src/lp/readers/meteora/meteoraReader.ts`) — Meteora DLMM
+- **Base**: `SolanaBaseReader` — Connection + cache TTL 30s + `resolveTokenSymbol()` (Metaplex → DexScreener → fallback). Cache estático compartilhado entre scanner e readers.
+- `ChainId` inclui `'solana'`; `DexId` inclui `'orca'`, `'raydium'`, `'meteora'`.
+- **Symbol resolution**: centralizada em `SolanaBaseReader.resolveTokenSymbol()`. Jupiter API v1 requer auth (401) — não usar.
 
 ## Uniswap V4 — LP Fees
 Fees V4 são lidas via contrato StateView (`0xa3c0c9b65bad0b08107aa264b0f3db444b867a71` na Base).
@@ -210,6 +218,55 @@ Fees V4 são lidas via contrato StateView (`0xa3c0c9b65bad0b08107aa264b0f3db444b
 - `getPositionInfo(poolId, positionId)` — overload de 2 args (funciona com ETH nativo). `positionId = keccak256(encodePacked(pmAddress, tickLower, tickUpper, bytes32(tokenId)))`
 - `getFeeGrowthInside(poolId, tickLower, tickUpper)` — retorna fee growth inside diretamente
 - `fees = liquidity × (feeGrowthInside − feeGrowthInsideLast) >> 128`
+
+## Observabilidade (Loki + Prometheus + Telegram)
+
+### Logging estruturado
+- **Contexto automático** via `AsyncLocalStorage` (`src/utils/correlation.ts`): userId, correlationId, tokenId, chain, dex são injetados em todos os logs automaticamente.
+- **Dois loggers**: `logger` (main) e `priceLogger` (preços) — ambos em `src/utils/logger.ts`.
+- **Formatos**: console human-readable (dev) ou JSON (prod), arquivo JSON com daily rotation (14 dias), arquivo de erros separado.
+
+### Loki Transport (`src/utils/lokiTransport.ts`)
+Custom HTTP transport que substitui `winston-loki` (que tinha problemas de batch-ordering e delivery).
+- Batching: flush a cada 10s ou 50 entries
+- Retry: até 2 tentativas com backoff exponencial
+- Labels: `job: lpdeltaneutro`, `category: main|price`, `environment: dev|prod`
+- Auth: Basic Auth (Grafana Cloud) + X-Scope-OrgID (tenant)
+
+### Prometheus Metrics (`src/utils/metrics.ts`)
+Expostas via `GET /metrics` no dashboard (Express).
+```
+rebalances_total (counter): userId, chain, dex, trigger
+rebalance_errors_total (counter): userId, chain, dex, severity
+lp_read_duration_seconds (histogram): chain, dex
+hedge_execution_duration_seconds (histogram): chain, dex
+active_positions_count (gauge): userId
+```
+
+### Telegram Alerts (`src/utils/alerts.ts`)
+`sendAlert(level, message, context?)` e `notifyCriticalError(correlationId, error, context?)`.
+Rate limit: 60s por chave (message + userId + tokenId).
+
+### Variáveis de ambiente (observabilidade)
+```env
+LOKI_ENABLED=false
+LOKI_URL=http://localhost:3100
+LOKI_TENANT_ID=         # Grafana Cloud
+LOKI_USERNAME=           # Grafana Cloud (user ID numérico)
+LOKI_PASSWORD=           # Grafana Cloud (API key)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+## Hyperliquid HIP-3 (Multi-DEX Perps)
+HL tem múltiplos DEXes de perpétuos: default (crypto), `xyz` (stocks/Wagyu.xyz), `cash` (cash-settled).
+
+- Assets HIP-3 usam prefixo: `xyz:AMZN`, `cash:NVDA`, etc.
+- API info requer parâmetro `dex` para assets HIP-3 (`metaAndAssetCtxs`, `clearinghouseState`, `userFunding`)
+- SDK v1.7.7 só carrega DEX padrão — HIP-3 assets são injetados no `symbolConversion` em `loadAllDexes()`
+- Core perps: usar SDK (`marketOpen`/`marketClose`). HIP-3: usar `sdk.exchange.placeOrder` com campo `dex`
+- `resolveSymbol("AMZN")` → tenta direto, depois com prefixos `xyz:`, `cash:` → retorna `xyz:AMZN`
+- `PERP_DEXES = ['', 'xyz', 'cash']` em `hyperliquidExchange.ts`
 
 ## Comandos
 ```bash
@@ -280,6 +337,9 @@ LP_FREE_AVAX_RPC_URL=https://avalanche.publicnode.com/ext/bc/C/rpc,https://avala
 
 # HyperEVM (Hyperliquid L1)
 LP_FREE_HL_L1_RPC_URL=https://rpc.hyperliquid.xyz/evm
+
+# Solana
+LP_FREE_SOL_RPC_URL=https://api.mainnet-beta.solana.com
 ```
 
 Provedores de referência (sem API key):
@@ -320,7 +380,7 @@ Busca preço externo por pool (DexScreener + CoinGecko fallback), com suporte mu
 
 - **Endpoint correto**: `/latest/dex/pairs/{chain}/{address}` (não `/pools/`)
 - **V4 pool IDs** são hashes de 32 bytes (66 chars) — DexScreener não os indexa; skip direto para fallback por token
-- **DexScreener slugs**: base→`base`, eth→`ethereum`, bsc→`bsc`, arbitrum→`arbitrum`, polygon→`polygon`, avalanche→`avalanche`, hyperliquid-l1→`hyperevm`
+- **DexScreener slugs**: base→`base`, eth→`ethereum`, bsc→`bsc`, arbitrum→`arbitrum`, polygon→`polygon`, avalanche→`avalanche`, hyperliquid-l1→`hyperevm`, solana→`solana`
 - **Rate limit DexScreener**: 300 req/min para `/pairs/` e `/tokens/`
 - `fetchPoolPrice()` retorna ratio Uniswap (token1/token0) — para USD do hedge token: `hedgeToken='token0'` e token1 stable → USD = price; `hedgeToken='token1'` e token0 stable → USD = 1/price
 - `isChainPriceSupported(chain)` — checar antes de fetch (evita requests para chains não mapeadas)

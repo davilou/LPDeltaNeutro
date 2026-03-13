@@ -1,6 +1,6 @@
 # APRDeltaNeuto
 
-Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains EVM. Lê LP positions on-chain e executa hedges em perpétuos na Hyperliquid, disparado por movimento de preço do ativo volátil. Inclui dashboard de monitoramento e persistência no Supabase.
+Bot de hedging delta-neutro para posições de liquidez concentrada em múltiplas blockchains (EVM + Solana). Lê LP positions on-chain e executa hedges em perpétuos na Hyperliquid (incluindo HIP-3 multi-dex), disparado por movimento de preço do ativo volátil. Inclui dashboard de monitoramento, persistência no Supabase e observabilidade (Loki + Prometheus + Telegram).
 
 ### Chains e DEXes suportados
 
@@ -8,12 +8,14 @@ Bot de hedging delta-neutro para posições de liquidez concentrada em múltipla
 |---|---|
 | **Base** | Uniswap V3, Uniswap V4, Aerodrome CL |
 | **Ethereum** | Uniswap V3, Uniswap V4, PancakeSwap V3 |
-| **BNB Smart Chain** | PancakeSwap V3, PancakeSwap V4 |
-| **Arbitrum** | Uniswap V3, PancakeSwap V3 |
-| **Polygon** | Uniswap V3, PancakeSwap V3 |
-| **Avalanche** | Uniswap V3 |
+| **BNB Smart Chain** | Uniswap V3, Uniswap V4, PancakeSwap V3 |
+| **Arbitrum** | Uniswap V3, Uniswap V4, PancakeSwap V3 |
+| **Polygon** | Uniswap V3, Uniswap V4, PancakeSwap V3 |
+| **Avalanche** | Uniswap V3, Uniswap V4 |
+| **HyperEVM** | ProjectX *(stub)* |
+| **Solana** | Orca (Whirlpool), Raydium CLMM, Meteora DLMM |
 
-> Hedge sempre via Hyperliquid perps, independente da chain da posição LP.
+> Hedge sempre via Hyperliquid perps (incluindo HIP-3: xyz/cash dexes para stocks e derivativos), independente da chain da posição LP.
 
 ---
 
@@ -40,9 +42,19 @@ BSC_HTTP_RPC_URL=https://bsc-dataseed.binance.org
 ARB_HTTP_RPC_URL=https://arb1.arbitrum.io/rpc
 POLYGON_HTTP_RPC_URL=https://polygon-rpc.com
 AVAX_HTTP_RPC_URL=https://api.avax.network/ext/bc/C/rpc
+SOLANA_HTTP_RPC_URL=https://api.mainnet-beta.solana.com
 
 # Multicall3 (batching de eth_calls, default true)
 MULTICALL3_ENABLED=true
+
+# Observabilidade (Loki + Prometheus + Telegram)
+LOKI_ENABLED=false
+LOKI_URL=http://localhost:3100
+LOKI_TENANT_ID=
+LOKI_USERNAME=
+LOKI_PASSWORD=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 
 # Modo (true = sem ordens reais)
 DRY_RUN=true
@@ -98,6 +110,24 @@ npx pm2 start ecosystem.config.js        # iniciar
 ```
 
 > Os logs do Winston ficam em `logs/bot-YYYY-MM-DD.log`. Os logs do PM2 em `logs/pm2-out.log` e `logs/pm2-error.log`.
+
+---
+
+## Observabilidade
+
+O bot suporta logging estruturado com envio para **Grafana Loki**, métricas **Prometheus** e alertas via **Telegram**.
+
+### Loki (logs centralizados)
+
+Configurar `LOKI_ENABLED=true` + `LOKI_URL` no `.env`. Para Grafana Cloud, preencher `LOKI_USERNAME` e `LOKI_PASSWORD`. Custom HTTP transport com batching (flush a cada 10s ou 50 entries) e retry automático.
+
+### Prometheus (métricas)
+
+Endpoint `GET /metrics` exposto no dashboard. Métricas: `rebalances_total`, `rebalance_errors_total`, `lp_read_duration_seconds`, `hedge_execution_duration_seconds`, `active_positions_count`.
+
+### Telegram (alertas críticos)
+
+Configurar `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. Envia alertas em erros críticos (falha de hedge, exchange offline, etc.) com rate limiting de 60s por evento.
 
 ---
 
@@ -298,7 +328,7 @@ CREATE INDEX idx_rebalances_user_id ON rebalances(user_id);
 
 ```
 src/
-├── index.ts          # Entry point, WebSocket + watchdog de reconexão, multi-user engine map
+├── index.ts          # Entry point, price poller, multi-user engine map
 ├── config.ts         # Env vars
 ├── types.ts          # Interfaces globais
 ├── auth/             # Google OAuth, sessões, encrypt/decrypt de credenciais HL
@@ -312,10 +342,13 @@ src/
 │   ├── readers/
 │   │   ├── evmClReader.ts     # Base class V3-compatible (Uniswap V3, PancakeSwap V3, Aerodrome CL)
 │   │   ├── evmV4Reader.ts     # Base class V4-compatible
-│   │   └── solanaReader.ts    # Stub Phase 2
+│   │   ├── solanaBaseReader.ts # Base class Solana (Connection + cache + symbol resolver)
+│   │   ├── orca/orcaReader.ts     # Orca Whirlpool reader
+│   │   ├── raydium/raydiumReader.ts # Raydium CLMM reader
+│   │   └── meteora/meteoraReader.ts # Meteora DLMM reader
 │   ├── scanners/
 │   │   ├── evmScanner.ts      # WalletScanner parametrizado por chain/dex
-│   │   └── solanaScanner.ts   # Stub Phase 2
+│   │   └── solanaScanner.ts   # Orca/Raydium/Meteora scanner
 │   ├── uniswapReader.ts       # Re-export backwards-compat
 │   └── walletScanner.ts       # Re-export backwards-compat
 ├── hedge/            # Cálculo de hedge + execução (Hyperliquid / Mock)
@@ -324,5 +357,5 @@ src/
 ├── db/               # Persistência Supabase
 ├── backtest/         # Simulação histórica com estratégias
 ├── dashboard/        # Express server + SSE + store de estado
-└── utils/            # logger, fallbackProvider, safety, multicall
+└── utils/            # logger, lokiTransport, metrics, alerts, correlation, fallbackProvider, safety, multicall
 ```

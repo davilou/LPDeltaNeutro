@@ -477,7 +477,8 @@ export class Rebalancer {
       const elapsedMs = Date.now() - ps.lastRebalanceTimestamp;
       const remainingMs = rebalanceIntervalMin * 60_000 - elapsedMs;
       const nextMin = remainingMs > 0 ? Math.ceil(remainingMs / 60_000) : 0;
-      logger.info({ message: 'rebalance.skipped', user: this.u, nft_id: String(tokenId), next_rebalance_min: nextMin });
+      logger.info({ message: 'rebalance.skipped', user: this.u, nft_id: String(tokenId),
+        pool: `${position.token0.symbol}/${position.token1.symbol}`, coin: hedgeSymbol, next_rebalance_min: nextMin });
       this.lastRangeStatusMap[tokenId] = position.rangeStatus;
       ps.lastPrice = position.price;
       return;
@@ -513,7 +514,8 @@ export class Rebalancer {
       });
 
     if (!safetyResult.allowed) {
-      logger.info({ message: 'rebalance.blocked', user: this.u, nft_id: String(tokenId), reason: safetyResult.reason });
+      logger.info({ message: 'rebalance.blocked', user: this.u, nft_id: String(tokenId),
+        pool: `${position.token0.symbol}/${position.token1.symbol}`, coin: hedgeSymbol, reason: safetyResult.reason });
       this.lastRangeStatusMap[tokenId] = position.rangeStatus;
       ps.lastPrice = position.price;
       return;
@@ -650,6 +652,7 @@ export class Rebalancer {
     });
 
     logger.info({ message: 'rebalance.complete', user: this.u, nft_id: String(tokenId),
+      pool: `${position.token0.symbol}/${position.token1.symbol}`, coin: hedgeSymbol,
       type: triggerLabel, trigger: triggerReason,
       from_size: +currentHedge.size.toFixed(4), to_size: +effectiveSize.toFixed(4),
       from_notional_usd: +currentHedge.notionalUsd.toFixed(2), to_notional_usd: +effectiveNotional.toFixed(2),

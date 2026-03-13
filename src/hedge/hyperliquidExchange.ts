@@ -3,6 +3,7 @@ import { Hyperliquid, signL1Action, floatToWire } from 'hyperliquid';
 import { HedgeState } from '../types';
 import { FillResult, HlIsolatedPnl, IHedgeExchange } from './types';
 import { logger } from '../utils/logger';
+import { getLogContext } from '../utils/correlation';
 
 /** HL perp DEXes to scan for assets (default + HIP-3 dexes) */
 const PERP_DEXES = ['', 'xyz', 'cash'] as const;
@@ -267,7 +268,9 @@ export class HyperliquidExchange implements IHedgeExchange {
       unrealizedPnlUsd: unrealizedPnl,
     };
 
-    logger.info({ message: 'hl.position', user: this.userLabel, coin, size: hedgeState.size,
+    const logCtx = getLogContext();
+    logger.info({ message: 'hl.position', user: this.userLabel, coin,
+      pool: logCtx.pool ?? null, size: hedgeState.size,
       notional_usd: +hedgeState.notionalUsd.toFixed(2), side: hedgeState.side,
       entry_px: entryPx ?? null, unrealized_pnl: unrealizedPnl ?? null });
     return hedgeState;
@@ -351,24 +354,30 @@ export class HyperliquidExchange implements IHedgeExchange {
     const current = await this.getPosition(symbol);
     const delta = targetSize - current.size;
     const epsilon = 1e-6;
+    const ctx = getLogContext();
+    const poolLabel = ctx.pool ?? symbol;
 
     if (Math.abs(delta) < epsilon) {
-      logger.info(`[HL] Position already at target size ${targetSize} — no-op`);
+      logger.info({ message: 'hl.no_change', user: this.userLabel, pool: poolLabel, coin: symbol,
+        current_size: current.size, target_size: targetSize });
       return null;
     }
 
+    const action = delta > 0 ? 'increase_short' : 'reduce_short';
     const meta = await this.getAssetMeta(symbol);
     const sz = this.roundSize(Math.abs(delta), meta.szDecimals);
     await this.sdk.ensureInitialized();
 
+    logger.info({ message: 'hl.executing', user: this.userLabel, pool: poolLabel, coin: symbol,
+      action, delta_size: +delta.toFixed(6), current_size: current.size, target_size: targetSize,
+      order_size: sz, dex: meta.dex ?? 'default' });
+
     if (meta.dex) {
       // HIP-3: use placeOrder with dex param
       if (delta > 0) {
-        logger.info(`[HL] HIP-3 opening/increasing short: sell ${sz} ${symbol}`);
         const result = await this.hip3PlaceOrder(meta, false, sz, false);
         return this.logOrderResult('SELL', symbol, sz, result);
       } else {
-        logger.info(`[HL] HIP-3 reducing short: buy ${sz} ${symbol}`);
         const result = await this.hip3PlaceOrder(meta, true, sz, true);
         return this.logOrderResult('BUY-REDUCE', symbol, sz, result);
       }
@@ -376,11 +385,9 @@ export class HyperliquidExchange implements IHedgeExchange {
 
     // Core perps: use SDK convenience methods
     if (delta > 0) {
-      logger.info(`[HL] Opening/increasing short: sell ${sz} ${symbol}`);
       const result = await this.sdk.custom.marketOpen(symbol, false, sz);
       return this.logOrderResult('SELL', symbol, sz, result);
     } else {
-      logger.info(`[HL] Reducing short: buy ${sz} ${symbol}`);
       const result = await this.sdk.custom.marketClose(symbol, sz);
       return this.logOrderResult('BUY-REDUCE', symbol, sz, result);
     }
@@ -389,12 +396,14 @@ export class HyperliquidExchange implements IHedgeExchange {
   async closePosition(symbol: string): Promise<FillResult | null> {
     const current = await this.getPosition(symbol);
     if (current.size <= 0) {
-      logger.info(`[HL] No position to close for ${symbol}`);
+      logger.info({ message: 'hl.no_position', user: this.userLabel, coin: symbol, pool: getLogContext().pool ?? symbol });
       return null;
     }
 
     const meta = await this.getAssetMeta(symbol);
-    logger.info(`[HL] Closing full position: ${current.size} ${symbol}`);
+    logger.info({ message: 'hl.executing', user: this.userLabel, pool: getLogContext().pool ?? symbol,
+      coin: symbol, action: 'close_short', current_size: current.size, order_size: current.size,
+      dex: meta.dex ?? 'default' });
     await this.sdk.ensureInitialized();
 
     if (meta.dex) {
@@ -460,13 +469,16 @@ export class HyperliquidExchange implements IHedgeExchange {
   // ---------------------------------------------------------------------------
 
   private logOrderResult(action: FillResult['action'], symbol: string, sz: number, result: any): FillResult {
+    const poolLabel = getLogContext().pool ?? symbol;
     const statuses = result?.response?.data?.statuses ?? result?.statuses;
     if (statuses && statuses.length > 0) {
       const status = statuses[0];
       if (status.filled) {
         const avgPx = parseFloat(status.filled.avgPx);
         const totalSz = parseFloat(status.filled.totalSz);
-        logger.info(`[HL] ${action} ${symbol} filled: sz=${totalSz} avgPx=${avgPx}`);
+        const valueUsd = +(totalSz * avgPx).toFixed(2);
+        logger.info({ message: 'hl.filled', user: this.userLabel, pool: poolLabel, coin: symbol,
+          action, size: totalSz, avg_px: avgPx, value_usd: valueUsd });
         return { action, sz: totalSz, avgPx };
       }
       if (status.error) {
