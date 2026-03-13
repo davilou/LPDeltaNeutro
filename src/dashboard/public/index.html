@@ -1635,6 +1635,7 @@
               <option value="polygon">Polygon</option>
               <option value="avalanche">Avalanche</option>
               <option value="hyperliquid-l1">HyperEVM</option>
+              <option value="solana">Solana</option>
             </select>
             <select id="scanner-lookup-dex" disabled>
               <option value="">DEX...</option>
@@ -3055,6 +3056,7 @@
       'polygon':         ['uniswap-v3', 'uniswap-v4', 'pancake-v3'],
       'avalanche':       ['uniswap-v3', 'uniswap-v4'],
       'hyperliquid-l1':  ['project-x'],
+      'solana':          ['orca', 'raydium', 'meteora'],
     };
 
     function populateLookupDexOptions() {
@@ -3070,6 +3072,8 @@
       }
       sel.disabled = dexes.length === 0;
       if (dexes.length === 1) sel.value = dexes[0];
+      var nftInput = document.getElementById('scanner-lookup-nft');
+      nftInput.placeholder = chain === 'solana' ? 'Position Pubkey (base58)' : 'NFT Token ID';
     }
 
     async function startLookup() {
@@ -3079,7 +3083,10 @@
 
       if (!chain) { alert('Selecione a blockchain.'); return; }
       if (!dex)   { alert('Selecione o protocolo/DEX.'); return; }
-      if (!nftId || isNaN(Number(nftId))) { alert('Informe um NFT Token ID válido.'); return; }
+      var isSolana = chain === 'solana';
+      if (!nftId) { alert('Informe um Position ID válido.'); return; }
+      if (!isSolana && isNaN(Number(nftId))) { alert('Informe um NFT Token ID numérico válido.'); return; }
+      if (isSolana && nftId.length < 32) { alert('Informe um pubkey Solana válido (base58).'); return; }
 
       var btn = document.getElementById('scanner-lookup-btn');
       btn.disabled = true;
@@ -3090,10 +3097,11 @@
       document.getElementById('scanner-table').style.display = 'none';
 
       try {
+        var tokenIdPayload = isSolana ? nftId : Number(nftId);
         var res = await fetch('/api/lookup-position', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokenId: Number(nftId), chain: chain, dex: dex }),
+          body: JSON.stringify({ tokenId: tokenIdPayload, chain: chain, dex: dex }),
         });
         var data = await res.json();
         if (!res.ok || !data.found) {
