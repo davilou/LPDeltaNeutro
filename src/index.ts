@@ -29,8 +29,8 @@ interface UserEngineContext {
   exchange: IHedgeExchange | null;
   /** Reusable readers keyed by "chain:dex" — preserves internal TTL cache across cycles. */
   readers: Map<string, ILPReader>;
-  activationsInProgress: Set<PositionId>;
-  deactivationsInProgress: Set<PositionId>;
+  activationsInProgress: Set<string>;
+  deactivationsInProgress: Set<string>;
   /** True while any cycle (timer, price poller, or activation) is running for this user. */
   cycleInProgress: boolean;
   /** User email for structured logging (resolved from Supabase). */
@@ -83,7 +83,8 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
 
   // Activation event: dashboard POST → reads baselines → reinitializes PnL → saves state
   store.on('activatePosition', async (activReq: ActivatePositionRequest) => {
-    if (ctx.activationsInProgress.has(activReq.tokenId)) {
+    const activKey = String(activReq.tokenId);
+    if (ctx.activationsInProgress.has(activKey)) {
       store.notifyActivationResult({
         success: false,
         tokenId: activReq.tokenId,
@@ -91,7 +92,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       });
       return;
     }
-    ctx.activationsInProgress.add(activReq.tokenId);
+    ctx.activationsInProgress.add(activKey);
     logger.info({ message: 'activation.start', user: u(ctx, userId), nft_id: String(activReq.tokenId), pool: activReq.poolAddress });
 
     // Prevent activation without exchange — attempt to reload credentials first
@@ -108,7 +109,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
 
       if (!ctx.exchange) {
         logger.error({ message: 'activation.failed', user: u(ctx, userId), nft_id: String(activReq.tokenId), reason: 'no_credentials' });
-        ctx.activationsInProgress.delete(activReq.tokenId);
+        ctx.activationsInProgress.delete(activKey);
         store.notifyActivationResult({
           success: false,
           tokenId: activReq.tokenId,
@@ -247,7 +248,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         error: String(err),
       });
     } finally {
-      ctx.activationsInProgress.delete(activReq.tokenId);
+      ctx.activationsInProgress.delete(activKey);
     }
   });
 
@@ -259,50 +260,66 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
   // Position Deactivation event
   store.on('deactivatePosition', async (tokenId: PositionId) => {
     // Guard against concurrent deactivation of the same position (e.g. multiple cycles detecting liquidity=0)
-    if (ctx.deactivationsInProgress.has(tokenId)) return;
-    ctx.deactivationsInProgress.add(tokenId);
+    // Normalize to string — Object.keys() returns strings, but dashboard/API may pass numbers
+    const deactivKey = String(tokenId);
+    if (ctx.deactivationsInProgress.has(deactivKey)) {
+      logger.warn({ message: 'deactivation.skipped_in_progress', user: u(ctx, userId), nft_id: deactivKey });
+      return;
+    }
+    ctx.deactivationsInProgress.add(deactivKey);
+    logger.info({ message: 'deactivation.start', user: u(ctx, userId), nft_id: deactivKey,
+      positions_before: Object.keys(ctx.rebalancer.fullState.positions) });
 
-    const ps = ctx.rebalancer.fullState.positions[tokenId];
-    const hedgeSymbol = ps?.config.hedgeSymbol;
+    try {
+      const ps = ctx.rebalancer.fullState.positions[tokenId];
+      const hedgeSymbol = ps?.config.hedgeSymbol;
 
-    // Determine finalPnl:
-    // - If a live cycle ran (totalPositionUsd > 0), the store has real data → use it.
-    // - Otherwise (e.g. after restart, store only has stub zeros), query exchange APIs
-    //   with LP value = 0 (position is burned) to compute real P&L.
-    const lastData = store.getCurrentData(tokenId);
-    const hasRealStoreData = !!(lastData && lastData.totalPositionUsd > 0);
+      // Determine finalPnl:
+      // - If a live cycle ran (totalPositionUsd > 0), the store has real data → use it.
+      // - Otherwise (e.g. after restart, store only has stub zeros), query exchange APIs
+      //   with LP value = 0 (position is burned) to compute real P&L.
+      const lastData = store.getCurrentData(tokenId);
+      const hasRealStoreData = !!(lastData && lastData.totalPositionUsd > 0);
 
-    let finalPnl: PnlSnapshot;
-    if (hasRealStoreData) {
-      finalPnl = {
-        initialTotalUsd: lastData!.initialTotalUsd ?? 0,
-        currentTotalUsd: lastData!.currentTotalUsd ?? 0,
-        lpFeesUsd: lastData!.lpFeesUsd ?? 0,
-        cumulativeFundingUsd: lastData!.cumulativeFundingUsd ?? 0,
-        cumulativeHlFeesUsd: lastData!.cumulativeHlFeesUsd ?? 0,
-        accountPnlUsd: lastData!.accountPnlUsd ?? 0,
-        accountPnlPercent: lastData!.accountPnlPercent ?? 0,
-        virtualPnlUsd: lastData!.pnlTotalUsd ?? 0,
-        virtualPnlPercent: lastData!.pnlTotalPercent ?? 0,
-        unrealizedVirtualPnlUsd: lastData!.unrealizedPnlUsd ?? 0,
-        realizedVirtualPnlUsd: lastData!.realizedPnlUsd ?? 0,
-        lpPnlUsd: lastData!.lpPnlUsd ?? 0,
-      };
-    } else if (ps && hedgeSymbol) {
-      try {
-        if (!ctx.exchange) throw new Error('No exchange configured');
-        const tracker = ctx.rebalancer.getPnlTracker(tokenId);
-        const sinceTs = ps.pnl?.initialTimestamp ?? Date.now();
-        const [hlEquity, currentHedge, isolatedPnl] = await Promise.all([
-          ctx.exchange.getAccountEquity(),
-          ctx.exchange.getPosition(hedgeSymbol),
-          ctx.exchange.getIsolatedPnl(hedgeSymbol, sinceTs),
-        ]);
-        const hlPnl: HlIsolatedPnl = { ...isolatedPnl, unrealizedPnlUsd: currentHedge.unrealizedPnlUsd ?? 0 };
-        // LP value is 0 because the NFT has been burned; LP fees also 0 (collected on burn)
-        finalPnl = tracker.compute(0, hlEquity, 0, hlPnl);
-      } catch (pnlErr) {
-        logger.warn({ message: 'deactivation.pnl_fetch_failed', user: u(ctx, userId), nft_id: String(tokenId), error: String(pnlErr) });
+      let finalPnl: PnlSnapshot;
+      if (hasRealStoreData) {
+        finalPnl = {
+          initialTotalUsd: lastData!.initialTotalUsd ?? 0,
+          currentTotalUsd: lastData!.currentTotalUsd ?? 0,
+          lpFeesUsd: lastData!.lpFeesUsd ?? 0,
+          cumulativeFundingUsd: lastData!.cumulativeFundingUsd ?? 0,
+          cumulativeHlFeesUsd: lastData!.cumulativeHlFeesUsd ?? 0,
+          accountPnlUsd: lastData!.accountPnlUsd ?? 0,
+          accountPnlPercent: lastData!.accountPnlPercent ?? 0,
+          virtualPnlUsd: lastData!.pnlTotalUsd ?? 0,
+          virtualPnlPercent: lastData!.pnlTotalPercent ?? 0,
+          unrealizedVirtualPnlUsd: lastData!.unrealizedPnlUsd ?? 0,
+          realizedVirtualPnlUsd: lastData!.realizedPnlUsd ?? 0,
+          lpPnlUsd: lastData!.lpPnlUsd ?? 0,
+        };
+      } else if (ps && hedgeSymbol) {
+        try {
+          if (!ctx.exchange) throw new Error('No exchange configured');
+          const tracker = ctx.rebalancer.getPnlTracker(tokenId);
+          const sinceTs = ps.pnl?.initialTimestamp ?? Date.now();
+          const [hlEquity, currentHedge, isolatedPnl] = await Promise.all([
+            ctx.exchange.getAccountEquity(),
+            ctx.exchange.getPosition(hedgeSymbol),
+            ctx.exchange.getIsolatedPnl(hedgeSymbol, sinceTs),
+          ]);
+          const hlPnl: HlIsolatedPnl = { ...isolatedPnl, unrealizedPnlUsd: currentHedge.unrealizedPnlUsd ?? 0 };
+          // LP value is 0 because the NFT has been burned; LP fees also 0 (collected on burn)
+          finalPnl = tracker.compute(0, hlEquity, 0, hlPnl);
+        } catch (pnlErr) {
+          logger.warn({ message: 'deactivation.pnl_fetch_failed', user: u(ctx, userId), nft_id: deactivKey, error: String(pnlErr) });
+          finalPnl = {
+            initialTotalUsd: 0, currentTotalUsd: 0, lpFeesUsd: 0, cumulativeFundingUsd: 0,
+            cumulativeHlFeesUsd: 0, accountPnlUsd: 0, accountPnlPercent: 0,
+            virtualPnlUsd: 0, virtualPnlPercent: 0, unrealizedVirtualPnlUsd: 0,
+            realizedVirtualPnlUsd: 0, lpPnlUsd: 0,
+          };
+        }
+      } else {
         finalPnl = {
           initialTotalUsd: 0, currentTotalUsd: 0, lpFeesUsd: 0, cumulativeFundingUsd: 0,
           cumulativeHlFeesUsd: 0, accountPnlUsd: 0, accountPnlPercent: 0,
@@ -310,78 +327,91 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
           realizedVirtualPnlUsd: 0, lpPnlUsd: 0,
         };
       }
-    } else {
-      finalPnl = {
-        initialTotalUsd: 0, currentTotalUsd: 0, lpFeesUsd: 0, cumulativeFundingUsd: 0,
-        cumulativeHlFeesUsd: 0, accountPnlUsd: 0, accountPnlPercent: 0,
-        virtualPnlUsd: 0, virtualPnlPercent: 0, unrealizedVirtualPnlUsd: 0,
-        realizedVirtualPnlUsd: 0, lpPnlUsd: 0,
-      };
-    }
 
-    try {
-      const archived = ctx.rebalancer.archivePosition(tokenId, finalPnl);
-      store.addPositionToHistory(archived);
-      void insertClosedPosition({
-        user_id: userId !== 'default' ? userId : undefined,
-        token_id: archived.tokenId,
-        pool_address: archived.poolAddress,
-        protocol_version: archived.protocolVersion,
-        token0_symbol: archived.token0Symbol,
-        token1_symbol: archived.token1Symbol,
-        fee: archived.fee,
-        tick_lower: archived.tickLower,
-        tick_upper: archived.tickUpper,
-        hedge_symbol: archived.hedgeSymbol,
-        activated_at: new Date(archived.activatedAt).toISOString(),
-        deactivated_at: new Date(archived.deactivatedAt).toISOString(),
-        initial_lp_usd: archived.initialLpUsd,
-        initial_hl_usd: archived.initialHlUsd,
-        final_lp_fees_usd: archived.finalLpFeesUsd,
-        final_cumulative_funding_usd: archived.finalCumulativeFundingUsd,
-        final_cumulative_hl_fees_usd: archived.finalCumulativeHlFeesUsd,
-        final_virtual_pnl_usd: archived.finalVirtualPnlUsd,
-        final_virtual_pnl_pct: archived.finalVirtualPnlPercent,
-        final_unrealized_pnl_usd: archived.finalUnrealizedPnlUsd,
-        final_realized_pnl_usd: archived.finalRealizedPnlUsd,
-        price_lower_usd: archived.priceLowerUsd ?? null,
-        price_upper_usd: archived.priceUpperUsd ?? null,
-        activation_id: archived.activationId ?? null,
-      });
-    } catch (err) {
-      logger.error({ message: 'deactivation.archive_failed', user: u(ctx, userId), nft_id: String(tokenId), error: String(err) });
-    }
-
-    ctx.rebalancer.deactivatePosition(tokenId);
-    store.setActivePositionConfig(tokenId, null);
-
-    // Close HL position (skip if another active position shares the same hedge symbol)
-    let hlCloseResult = 'no_symbol';
-    try {
-      if (hedgeSymbol) {
-        const otherUsesSymbol = Object.values(ctx.rebalancer.fullState.positions)
-          .some(pos => pos.config.hedgeSymbol === hedgeSymbol);
-        if (otherUsesSymbol) {
-          hlCloseResult = 'skipped_shared_symbol';
-        } else if (ctx.exchange) {
-          const currentHedge = await ctx.exchange.getPosition(hedgeSymbol);
-          if (currentHedge.size > 0) {
-            await ctx.exchange.closePosition(hedgeSymbol);
-            hlCloseResult = `closed_${currentHedge.size.toFixed(4)}`;
-          } else {
-            hlCloseResult = 'no_position';
-          }
-        } else {
-          hlCloseResult = 'no_exchange';
-        }
+      try {
+        const archived = ctx.rebalancer.archivePosition(tokenId, finalPnl);
+        store.addPositionToHistory(archived);
+        void insertClosedPosition({
+          user_id: userId !== 'default' ? userId : undefined,
+          token_id: archived.tokenId,
+          pool_address: archived.poolAddress,
+          protocol_version: archived.protocolVersion,
+          token0_symbol: archived.token0Symbol,
+          token1_symbol: archived.token1Symbol,
+          fee: archived.fee,
+          tick_lower: archived.tickLower,
+          tick_upper: archived.tickUpper,
+          hedge_symbol: archived.hedgeSymbol,
+          activated_at: new Date(archived.activatedAt).toISOString(),
+          deactivated_at: new Date(archived.deactivatedAt).toISOString(),
+          initial_lp_usd: archived.initialLpUsd,
+          initial_hl_usd: archived.initialHlUsd,
+          final_lp_fees_usd: archived.finalLpFeesUsd,
+          final_cumulative_funding_usd: archived.finalCumulativeFundingUsd,
+          final_cumulative_hl_fees_usd: archived.finalCumulativeHlFeesUsd,
+          final_virtual_pnl_usd: archived.finalVirtualPnlUsd,
+          final_virtual_pnl_pct: archived.finalVirtualPnlPercent,
+          final_unrealized_pnl_usd: archived.finalUnrealizedPnlUsd,
+          final_realized_pnl_usd: archived.finalRealizedPnlUsd,
+          price_lower_usd: archived.priceLowerUsd ?? null,
+          price_upper_usd: archived.priceUpperUsd ?? null,
+          activation_id: archived.activationId ?? null,
+        });
+      } catch (err) {
+        logger.error({ message: 'deactivation.archive_failed', user: u(ctx, userId), nft_id: deactivKey, error: String(err) });
       }
-    } catch (err) {
-      hlCloseResult = `error: ${err}`;
-    }
 
-    activePositionsCount.set({ userId }, Object.keys(ctx.rebalancer.fullState.positions).length);
-    ctx.deactivationsInProgress.delete(tokenId);
-    logger.info({ message: 'deactivation.complete', user: u(ctx, userId), nft_id: String(tokenId), hedge_symbol: hedgeSymbol ?? null, hl_close: hlCloseResult });
+      // Snapshot remaining positions BEFORE removing from state (for shared-symbol check)
+      const remainingPositionIds = Object.keys(ctx.rebalancer.fullState.positions).filter(k => String(k) !== deactivKey);
+      const remainingWithSameSymbol = hedgeSymbol
+        ? Object.entries(ctx.rebalancer.fullState.positions)
+            .filter(([k, pos]) => String(k) !== deactivKey && pos.config.hedgeSymbol === hedgeSymbol)
+            .map(([k]) => k)
+        : [];
+
+      // CRITICAL: remove position from state and store — must happen regardless of PnL/archive success
+      ctx.rebalancer.deactivatePosition(tokenId);
+      store.setActivePositionConfig(tokenId, null);
+
+      logger.info({ message: 'deactivation.state_removed', user: u(ctx, userId), nft_id: deactivKey,
+        hedge_symbol: hedgeSymbol ?? null, remaining_positions: remainingPositionIds,
+        remaining_with_same_symbol: remainingWithSameSymbol });
+
+      // Close HL position (skip if another active position shares the same hedge symbol)
+      let hlCloseResult = 'no_symbol';
+      try {
+        if (hedgeSymbol) {
+          const otherUsesSymbol = remainingWithSameSymbol.length > 0;
+          if (otherUsesSymbol) {
+            hlCloseResult = 'skipped_shared_symbol';
+          } else if (ctx.exchange) {
+            const currentHedge = await ctx.exchange.getPosition(hedgeSymbol);
+            if (currentHedge.size > 0) {
+              await ctx.exchange.closePosition(hedgeSymbol);
+              hlCloseResult = `closed_${currentHedge.size.toFixed(4)}`;
+            } else {
+              hlCloseResult = 'no_position';
+            }
+          } else {
+            hlCloseResult = 'no_exchange';
+          }
+        }
+      } catch (err) {
+        hlCloseResult = `error: ${err}`;
+      }
+
+      activePositionsCount.set({ userId }, Object.keys(ctx.rebalancer.fullState.positions).length);
+      logger.info({ message: 'deactivation.complete', user: u(ctx, userId), nft_id: deactivKey, hedge_symbol: hedgeSymbol ?? null, hl_close: hlCloseResult, other_positions: Object.keys(ctx.rebalancer.fullState.positions) });
+    } catch (err) {
+      // Fallback: ensure position is removed from state even if unexpected error occurred above
+      logger.error({ message: 'deactivation.unexpected_error', user: u(ctx, userId), nft_id: deactivKey, error: String(err) });
+      try {
+        ctx.rebalancer.deactivatePosition(tokenId);
+        store.setActivePositionConfig(tokenId, null);
+      } catch { /* already removed or state corrupted — nothing more we can do */ }
+    } finally {
+      ctx.deactivationsInProgress.delete(deactivKey);
+    }
   });
 
   // PnL reset event
@@ -608,7 +638,8 @@ async function main() {
         const cycleChain = (cfg.chain ?? 'base') as ChainId;
         const cycleDex = (cfg.dex ?? (cfg.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
 
-        await withContext({ tokenId, chain: cycleChain, dex: cycleDex }, async () => {
+        const cyclePool = cfg.token0Symbol && cfg.token1Symbol ? `${cfg.token0Symbol}/${cfg.token1Symbol}` : undefined;
+        await withContext({ tokenId, chain: cycleChain, dex: cycleDex, pool: cyclePool, hedgeSymbol: cfg.hedgeSymbol }, async () => {
           try {
             const cycleReader = getOrCreateReader(ctx, cycleChain, cycleDex);
             const position = await cycleReader.readPosition(tokenId, cfg.poolAddress);
@@ -632,7 +663,7 @@ async function main() {
             if (position.liquidity === 0n) {
               logger.warn({ message: 'lp.position.closed', user: u(ctx, userId), nft_id: String(tokenId), source: 'cycle' });
               cycleReader.invalidateCache(tokenId);
-              if (!ctx.deactivationsInProgress.has(tokenId)) {
+              if (!ctx.deactivationsInProgress.has(String(tokenId))) {
                 store.requestDeactivation(tokenId);
               }
               return;
@@ -667,7 +698,7 @@ async function main() {
     if (position.liquidity === 0n) {
       logger.warn({ message: 'lp.position.closed', user: u(ctx, userId), nft_id: String(tokenId), source: 'lp_read' });
       reader.invalidateCache(tokenId);
-      if (!ctx.deactivationsInProgress.has(tokenId)) {
+      if (!ctx.deactivationsInProgress.has(String(tokenId))) {
         store.requestDeactivation(tokenId);
       }
       return;

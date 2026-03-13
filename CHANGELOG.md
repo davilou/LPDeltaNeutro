@@ -1,5 +1,101 @@
 # Changelog
 
+## [Unreleased] — 2026-03-13
+
+### Bug Fix — Position deactivation race conditions & guard deadlock
+
+Correção de múltiplos bugs no handler de desativação de posições que causavam:
+1. Posições "fantasma" que continuavam sendo lidas pelo ciclo LP mesmo após desativação via dashboard
+2. Desativação cruzada — desativar posição A afetava posição B quando compartilhavam o mesmo hedge symbol
+
+#### Causa raiz 1: `Set<PositionId>` com strict equality
+`deactivationsInProgress` usava `Set<PositionId>` onde `PositionId = number | string`. O `Set` usa `===`, então `123 !== "123"`. Como `Object.keys()` retorna strings mas o dashboard/API passava numbers, o guard de concorrência falhava silenciosamente — permitindo desativações duplas ou não detectando desativações em andamento.
+
+**Fix**: `Set<PositionId>` → `Set<string>`, com `String(tokenId)` em todos os acessos.
+
+#### Causa raiz 2: Guard permanentemente travado (deadlock)
+O handler de desativação é `async`. Se qualquer erro não capturado ocorresse entre `deactivationsInProgress.add()` e `.delete()`, o guard ficava permanentemente travado. Todas as desativações futuras para aquela posição eram silenciosamente ignoradas — a posição permanecia no state indefinidamente.
+
+**Fix**: Wrapping completo do handler em `try-finally`, com `deactivationsInProgress.delete()` no `finally`. Adicionado `catch` fallback que tenta remover a posição do state mesmo em erro inesperado.
+
+#### Causa raiz 3: Shared-symbol check com race condition
+O check `otherUsesSymbol` era feito DEPOIS de remover a posição do state (`deactivatePosition`). Em cenários de concorrência entre duas desativações, o timing poderia causar decisões incorretas sobre fechar ou não o hedge compartilhado na Hyperliquid.
+
+**Fix**: Snapshot das posições restantes (com exclusão explícita via `String(k) !== String(tokenId)`) é computado ANTES de remover do state.
+
+#### Logging diagnóstico adicionado
+- `deactivation.start` — confirma disparo do handler + lista posições ativas
+- `deactivation.skipped_in_progress` — detecta quando o guard bloqueia (antes era silencioso)
+- `deactivation.state_removed` — lista posições restantes e quais compartilham hedge symbol
+- `deactivation.complete` — inclui `other_positions` para auditoria pós-evento
+- `deactivation.unexpected_error` — captura erros não previstos no handler
+
+#### Arquivos modificados
+- `src/index.ts` — handler de desativação reescrito com try-finally, normalização de PositionId, logging
+
+---
+
+## [Unreleased] — 2026-03-12
+
+### Structured Logging — Loki + Prometheus + Telegram
+
+Implementação completa de observabilidade: logs centralizados no Grafana Loki, métricas Prometheus e alertas críticos via Telegram.
+
+#### Loki Transport (`src/utils/lokiTransport.ts`)
+Custom HTTP transport para Winston que substitui `winston-loki` (que tinha problemas de batching, out-of-order rejection e missing logs). Batching com flush a cada 10s ou 50 entries, retry com backoff exponencial, suporte a Grafana Cloud (Basic Auth + tenant ID).
+
+#### Prometheus Metrics (`src/utils/metrics.ts`)
+Métricas expostas via `GET /metrics` no dashboard:
+- `rebalances_total` (counter): userId, chain, dex, trigger
+- `rebalance_errors_total` (counter): userId, chain, dex, severity
+- `lp_read_duration_seconds` (histogram): chain, dex
+- `hedge_execution_duration_seconds` (histogram): chain, dex
+- `active_positions_count` (gauge): userId
+
+#### Telegram Alerts (`src/utils/alerts.ts`)
+`sendAlert(level, message, context?)` com rate limiting de 60s por chave (message + userId + tokenId). `notifyCriticalError()` para erros de hedge/exchange.
+
+#### Contexto Distribuído (`src/utils/correlation.ts`)
+`AsyncLocalStorage` injeta automaticamente userId, correlationId, tokenId, chain, dex em todos os logs sem passar parâmetros manualmente.
+
+#### Logger Atualizado (`src/utils/logger.ts`)
+- Dois loggers: `logger` (main) e `priceLogger` (preços, arquivo dedicado)
+- Contexto automático via AsyncLocalStorage
+- Formatos: console human-readable (dev) ou JSON (prod), arquivo JSON com daily rotation (14 dias)
+- Labels Loki: `job: lpdeltaneutro`, `category: main|price`, `environment: dev|prod`
+
+#### Price Logging
+- `price.heartbeat` adicionado para diagnosticar delivery Loki
+- `price.poll` agregado — uma entrada por ciclo com todas as posições
+- Dynamic decimal precision para preços pequenos (evita truncamento)
+- Eliminada dupla serialização JSON na pipeline logger → Loki
+
+#### Novas variáveis de ambiente
+```env
+LOKI_ENABLED=false
+LOKI_URL=http://localhost:3100
+LOKI_TENANT_ID=
+LOKI_USERNAME=
+LOKI_PASSWORD=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+#### Arquivos adicionados
+- `src/utils/lokiTransport.ts` — custom HTTP transport (substitui winston-loki)
+- `src/utils/metrics.ts` — Prometheus metrics (prom-client)
+- `src/utils/alerts.ts` — Telegram alerts com rate limiting
+- `src/utils/correlation.ts` — AsyncLocalStorage para contexto distribuído
+
+#### Arquivos modificados
+- `src/utils/logger.ts` — contexto automático, Loki transport, price logger separado
+- `src/index.ts` — seed metrics no startup, Telegram integration
+- `src/engine/rebalancer.ts` — logging estruturado com contexto
+- `src/dashboard/server.ts` — endpoint `/metrics` para Prometheus
+- `src/config.ts` — novos env vars (LOKI_*, TELEGRAM_*)
+
+---
+
 ## [Unreleased] — 2026-03-11
 
 ### Bug Fix — HL Funding always zero
@@ -9,6 +105,79 @@
 **Correção**: acessa `f.delta?.coin ?? f.coin` e `f.delta?.usdc ?? f.usdc` para suportar ambos os formatos (SDK `getUserFunding` e raw API `hlInfo` para HIP-3 dexes).
 
 **Arquivo**: `src/hedge/hyperliquidExchange.ts` (linhas 429-443)
+
+---
+
+### Hyperliquid HIP-3 Multi-DEX Support
+
+Suporte a assets de múltiplos DEXes de perpétuos na Hyperliquid: default (crypto), `xyz` (stocks/Wagyu.xyz), `cash` (cash-settled).
+
+- Assets HIP-3 usam prefixo: `xyz:AMZN`, `cash:NVDA`, etc.
+- `loadAllDexes()` carrega metadata de todos os DEXes e injeta no `symbolConversion`
+- `resolveSymbol("AMZN")` tenta direto, depois com prefixos `xyz:`, `cash:`
+- API endpoints com parâmetro `dex` para HIP-3 (metaAndAssetCtxs, clearinghouseState, userFunding)
+- `PERP_DEXES = ['', 'xyz', 'cash']` em `hyperliquidExchange.ts`
+
+**Arquivo**: `src/hedge/hyperliquidExchange.ts`
+
+---
+
+### Solana Readers — Orca, Raydium, Meteora
+
+Implementação completa dos readers Solana para ciclo contínuo de monitoramento (anteriormente eram stubs).
+
+#### Readers implementados
+- `OrcaReader` (`src/lp/readers/orca/orcaReader.ts`) — Whirlpool CLMM. `readPosition()` resolve pool, calcula amounts/fees.
+- `RaydiumReader` (`src/lp/readers/raydium/raydiumReader.ts`) — Raydium CLMM. `readPosition()` implementado.
+- `MeteoraReader` (`src/lp/readers/meteora/meteoraReader.ts`) — Meteora DLMM. `readPosition()` implementado.
+
+#### Base class
+`SolanaBaseReader` (`src/lp/readers/solanaBaseReader.ts`): Connection + cache TTL 30s + `resolveTokenSymbol()` (Metaplex → DexScreener → fallback 6 chars). Cache estático compartilhado entre scanner e readers.
+
+#### Symbol resolution
+Centralizada em `SolanaBaseReader.resolveTokenSymbol()`. Jupiter API v1 requer auth (401) — não usar.
+
+#### Supabase
+Coluna `token_id` em `protection_activations` é `text` (não integer) para suportar pubkeys Solana.
+
+#### Arquivos adicionados
+- `src/lp/readers/orca/orcaReader.ts`
+- `src/lp/readers/raydium/raydiumReader.ts`
+- `src/lp/readers/meteora/meteoraReader.ts`
+- `src/lp/readers/solanaBaseReader.ts`
+
+#### Arquivos modificados
+- `src/lp/lpReaderFactory.ts` — roteamento para readers Solana específicos
+- `src/dashboard/server.ts` — `parsePositionId()` aceita number | string
+- `src/db/supabase.ts` — token_id como text
+
+---
+
+### WBNB → BNB Symbol Mapping
+
+Adicionado mapeamento `WBNB → BNB` para lookup de hedge na Hyperliquid. Sem isso, posições BNB Chain com WBNB não encontravam o perp correspondente.
+
+**Arquivo**: `src/hedge/hyperliquidExchange.ts`
+
+---
+
+### Hedge-Before-Confirm Activation
+
+Fluxo de ativação reformulado: `rebalancer.cycle()` roda ANTES de notificar sucesso ao dashboard. Se o hedge falha na HL, a ativação é revertida (`deactivatePosition`) e o erro propagado ao UI. Exchange pode ser `null` se credenciais não configuradas — nunca cai para MockExchange (exceto DRY_RUN).
+
+**Arquivos**: `src/index.ts`, `src/engine/rebalancer.ts`, `src/dashboard/public/index.html`
+
+---
+
+### Aerodrome CL Support
+
+Correção do suporte a Aerodrome CL na Base Chain:
+- Factory address corrigido
+- ABI usa `getPool(address,address,int24 tickSpacing)` em vez de `uint24 fee`
+- Pool slot0 retorna 6 campos (sem `feeProtocol`)
+- `TICK_SPACING_FACTORY_DEXES` set seleciona ABI automaticamente
+
+**Arquivos**: `src/lp/chainRegistry.ts`, `src/lp/readers/evmClReader.ts`, `src/lp/scanners/evmScanner.ts`
 
 ---
 
