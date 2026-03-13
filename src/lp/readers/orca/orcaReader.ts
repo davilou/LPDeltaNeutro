@@ -19,6 +19,20 @@ import type { ILPReader, PositionId } from '../../types';
 import { SolanaBaseReader } from '../solanaBaseReader';
 import { logger } from '../../../utils/logger';
 
+function closedSentinel(): LPPosition {
+  return {
+    token0: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+    token1: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+    price: 0, rangeStatus: 'in-range', tickLower: 0, tickUpper: 0, tickCurrent: 0,
+    tokensOwed0: 0, tokensOwed1: 0, liquidity: 0n,
+  };
+}
+
+function isPositionGone(err: any): boolean {
+  const msg = String(err?.message ?? err);
+  return msg.includes('Unable to fetch Position') || msg.includes('AccountNotFound') || msg.includes('Account does not exist');
+}
+
 export class OrcaReader extends SolanaBaseReader implements ILPReader {
   async readPosition(id: PositionId, _poolAddress: string): Promise<LPPosition> {
     const key = String(id);
@@ -27,6 +41,7 @@ export class OrcaReader extends SolanaBaseReader implements ILPReader {
 
     const positionPubkey = new PublicKey(key);
 
+    try {
     // Dummy read-only wallet — no signing needed for data reads
     const dummyKp = Keypair.generate();
     const dummyWallet = {
@@ -143,5 +158,12 @@ export class OrcaReader extends SolanaBaseReader implements ILPReader {
     this.setCache(key, result);
     logger.debug(`[OrcaReader] readPosition ${key} price=${price.toFixed(6)} status=${rangeStatus}`);
     return result;
+    } catch (err: any) {
+      if (isPositionGone(err)) {
+        logger.warn({ message: 'lp.position.not_found', id: key, dex: 'orca', error: String(err?.message ?? err) });
+        return closedSentinel();
+      }
+      throw err;
+    }
   }
 }

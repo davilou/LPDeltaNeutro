@@ -19,7 +19,18 @@ export class MeteoraReader extends SolanaBaseReader implements ILPReader {
     const binStep  = lbPairState.binStep as number;
 
     // Fetch position directly via SDK — avoids raw account decode
-    const lbPos = await dlmm.getPosition(new PublicKey(key));
+    let lbPos: Awaited<ReturnType<typeof dlmm.getPosition>>;
+    try {
+      lbPos = await dlmm.getPosition(new PublicKey(key));
+    } catch (err: any) {
+      logger.warn({ message: 'lp.position.not_found', id: key, dex: 'meteora', error: String(err?.message ?? err) });
+      return {
+        token0: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+        token1: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+        price: 0, rangeStatus: 'in-range', tickLower: 0, tickUpper: 0, tickCurrent: 0,
+        tokensOwed0: 0, tokensOwed1: 0, liquidity: 0n,
+      };
+    }
     const posData = lbPos.positionData;
 
     const lowerBinId = posData.lowerBinId;

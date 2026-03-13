@@ -35,7 +35,13 @@ export class RaydiumReader extends SolanaBaseReader implements ILPReader {
     const positionPubkey = new PublicKey(key);
     const positionAccountInfo = await this.connection.getAccountInfo(positionPubkey);
     if (!positionAccountInfo) {
-      throw new Error(`[RaydiumReader] position account not found: ${key}`);
+      logger.warn({ message: 'lp.position.not_found', id: key, dex: 'raydium', error: 'position account not found' });
+      return {
+        token0: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+        token1: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+        price: 0, rangeStatus: 'in-range', tickLower: 0, tickUpper: 0, tickCurrent: 0,
+        tokensOwed0: 0, tokensOwed1: 0, liquidity: 0n,
+      };
     }
 
     const posData = PositionInfoLayout.decode(positionAccountInfo.data);

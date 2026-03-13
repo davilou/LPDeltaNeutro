@@ -45,7 +45,8 @@ export class EvmV4Reader implements ILPReader {
     const tokenId = Number(id);
     const fallback = getLpProvider(this.chain);
 
-    return fallback.call(async (provider) => {
+    try {
+    return await fallback.call(async (provider) => {
       const pmAddress = this.addresses.positionManagerV4!;
       const svAddress = this.addresses.stateViewV4!;
       const pm = new ethers.Contract(pmAddress, POSITION_MANAGER_V4_ABI, provider);
@@ -171,6 +172,18 @@ export class EvmV4Reader implements ILPReader {
         tokensOwed0, tokensOwed1, liquidity,
       };
     });
+    } catch (err: any) {
+      if (err?.code === 'CALL_EXCEPTION') {
+        logger.warn({ message: 'lp.position.not_found', id: tokenId, chain: this.chain, dex: this.dex, error: String(err?.message ?? err) });
+        return {
+          token0: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+          token1: { address: '', symbol: 'UNKNOWN', decimals: 18, amount: 0n, amountFormatted: 0 },
+          price: 0, rangeStatus: 'in-range', tickLower: 0, tickUpper: 0, tickCurrent: 0,
+          tokensOwed0: 0, tokensOwed1: 0, liquidity: 0n,
+        };
+      }
+      throw err;
+    }
   }
 
   invalidateCache(id: PositionId): void {
