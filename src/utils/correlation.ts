@@ -7,6 +7,8 @@ export interface LogContext {
   tokenId?: number | string;
   chain?: string;
   dex?: string;
+  pool?: string;           // e.g. "USDC/ETH"
+  hedgeSymbol?: string;    // e.g. "ETH"
 }
 
 const asyncLocalStorage = new AsyncLocalStorage<LogContext>();
