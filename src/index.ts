@@ -93,7 +93,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       return;
     }
     ctx.activationsInProgress.add(activKey);
-    logger.info({ message: 'activation.start', user: u(ctx, userId), nft_id: String(activReq.tokenId), pool: activReq.poolAddress });
+    logger.info({ message: 'activation.start', user: u(ctx, userId), nft_id: String(activReq.tokenId), pool_address: activReq.poolAddress.slice(0, 10) + '...', chain: activReq.chain ?? 'base', dex: activReq.dex ?? 'uniswap-v3' });
 
     // Prevent activation without exchange — attempt to reload credentials first
     if (!ctx.exchange) {
@@ -124,7 +124,10 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       const activDex = (activReq.dex ?? (activReq.protocolVersion === 'v4' ? 'uniswap-v4' : 'uniswap-v3')) as DexId;
       const activReader = createLPReader(activChain, activDex);
       const position = await activReader.readPosition(activReq.tokenId, activReq.poolAddress);
-      const initialHlUsd = await ctx.exchange.getAccountEquity();
+
+      const activPool = `${position.token0.symbol}/${position.token1.symbol}`;
+      await withContext({ tokenId: activReq.tokenId, chain: activChain, dex: activDex, pool: activPool }, async () => {
+      const initialHlUsd = await ctx.exchange!.getAccountEquity();
 
       const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'USDbC', 'DAI', 'USDS', 'crvUSD']);
       const HL_SYMBOL_MAP: Record<string, string> = { WETH: 'ETH', WBTC: 'BTC', cbBTC: 'BTC', cbETH: 'ETH', wstETH: 'ETH', WHYPE: 'HYPE', WBNB: 'BNB' };
@@ -139,8 +142,8 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       let hedgeSymbol: string;
       if (mapped.endsWith('x') && mapped.length > 1) {
         const stripped = mapped.slice(0, -1);
-        const resolvedStripped = await ctx.exchange.resolveSymbol(stripped);
-        const resolvedMapped = resolvedStripped ? null : await ctx.exchange.resolveSymbol(mapped);
+        const resolvedStripped = await ctx.exchange!.resolveSymbol(stripped);
+        const resolvedMapped = resolvedStripped ? null : await ctx.exchange!.resolveSymbol(mapped);
         if (resolvedStripped) {
           hedgeSymbol = resolvedStripped;
         } else if (resolvedMapped) {
@@ -149,7 +152,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
           throw new Error(`Symbol not found in Hyperliquid universe: tried "${stripped}" and "${mapped}" (checked all dexes)`);
         }
       } else {
-        const resolved = await ctx.exchange.resolveSymbol(mapped);
+        const resolved = await ctx.exchange!.resolveSymbol(mapped);
         if (resolved) {
           hedgeSymbol = resolved;
         } else {
@@ -235,11 +238,13 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
       store.setActivePositionConfig(activReq.tokenId, cfg);
 
       logger.info({ message: 'activation.complete', user: u(ctx, userId), nft_id: String(activReq.tokenId),
-        pair: `${position.token0.symbol}/${position.token1.symbol}`, hedge_symbol: hedgeSymbol,
+        pool: activPool, coin: hedgeSymbol,
         lp_usd: +initialLpUsd.toFixed(2), hl_usd: +initialHlUsd.toFixed(2),
+        hedge_ratio: activReq.hedgeRatio ?? 1.0,
       });
       store.notifyActivationResult({ success: true, tokenId: activReq.tokenId, initialLpUsd, initialHlUsd });
       activePositionsCount.set({ userId }, Object.keys(ctx.rebalancer.fullState.positions).length);
+      }); // end withContext
     } catch (err) {
       logger.error({ message: 'activation.failed', user: u(ctx, userId), nft_id: String(activReq.tokenId), error: String(err) });
       store.notifyActivationResult({

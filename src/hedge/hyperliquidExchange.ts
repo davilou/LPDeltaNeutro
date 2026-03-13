@@ -363,14 +363,9 @@ export class HyperliquidExchange implements IHedgeExchange {
       return null;
     }
 
-    const action = delta > 0 ? 'increase_short' : 'reduce_short';
     const meta = await this.getAssetMeta(symbol);
     const sz = this.roundSize(Math.abs(delta), meta.szDecimals);
     await this.sdk.ensureInitialized();
-
-    logger.info({ message: 'hl.executing', user: this.userLabel, pool: poolLabel, coin: symbol,
-      action, delta_size: +delta.toFixed(6), current_size: current.size, target_size: targetSize,
-      order_size: sz, dex: meta.dex ?? 'default' });
 
     if (meta.dex) {
       // HIP-3: use placeOrder with dex param
@@ -401,9 +396,6 @@ export class HyperliquidExchange implements IHedgeExchange {
     }
 
     const meta = await this.getAssetMeta(symbol);
-    logger.info({ message: 'hl.executing', user: this.userLabel, pool: getLogContext().pool ?? symbol,
-      coin: symbol, action: 'close_short', current_size: current.size, order_size: current.size,
-      dex: meta.dex ?? 'default' });
     await this.sdk.ensureInitialized();
 
     if (meta.dex) {
@@ -477,8 +469,9 @@ export class HyperliquidExchange implements IHedgeExchange {
         const avgPx = parseFloat(status.filled.avgPx);
         const totalSz = parseFloat(status.filled.totalSz);
         const valueUsd = +(totalSz * avgPx).toFixed(2);
+        const actionLabel = action === 'SELL' ? 'increase_short' : action === 'BUY-REDUCE' ? 'reduce_short' : 'close_short';
         logger.info({ message: 'hl.filled', user: this.userLabel, pool: poolLabel, coin: symbol,
-          action, size: totalSz, avg_px: avgPx, value_usd: valueUsd });
+          action: actionLabel, side: action, size: totalSz, avg_px: avgPx, value_usd: valueUsd });
         return { action, sz: totalSz, avgPx };
       }
       if (status.error) {

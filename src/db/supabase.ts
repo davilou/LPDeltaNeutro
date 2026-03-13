@@ -30,20 +30,20 @@ export async function insertClosedPosition(data: ClosedPositionRecord): Promise<
     try {
       const { error } = await client.from('closed_positions').insert(data);
       if (error) {
-        logger.error(`[Supabase] insertClosedPosition error (attempt ${attempt}/${MAX_RETRIES}): ${error.message}`);
+        logger.error({ message: 'db.insert_error', table: 'closed_positions', token_id: data.token_id, attempt, max_retries: MAX_RETRIES, error: error.message });
         return;
       }
-      logger.info(`[Supabase] Closed position record inserted for token_id=${data.token_id}`);
+      logger.debug({ message: 'db.insert_ok', table: 'closed_positions', token_id: data.token_id });
       return;
     } catch (err: any) {
       const cause = err?.cause?.message ?? err?.cause ?? '';
       const detail = cause ? ` (cause: ${cause})` : '';
       if (attempt < MAX_RETRIES) {
         const delayMs = RETRY_BASE_MS * Math.pow(2, attempt - 1);
-        logger.warn(`[Supabase] insertClosedPosition failed (attempt ${attempt}/${MAX_RETRIES})${detail} — retrying in ${delayMs / 1000}s`);
+        logger.warn({ message: 'db.insert_retry', table: 'closed_positions', token_id: data.token_id, attempt, max_retries: MAX_RETRIES, retry_in_s: delayMs / 1000, error: String(err) });
         await new Promise(res => setTimeout(res, delayMs));
       } else {
-        logger.error(`[Supabase] insertClosedPosition failed after ${MAX_RETRIES} attempts${detail}: ${err}`);
+        logger.error({ message: 'db.insert_failed', table: 'closed_positions', token_id: data.token_id, attempts: MAX_RETRIES, error: String(err) });
       }
     }
   }
@@ -65,12 +65,12 @@ export async function fetchClosedPositions(userId?: string): Promise<ClosedPosit
     const { data, error } = await query;
 
     if (error) {
-      logger.error(`[Supabase] fetchClosedPositions error: ${error.message}`);
+      logger.error({ message: 'db.fetch_error', table: 'closed_positions', error: error.message });
       return [];
     }
     return (data ?? []) as ClosedPositionRecord[];
   } catch (err) {
-    logger.error(`[Supabase] fetchClosedPositions failed: ${err}`);
+    logger.error({ message: 'db.fetch_failed', table: 'closed_positions', error: String(err) });
     return [];
   }
 }
@@ -91,12 +91,12 @@ export async function fetchRebalances(userId?: string, tokenId?: number, activat
 
     const { data, error } = await query;
     if (error) {
-      logger.error(`[Supabase] fetchRebalances error: ${error.message}`);
+      logger.error({ message: 'db.fetch_error', table: 'rebalances', error: error.message });
       return [];
     }
     return (data ?? []) as RebalanceRecord[];
   } catch (err) {
-    logger.error(`[Supabase] fetchRebalances failed: ${err}`);
+    logger.error({ message: 'db.fetch_failed', table: 'rebalances', error: String(err) });
     return [];
   }
 }
@@ -108,12 +108,12 @@ export async function upsertProtectionActivation(data: ProtectionActivationRecor
       .from('protection_activations')
       .upsert(data, { onConflict: 'user_id,token_id' });
     if (error) {
-      logger.error(`[Supabase] upsertProtectionActivation error: ${error.message}`);
+      logger.error({ message: 'db.upsert_error', table: 'protection_activations', token_id: data.token_id, error: error.message });
     } else {
-      logger.info(`[Supabase] Protection activation saved for token_id=${data.token_id}`);
+      logger.debug({ message: 'db.upsert_ok', table: 'protection_activations', token_id: data.token_id });
     }
   } catch (err) {
-    logger.error(`[Supabase] upsertProtectionActivation failed: ${err}`);
+    logger.error({ message: 'db.upsert_failed', table: 'protection_activations', token_id: data.token_id, error: String(err) });
   }
 }
 
@@ -140,21 +140,21 @@ export async function insertRebalance(data: RebalanceRecord): Promise<void> {
     try {
       const { error } = await client.from('rebalances').insert(data);
       if (error) {
-        logger.error(`[Supabase] insertRebalance error (attempt ${attempt}/${MAX_RETRIES}): ${error.message}`);
+        logger.error({ message: 'db.insert_error', table: 'rebalances', token_id: data.token_id, attempt, max_retries: MAX_RETRIES, error: error.message });
         // Supabase API errors (e.g. schema mismatch, RLS) won't improve on retry
         return;
       }
-      logger.info(`[Supabase] Rebalance record inserted for token_id=${data.token_id}`);
+      logger.debug({ message: 'db.insert_ok', table: 'rebalances', token_id: data.token_id });
       return;
     } catch (err: any) {
       const cause = err?.cause?.message ?? err?.cause ?? '';
       const detail = cause ? ` (cause: ${cause})` : '';
       if (attempt < MAX_RETRIES) {
         const delayMs = RETRY_BASE_MS * Math.pow(2, attempt - 1);
-        logger.warn(`[Supabase] insertRebalance failed (attempt ${attempt}/${MAX_RETRIES})${detail} — retrying in ${delayMs / 1000}s`);
+        logger.warn({ message: 'db.insert_retry', table: 'rebalances', token_id: data.token_id, attempt, max_retries: MAX_RETRIES, retry_in_s: delayMs / 1000, error: String(err) });
         await new Promise(res => setTimeout(res, delayMs));
       } else {
-        logger.error(`[Supabase] insertRebalance failed after ${MAX_RETRIES} attempts${detail}: ${err}`);
+        logger.error({ message: 'db.insert_failed', table: 'rebalances', token_id: data.token_id, attempts: MAX_RETRIES, error: String(err) });
       }
     }
   }

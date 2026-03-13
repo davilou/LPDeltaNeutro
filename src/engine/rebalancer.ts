@@ -729,6 +729,11 @@ export class Rebalancer {
 
     if (elapsedMs < intervalMs) return null;
 
+    // Initial hedge (lastRebalanceTimestamp was never set or is 0)
+    if (ps.lastRebalanceTimestamp === 0) {
+      return 'initial_hedge: first cycle after activation';
+    }
+
     return `timer: ${(elapsedMs / 60000).toFixed(1)}min elapsed ≥ ${intervalMin}min interval`;
   }
 
