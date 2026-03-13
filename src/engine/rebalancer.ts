@@ -86,7 +86,13 @@ export class Rebalancer {
               cfg.calcPriceUpper = cfg.hedgeToken === 'token0' ? rawHi : 1 / rawLo;
               cfg.calcLpUsd = ps.pnl?.initialLpUsd;
               cfg.calcHedgeNotionalUsd = ps.lastHedge?.notionalUsd ?? 0;
-              cfg.calcEntryPrice = ps.lastRebalancePrice || ps.lastPrice || undefined;
+              // lastRebalancePrice/lastPrice são o preço raw (token1/token0 decimal-adjusted).
+              // calcEntryPrice deve estar nas mesmas unidades que calcPriceLower/calcPriceUpper (USD do token volátil).
+              // Para hedgeToken='token1' (ex: USDC/BTC), USD do volátil = 1 / price_raw.
+              const rawEntry = ps.lastRebalancePrice || ps.lastPrice || 0;
+              cfg.calcEntryPrice = rawEntry > 0
+                ? (cfg.hedgeToken === 'token0' ? rawEntry : 1 / rawEntry)
+                : undefined;
               logger.info(`[migration] calc snapshot preenchido para posição ${tokenId}: Pa=${cfg.calcPriceLower?.toFixed(4)} Pb=${cfg.calcPriceUpper?.toFixed(4)}`);
             }
           }
