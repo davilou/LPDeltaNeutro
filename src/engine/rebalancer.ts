@@ -75,6 +75,20 @@ export class Rebalancer {
             if (loaded.positions[tokenId].config.positionId === undefined) {
               loaded.positions[tokenId].config.positionId = loaded.positions[tokenId].config.tokenId;
             }
+            // Hedge calculator snapshot migration: populate calc fields for positions activated before this feature
+            const cfg = loaded.positions[tokenId].config;
+            const ps = loaded.positions[tokenId];
+            if (cfg.calcPriceLower == null && cfg.tickLower != null && cfg.tickUpper != null && cfg.dex !== 'meteora') {
+              const decAdj = (cfg.token0Decimals ?? 18) - (cfg.token1Decimals ?? 6);
+              const rawLo = Math.pow(1.0001, cfg.tickLower) * Math.pow(10, decAdj);
+              const rawHi = Math.pow(1.0001, cfg.tickUpper) * Math.pow(10, decAdj);
+              cfg.calcPriceLower = cfg.hedgeToken === 'token0' ? rawLo : 1 / rawHi;
+              cfg.calcPriceUpper = cfg.hedgeToken === 'token0' ? rawHi : 1 / rawLo;
+              cfg.calcLpUsd = ps.pnl?.initialLpUsd;
+              cfg.calcHedgeNotionalUsd = ps.lastHedge?.notionalUsd ?? 0;
+              cfg.calcEntryPrice = ps.lastRebalancePrice || ps.lastPrice || undefined;
+              logger.info(`[migration] calc snapshot preenchido para posição ${tokenId}: Pa=${cfg.calcPriceLower?.toFixed(4)} Pb=${cfg.calcPriceUpper?.toFixed(4)}`);
+            }
           }
           return loaded as BotState;
         }

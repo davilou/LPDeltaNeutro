@@ -1848,6 +1848,27 @@
           '<div class="dr" style="border-top:1px solid #1e1e2e;margin-top:4px;padding-top:4px;"><span class="dr-lbl" style="color:#6a8fa8;">fees upd</span><span class="dr-val" id="' + tid + '-feeUpdAgo" style="color:#6a8fa8;">--</span></div>' +
           '<div class="dr"><span class="dr-lbl" style="color:#6a8fa8;">next in</span><span class="dr-val" id="' + tid + '-nextCycle" style="color:#6a8fa8;">--</span></div>' +
           '</div></div>' +
+          // Hedge Calculator
+          '<div class="mc"><div class="mc-label" style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span>Hedge Calculator</span><span style="font-size:0.55rem;opacity:0.6;">AT RANGE LIMITS</span></div>' +
+          '<div class="drows">' +
+          '<div class="dr"><span class="dr-lbl">range min</span><span class="dr-val" id="' + tid + '-hcRangeMin" style="font-size:0.75rem;">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">range max</span><span class="dr-val" id="' + tid + '-hcRangeMax" style="font-size:0.75rem;">--</span></div>' +
+          '</div>' +
+          '<div style="margin-top:8px;display:grid;grid-template-columns:2fr 3fr 3fr;gap:3px 4px;font-size:0.62rem;">' +
+          '<span style="color:var(--tx-muted);"></span>' +
+          '<span style="text-align:right;color:var(--amber);letter-spacing:0.03em;">▼ RANGE MIN</span>' +
+          '<span style="text-align:right;color:var(--amber);letter-spacing:0.03em;">▲ RANGE MAX</span>' +
+          '<span style="color:var(--tx-dim);">LP P&amp;L</span>' +
+          '<span style="text-align:right;" id="' + tid + '-hcLpMin">--</span>' +
+          '<span style="text-align:right;" id="' + tid + '-hcLpMax">--</span>' +
+          '<span style="color:var(--tx-dim);">Hedge</span>' +
+          '<span style="text-align:right;" id="' + tid + '-hcHgMin">--</span>' +
+          '<span style="text-align:right;" id="' + tid + '-hcHgMax">--</span>' +
+          '<span style="color:var(--tx-dim);font-weight:bold;">Net</span>' +
+          '<span style="text-align:right;font-weight:bold;" id="' + tid + '-hcNetMin">--</span>' +
+          '<span style="text-align:right;font-weight:bold;" id="' + tid + '-hcNetMax">--</span>' +
+          '</div></div>' +
           // Strategy Config
           '<div class="mc"><div class="mc-label">Strategy Config</div><div class="drows">' +
           '<div class="dr" style="border:none;flex-direction:column;gap:5px;">' +
@@ -1978,6 +1999,64 @@
         get('cumFunding').textContent = d.cumulativeFundingUsd != null
           ? (d.cumulativeFundingUsd >= 0 ? '+' : '') + fmtUsd(d.cumulativeFundingUsd) : '--';
         get('cumHlFees').textContent = d.cumulativeHlFeesUsd != null ? '-' + fmtUsd(d.cumulativeHlFeesUsd) : '--';
+
+        // Hedge Calculator card — usa snapshot estático do momento da ativação
+        var hcRangeMinEl = get('hcRangeMin');
+        if (hcRangeMinEl) {
+          var hcCfg = activePositionsConfig[tid] || {};
+          var hcPa = hcCfg.calcPriceLower, hcPb = hcCfg.calcPriceUpper;
+          var hcP = hcCfg.calcEntryPrice, hcV = hcCfg.calcLpUsd;
+          var hcHedgeUsd = hcCfg.calcHedgeNotionalUsd || 0;
+
+          if (hcPa > 0 && hcPb > 0 && hcP > 0 && hcV > 0) {
+            // Compute liquidity L from entry price and entry LP value
+            var hcSpa = Math.sqrt(hcPa), hcSpb = Math.sqrt(hcPb);
+            var hcL;
+            if (hcP <= hcPa) {
+              hcL = hcV / ((1 / hcSpa - 1 / hcSpb) * hcP);
+            } else if (hcP >= hcPb) {
+              hcL = hcV / (hcSpb - hcSpa);
+            } else {
+              var hcSp = Math.sqrt(hcP);
+              hcL = hcV / (hcSp * (hcSpb - hcSp) / hcSpb + hcSp - hcSpa);
+            }
+
+            function hcLpVal(Pp) {
+              if (Pp <= hcPa) return hcL * (1 / hcSpa - 1 / hcSpb) * Pp;
+              if (Pp >= hcPb) return hcL * (hcSpb - hcSpa);
+              var s = Math.sqrt(Pp);
+              return hcL * (s * (hcSpb - s) / hcSpb + s - hcSpa);
+            }
+
+            var hcLpPnlMin = hcLpVal(hcPa) - hcV;
+            var hcLpPnlMax = hcLpVal(hcPb) - hcV;
+            var hcHgPnlMin = hcHedgeUsd * (1 - hcPa / hcP);
+            var hcHgPnlMax = hcHedgeUsd * (1 - hcPb / hcP);
+            var hcNetMin = hcLpPnlMin + hcHgPnlMin;
+            var hcNetMax = hcLpPnlMax + hcHgPnlMax;
+
+            var hcPctMin = (hcPa / hcP - 1) * 100;
+            var hcPctMax = (hcPb / hcP - 1) * 100;
+
+            hcRangeMinEl.textContent = '$' + hcPa.toFixed(4) + ' (' + hcPctMin.toFixed(1) + '%)';
+            var hcRangeMaxEl = get('hcRangeMax');
+            if (hcRangeMaxEl) hcRangeMaxEl.textContent = '$' + hcPb.toFixed(4) + ' (+' + hcPctMax.toFixed(1) + '%)';
+
+            function hcFmtPnl(v) { return (v >= 0 ? '+' : '') + '$' + Math.abs(v).toFixed(2); }
+            function hcSetCell(suffix, val) {
+              var el = get(suffix);
+              if (!el) return;
+              el.textContent = hcFmtPnl(val);
+              el.style.color = Math.abs(val) < 0.005 ? 'var(--tx-muted)' : val >= 0 ? 'var(--green)' : 'var(--red)';
+            }
+            hcSetCell('hcLpMin', hcLpPnlMin);
+            hcSetCell('hcLpMax', hcLpPnlMax);
+            hcSetCell('hcHgMin', hcHgPnlMin);
+            hcSetCell('hcHgMax', hcHgPnlMax);
+            hcSetCell('hcNetMin', hcNetMin);
+            hcSetCell('hcNetMax', hcNetMax);
+          }
+        }
       }
 
       function updateStrategyInputs(tokenId) {

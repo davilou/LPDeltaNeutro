@@ -111,6 +111,12 @@ export interface ActivePositionConfig {
   dex?: DexId;               // default 'uniswap-v3' for existing positions
   positionId?: PositionId;   // alias for tokenId; number for EVM
   activationId?: string;     // UUID gerado em cada ativação — linka rebalances e closed_position
+  // Hedge calculator snapshot — captured once at activation, never updated
+  calcEntryPrice?: number;         // volatile token price USD at activation
+  calcPriceLower?: number;         // range min USD at activation
+  calcPriceUpper?: number;         // range max USD at activation
+  calcHedgeNotionalUsd?: number;   // hedge notional USD placed at activation
+  calcLpUsd?: number;              // LP value USD at activation
 }
 
 export interface HistoricalPosition {

@@ -217,6 +217,19 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
         ctx.cycleInProgress = false;
       }
 
+      // Snapshot da estratégia para o card Hedge Calculator (estático para toda a vida da proteção)
+      // Meteora usa bins (não ticks 1.0001^n) — skip para evitar preços incorretos
+      if (activDex !== 'meteora' && position.tickLower !== 0 && position.tickUpper !== 0) {
+        const decAdj = position.token0.decimals - position.token1.decimals;
+        const rawLo = Math.pow(1.0001, position.tickLower) * Math.pow(10, decAdj);
+        const rawHi = Math.pow(1.0001, position.tickUpper) * Math.pow(10, decAdj);
+        cfg.calcPriceLower = hedgeToken === 'token0' ? rawLo : 1 / rawHi;
+        cfg.calcPriceUpper = hedgeToken === 'token0' ? rawHi : 1 / rawLo;
+        cfg.calcEntryPrice = volatilePriceUsd;
+        cfg.calcLpUsd = initialLpUsd;
+        cfg.calcHedgeNotionalUsd = ctx.rebalancer.fullState.positions[activReq.tokenId]?.lastHedge.notionalUsd ?? 0;
+      }
+
       // Hedge confirmed — now save to Supabase and notify UI
       void upsertProtectionActivation({
         user_id: userId !== 'default' ? userId : undefined,
