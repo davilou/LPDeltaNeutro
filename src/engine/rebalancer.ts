@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { pushSnapshot } from './feeHistory';
 import { ActivePositionConfig, BotState, DiscoveredPosition, HedgeState, HistoricalPosition, LPPosition, PnlSnapshot, PositionState, PositionId } from '../types';
 import { FillResult, HlIsolatedPnl, IHedgeExchange } from '../hedge/types';
 import { calculateHedge, HedgeTarget } from '../hedge/hedgeCalculator';
@@ -132,6 +133,24 @@ export class Rebalancer {
       this.pnlTrackers[tokenId] = new PnlTracker();
     }
     return this.pnlTrackers[tokenId];
+  }
+
+  public pushFeeSnapshot(tokenId: PositionId, rawFeesUsd: number): void {
+    const ps = this.state.positions[String(tokenId)];
+    if (!ps) return;
+    ps.feeHistory = pushSnapshot(
+      ps.feeHistory ?? { snapshots: [], buckets: [] },
+      rawFeesUsd,
+    );
+    this.saveState();
+  }
+
+  public clearFeeHistory(tokenId: PositionId): void {
+    const ps = this.state.positions[String(tokenId)];
+    if (!ps) return;
+    ps.feeHistory = { snapshots: [], buckets: [] };
+    this.saveState();
+    logger.debug({ message: 'fee_history.cleared', tokenId: String(tokenId) });
   }
 
   setExchange(exchange: IHedgeExchange | null): void {
