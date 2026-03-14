@@ -1342,20 +1342,335 @@
     <!-- SIDEBAR -->
     <nav class="sidebar">
       <div class="sidebar-nav">
-        <div class="sidebar-item active" id="nav-monitor" onclick="showPage('monitor')">MONITOR</div>
+        <div class="sidebar-item active" id="nav-guide" onclick="showPage('guide')">GUIDE</div>
+        <div class="sidebar-item" id="nav-monitor" onclick="showPage('monitor')">MONITOR</div>
         <div class="sidebar-item" id="nav-history" onclick="showPage('history')">HISTORY</div>
         <div class="sidebar-item" id="nav-calculator" onclick="showPage('calculator')">CALCULATOR</div>
         <div class="sidebar-item" id="nav-settings" onclick="showPage('settings')">SETTINGS</div>
         <div class="sidebar-item" id="nav-scanner" onclick="showPage('scanner')">SCANNER</div>
-        <div class="sidebar-item" id="nav-guide" onclick="showPage('guide')">GUIDE</div>
       </div>
     </nav>
 
     <!-- CONTENT -->
     <div class="content-area">
 
+      <!-- ── PAGE: GUIDE ──────────────────────────────────────── -->
+      <div id="page-guide">
+        <div style="max-width:900px;">
+
+          <!-- INTRO -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              O QUE É O DELTA NEUTRAL BOT?
+            </h2>
+            <p style="line-height:1.7; color:var(--tx); font-size:0.82rem;">
+              Este bot automatiza uma estratégia <span style="color:var(--accent);">delta-neutra</span> para posições de liquidez concentrada (Uniswap V3/V4, PancakeSwap, Aerodrome, Orca, Raydium, Meteora).
+              A ideia central é simples: você fornece liquidez em um pool e ganha fees, mas fica exposto à variação de preço do token volátil.
+              O bot <strong>abre um short em perpétuos na Hyperliquid</strong> para neutralizar essa exposição, protegendo seu capital contra quedas enquanto você continua coletando fees.
+            </p>
+          </div>
+
+          <!-- COMO FUNCIONA -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              COMO FUNCIONA
+            </h2>
+            <div style="display:flex; flex-direction:column; gap:14px; font-size:0.82rem; line-height:1.7;">
+
+              <div style="display:flex; gap:12px;">
+                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">01</span>
+                <div>
+                  <strong style="color:var(--tx);">Leitura da posição LP</strong><br>
+                  <span style="color:var(--tx-dim);">O bot lê sua posição on-chain (NFT) e calcula quanto do token volátil você tem exposto. Suporta múltiplas chains (Base, ETH, BSC, Arbitrum, Polygon, Avalanche, HyperEVM, Solana) e DEXes.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px;">
+                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">02</span>
+                <div>
+                  <strong style="color:var(--tx);">Cálculo do hedge ideal</strong><br>
+                  <span style="color:var(--tx-dim);">Com base na exposição e no range da posição, calcula o tamanho exato do short necessário para neutralizar o delta. O hedge é proporcional: quanto mais token volátil você tem, maior o short.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px;">
+                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">03</span>
+                <div>
+                  <strong style="color:var(--tx);">Execução na Hyperliquid</strong><br>
+                  <span style="color:var(--tx-dim);">Abre ou ajusta a posição short em perpétuos na Hyperliquid. Suporta todos os DEXes de perps da HL: crypto (padrão), xyz (stocks/Wagyu) e cash (cash-settled).</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px;">
+                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">04</span>
+                <div>
+                  <strong style="color:var(--tx);">Rebalanceamento automático</strong><br>
+                  <span style="color:var(--tx-dim);">À medida que o preço muda, a composição da LP muda também. O bot detecta isso e rebalanceia o hedge periodicamente para manter a neutralidade.</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- RANGE E COMPOSIÇÃO -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              ENTENDENDO O RANGE
+            </h2>
+            <div style="font-size:0.82rem; line-height:1.7; color:var(--tx-dim);">
+              <p style="margin-bottom:12px;">
+                Em liquidez concentrada, você define uma <strong style="color:var(--tx);">faixa de preço (range)</strong> onde sua liquidez fica ativa. O preço atual determina a composição da sua posição — quanto de cada token você tem:
+              </p>
+
+              <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <!-- Dentro do range -->
+                <div style="flex:1; padding:14px; border:1px solid var(--bd-md); border-radius:6px; background:rgba(96,165,250,0.04);">
+                  <strong style="color:var(--blue); display:block; margin-bottom:8px;">Dentro do range</strong>
+                  <span>O preço está entre o limite inferior e superior. Sua posição tem <strong style="color:var(--tx);">uma mistura dos dois tokens</strong> e está gerando fees. A proporção muda conforme o preço se move — mais perto do limite inferior = mais token volátil; mais perto do superior = mais stablecoin.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <!-- Acima do range -->
+                <div style="flex:1; padding:14px; border:1px solid var(--bd-md); border-radius:6px; background:rgba(52,211,153,0.04);">
+                  <strong style="color:var(--green); display:block; margin-bottom:8px;">Acima do range (preço subiu muito)</strong>
+                  <span>O preço ultrapassou o limite superior. Toda sua liquidez foi convertida para <strong style="color:var(--tx);">100% stablecoin</strong>. Você não tem mais exposição ao token volátil e não gera fees. O bot <strong style="color:var(--tx);">fecha o hedge</strong> — não há mais o que proteger.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <!-- Abaixo do range -->
+                <div style="flex:1; padding:14px; border:1px solid var(--bd-md); border-radius:6px; background:rgba(248,113,113,0.04);">
+                  <strong style="color:var(--red); display:block; margin-bottom:8px;">Abaixo do range (preço caiu muito)</strong>
+                  <span>O preço caiu abaixo do limite inferior. Toda sua liquidez foi convertida para <strong style="color:var(--tx);">100% token volátil</strong>. Você tem exposição máxima e não gera fees. O bot <strong style="color:var(--tx);">aumenta o hedge ao máximo</strong> para proteger contra mais quedas.</span>
+                </div>
+              </div>
+
+              <p>
+                Quando o preço <strong style="color:var(--tx);">volta para dentro do range</strong>, sua posição volta a ter uma mistura dos dois tokens e a gerar fees. O bot <strong style="color:var(--tx);">restaura o hedge que estava ativo antes de sair do range</strong>, retomando a proteção de onde parou.
+              </p>
+            </div>
+          </div>
+
+          <!-- GATILHOS DE REBALANCE -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              QUANDO O BOT REBALANCEIA?
+            </h2>
+            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.7;">
+
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <span style="color:var(--blue); font-size:0.9rem;">&#9202;</span>
+                <div>
+                  <strong style="color:var(--tx);">Timer periódico</strong><br>
+                  <span style="color:var(--tx-dim);">A cada intervalo configurado (padrão: 12 horas), o bot verifica e ajusta o hedge. Esse intervalo também serve como cooldown mínimo entre rebalances.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <span style="color:var(--red); font-size:0.9rem;">&#9888;</span>
+                <div>
+                  <strong style="color:var(--tx);">Emergência por preço</strong><br>
+                  <span style="color:var(--tx-dim);">Se o preço se move mais que 15% (configurável) desde o último rebalance, o bot age imediatamente, ignorando o cooldown.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <span style="color:var(--green); font-size:0.9rem;">&#10004;</span>
+                <div>
+                  <strong style="color:var(--tx);">Forced close (acima do range)</strong><br>
+                  <span style="color:var(--tx-dim);">Quando o preço sobe e sua LP fica 100% em stablecoin (acima do range), o bot fecha o hedge imediatamente — você não tem mais exposição ao token volátil.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <span style="color:var(--amber); font-size:0.9rem;">&#9650;</span>
+                <div>
+                  <strong style="color:var(--tx);">Forced hedge (abaixo do range)</strong><br>
+                  <span style="color:var(--tx-dim);">Quando o preço cai e sua LP fica 100% no token volátil (abaixo do range), o bot aumenta o hedge ao máximo imediatamente.</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ABAS DO DASHBOARD -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              ABAS DO DASHBOARD
+            </h2>
+            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.7;">
+
+              <div>
+                <strong style="color:var(--accent);">MONITOR</strong>
+                <span style="color:var(--tx-dim);"> — Visão em tempo real de todas as posições ativas: composição LP, status do hedge, P&L isolado (LP fees, realized, unrealized, funding), net delta e gráfico de série temporal.</span>
+              </div>
+
+              <div>
+                <strong style="color:var(--accent);">HISTORY</strong>
+                <span style="color:var(--tx-dim);"> — Histórico de posições encerradas e ativas, com resumo de P&L total, duração e rebalances realizados por posição.</span>
+              </div>
+
+              <div>
+                <strong style="color:var(--accent);">CALCULATOR</strong>
+                <span style="color:var(--tx-dim);"> — Simulador de cenários. Insira os parâmetros do pool (valor, preço, range, hedge %) e veja projeções de P&L em 9 cenários de preço. Modo AUTO calcula o hedge % ideal analiticamente.</span>
+              </div>
+
+              <div>
+                <strong style="color:var(--accent);">SETTINGS</strong>
+                <span style="color:var(--tx-dim);"> — Configuração das credenciais da Hyperliquid (wallet address + private key). Necessário para sair do modo dry-run e executar hedges reais.</span>
+              </div>
+
+              <div>
+                <strong style="color:var(--accent);">SCANNER</strong>
+                <span style="color:var(--tx-dim);"> — Busca posições LP em qualquer carteira. Escaneia NFTs on-chain e permite ativar proteção diretamente. Suporta busca por wallet ou por NFT ID específico.</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- PNL TRACKING -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              P&L — DE ONDE VÊM OS NÚMEROS?
+            </h2>
+            <div style="font-size:0.82rem; line-height:1.7; color:var(--tx-dim);">
+              <p style="margin-bottom:10px;">
+                Todos os dados de P&L vêm diretamente da <strong style="color:var(--tx);">API da Hyperliquid</strong>, não são estimativas locais. O bot consulta:
+              </p>
+              <ul style="padding-left:20px; display:flex; flex-direction:column; gap:6px;">
+                <li><strong style="color:var(--tx);">Unrealized P&L</strong> — lucro/prejuízo da posição short ainda aberta</li>
+                <li><strong style="color:var(--tx);">Realized P&L</strong> — lucro/prejuízo de posições já fechadas (fills)</li>
+                <li><strong style="color:var(--tx);">Funding</strong> — pagamentos de funding rate (pode ser positivo ou negativo)</li>
+                <li><strong style="color:var(--tx);">HL Fees</strong> — taxas de trading pagas na Hyperliquid</li>
+                <li><strong style="color:var(--tx);">LP Fees</strong> — fees coletadas pela posição de liquidez on-chain</li>
+              </ul>
+              <p style="margin-top:10px;">
+                O <strong style="color:var(--tx);">P&L Total</strong> combina a variação do LP, fees coletadas e o resultado do hedge na HL.
+              </p>
+            </div>
+          </div>
+
+          <!-- CHAINS E DEXES -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              CHAINS E DEXES SUPORTADOS
+            </h2>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.82rem;">
+              <div>
+                <strong style="color:var(--tx); display:block; margin-bottom:6px;">EVM</strong>
+                <div style="color:var(--tx-dim); line-height:1.8;">
+                  Base — Uniswap V3/V4, Aerodrome CL<br>
+                  Ethereum — Uniswap V3/V4, PancakeSwap V3<br>
+                  BSC — PancakeSwap V3/V4<br>
+                  Arbitrum — Uniswap V3/V4, PancakeSwap V3<br>
+                  Polygon — Uniswap V3<br>
+                  Avalanche — Uniswap V3<br>
+                  HyperEVM — Uniswap V3
+                </div>
+              </div>
+              <div>
+                <strong style="color:var(--tx); display:block; margin-bottom:6px;">Solana</strong>
+                <div style="color:var(--tx-dim); line-height:1.8;">
+                  Orca (Whirlpool CLMM)<br>
+                  Raydium CLMM<br>
+                  Meteora DLMM
+                </div>
+                <strong style="color:var(--tx); display:block; margin-top:14px; margin-bottom:6px;">Hedge Exchange</strong>
+                <div style="color:var(--tx-dim); line-height:1.8;">
+                  Hyperliquid — perpétuos<br>
+                  DEXes: crypto, xyz (stocks), cash
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FLUXO RÁPIDO -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              COMEÇANDO EM 4 PASSOS
+            </h2>
+            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.7;">
+
+              <div style="display:flex; gap:12px;">
+                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">1</span>
+                <div>
+                  <strong style="color:var(--tx);">Configure credenciais</strong><br>
+                  <span style="color:var(--tx-dim);">Vá em SETTINGS e insira sua wallet address e private key da Hyperliquid. Sem isso, o bot opera em dry-run.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px;">
+                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">2</span>
+                <div>
+                  <strong style="color:var(--tx);">Escaneie sua carteira</strong><br>
+                  <span style="color:var(--tx-dim);">Na aba SCANNER, insira o endereço da sua carteira, selecione chain e DEX, e clique SCAN. O bot encontrará todas as suas posições LP ativas.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px;">
+                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">3</span>
+                <div>
+                  <strong style="color:var(--tx);">Ative a proteção</strong><br>
+                  <span style="color:var(--tx-dim);">Clique PROTECT na posição desejada. Configure o hedge token (qual token você quer proteger), hedge ratio e parâmetros de estratégia. O bot executará o hedge inicial.</span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px;">
+                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">4</span>
+                <div>
+                  <strong style="color:var(--tx);">Monitore</strong><br>
+                  <span style="color:var(--tx-dim);">Vá em MONITOR para acompanhar em tempo real. O bot rebalanceia automaticamente conforme o preço muda. Você pode ajustar a estratégia a qualquer momento.</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- CONCEITOS -->
+          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
+            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
+              GLOSSÁRIO
+            </h2>
+            <div style="font-size:0.82rem; line-height:1.7; color:var(--tx-dim);">
+              <table style="width:100%; border-collapse:collapse;">
+                <tr style="border-bottom:1px solid var(--bd);">
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Delta</strong></td>
+                  <td style="padding:8px 0;">Exposição direcional ao preço do token. Delta = 0 significa que você não ganha nem perde com a variação do preço (neutro).</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--bd);">
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Hedge Ratio</strong></td>
+                  <td style="padding:8px 0;">Percentual da exposição volátil que é coberta pelo short. 100% = totalmente protegido. Valores menores deixam exposição direcional residual.</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--bd);">
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Impermanent Loss (IL)</strong></td>
+                  <td style="padding:8px 0;">Perda temporária que ocorre quando o preço se move em relação ao ponto de entrada da LP. O hedge do bot visa compensar essa perda.</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--bd);">
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Funding Rate</strong></td>
+                  <td style="padding:8px 0;">Pagamento periódico entre longs e shorts em perpétuos. Quando positivo, shorts recebem; quando negativo, shorts pagam. Pode ser uma fonte de renda ou custo adicional.</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--bd);">
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Range (ticks)</strong></td>
+                  <td style="padding:8px 0;">Faixa de preço onde sua liquidez está ativa. Fora do range, você para de ganhar fees e fica 100% em um dos tokens.</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--bd);">
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Perpétuo (Perp)</strong></td>
+                  <td style="padding:8px 0;">Contrato futuro sem data de vencimento. Usado para abrir shorts que protegem contra queda do token volátil.</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Dry-Run</strong></td>
+                  <td style="padding:8px 0;">Modo de simulação onde o bot calcula tudo mas não executa ordens reais. Útil para testar antes de ir live.</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- end #page-guide -->
+
       <!-- ── PAGE: MONITOR ─────────────────────────────────────── -->
-      <div id="page-monitor">
+      <div id="page-monitor" style="display:none;">
 
         <!-- TABS CONTAINER -->
         <div id="tabsContainer" class="tabs-container" style="display:none;"></div>
@@ -1677,321 +1992,6 @@
 
       </div><!-- end #page-scanner -->
 
-      <!-- ── PAGE: GUIDE ──────────────────────────────────────── -->
-      <div id="page-guide" style="display:none;">
-        <div style="max-width:900px;">
-
-          <!-- INTRO -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              O QUE É O DELTA NEUTRAL BOT?
-            </h2>
-            <p style="line-height:1.7; color:var(--tx); font-size:0.82rem;">
-              Este bot automatiza uma estratégia <span style="color:var(--accent);">delta-neutra</span> para posições de liquidez concentrada (Uniswap V3/V4, PancakeSwap, Aerodrome, Orca, Raydium, Meteora).
-              A ideia central é simples: você fornece liquidez em um pool e ganha fees, mas fica exposto à variação de preço do token volátil.
-              O bot <strong>abre um short em perpétuos na Hyperliquid</strong> para neutralizar essa exposição, protegendo seu capital contra quedas enquanto você continua coletando fees.
-            </p>
-          </div>
-
-          <!-- COMO FUNCIONA -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              COMO FUNCIONA
-            </h2>
-            <div style="display:flex; flex-direction:column; gap:14px; font-size:0.82rem; line-height:1.7;">
-
-              <div style="display:flex; gap:12px;">
-                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">01</span>
-                <div>
-                  <strong style="color:var(--tx);">Leitura da posição LP</strong><br>
-                  <span style="color:var(--tx-dim);">O bot lê sua posição on-chain (NFT) e calcula quanto do token volátil você tem exposto. Suporta múltiplas chains (Base, ETH, BSC, Arbitrum, Polygon, Avalanche, HyperEVM, Solana) e DEXes.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px;">
-                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">02</span>
-                <div>
-                  <strong style="color:var(--tx);">Cálculo do hedge ideal</strong><br>
-                  <span style="color:var(--tx-dim);">Com base na exposição e no range da posição, calcula o tamanho exato do short necessário para neutralizar o delta. O hedge é proporcional: quanto mais token volátil você tem, maior o short.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px;">
-                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">03</span>
-                <div>
-                  <strong style="color:var(--tx);">Execução na Hyperliquid</strong><br>
-                  <span style="color:var(--tx-dim);">Abre ou ajusta a posição short em perpétuos na Hyperliquid. Suporta todos os DEXes de perps da HL: crypto (padrão), xyz (stocks/Wagyu) e cash (cash-settled).</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px;">
-                <span style="color:var(--accent); font-family:var(--disp); font-size:0.75rem; min-width:22px;">04</span>
-                <div>
-                  <strong style="color:var(--tx);">Rebalanceamento automático</strong><br>
-                  <span style="color:var(--tx-dim);">À medida que o preço muda, a composição da LP muda também. O bot detecta isso e rebalanceia o hedge periodicamente para manter a neutralidade.</span>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          <!-- RANGE E COMPOSIÇÃO -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              ENTENDENDO O RANGE
-            </h2>
-            <div style="font-size:0.82rem; line-height:1.7; color:var(--tx-dim);">
-              <p style="margin-bottom:12px;">
-                Em liquidez concentrada, você define uma <strong style="color:var(--tx);">faixa de preço (range)</strong> onde sua liquidez fica ativa. O preço atual determina a composição da sua posição — quanto de cada token você tem:
-              </p>
-
-              <div style="display:flex; gap:12px; margin-bottom:14px;">
-                <!-- Dentro do range -->
-                <div style="flex:1; padding:14px; border:1px solid var(--bd-md); border-radius:6px; background:rgba(96,165,250,0.04);">
-                  <strong style="color:var(--blue); display:block; margin-bottom:8px;">Dentro do range</strong>
-                  <span>O preço está entre o limite inferior e superior. Sua posição tem <strong style="color:var(--tx);">uma mistura dos dois tokens</strong> e está gerando fees. A proporção muda conforme o preço se move — mais perto do limite inferior = mais token volátil; mais perto do superior = mais stablecoin.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px; margin-bottom:14px;">
-                <!-- Acima do range -->
-                <div style="flex:1; padding:14px; border:1px solid var(--bd-md); border-radius:6px; background:rgba(52,211,153,0.04);">
-                  <strong style="color:var(--green); display:block; margin-bottom:8px;">Acima do range (preço subiu muito)</strong>
-                  <span>O preço ultrapassou o limite superior. Toda sua liquidez foi convertida para <strong style="color:var(--tx);">100% stablecoin</strong>. Você não tem mais exposição ao token volátil e não gera fees. O bot <strong style="color:var(--tx);">fecha o hedge</strong> — não há mais o que proteger.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px; margin-bottom:14px;">
-                <!-- Abaixo do range -->
-                <div style="flex:1; padding:14px; border:1px solid var(--bd-md); border-radius:6px; background:rgba(248,113,113,0.04);">
-                  <strong style="color:var(--red); display:block; margin-bottom:8px;">Abaixo do range (preço caiu muito)</strong>
-                  <span>O preço caiu abaixo do limite inferior. Toda sua liquidez foi convertida para <strong style="color:var(--tx);">100% token volátil</strong>. Você tem exposição máxima e não gera fees. O bot <strong style="color:var(--tx);">aumenta o hedge ao máximo</strong> para proteger contra mais quedas.</span>
-                </div>
-              </div>
-
-              <p>
-                Quando o preço <strong style="color:var(--tx);">volta para dentro do range</strong>, sua posição volta a ter uma mistura dos dois tokens e a gerar fees. O bot <strong style="color:var(--tx);">restaura o hedge que estava ativo antes de sair do range</strong>, retomando a proteção de onde parou.
-              </p>
-            </div>
-          </div>
-
-          <!-- GATILHOS DE REBALANCE -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              QUANDO O BOT REBALANCEIA?
-            </h2>
-            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.7;">
-
-              <div style="display:flex; gap:10px; align-items:flex-start;">
-                <span style="color:var(--blue); font-size:0.9rem;">&#9202;</span>
-                <div>
-                  <strong style="color:var(--tx);">Timer periódico</strong><br>
-                  <span style="color:var(--tx-dim);">A cada intervalo configurado (padrão: 12 horas), o bot verifica e ajusta o hedge. Esse intervalo também serve como cooldown mínimo entre rebalances.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:10px; align-items:flex-start;">
-                <span style="color:var(--red); font-size:0.9rem;">&#9888;</span>
-                <div>
-                  <strong style="color:var(--tx);">Emergência por preço</strong><br>
-                  <span style="color:var(--tx-dim);">Se o preço se move mais que 15% (configurável) desde o último rebalance, o bot age imediatamente, ignorando o cooldown.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:10px; align-items:flex-start;">
-                <span style="color:var(--green); font-size:0.9rem;">&#10004;</span>
-                <div>
-                  <strong style="color:var(--tx);">Forced close (acima do range)</strong><br>
-                  <span style="color:var(--tx-dim);">Quando o preço sobe e sua LP fica 100% em stablecoin (acima do range), o bot fecha o hedge imediatamente — você não tem mais exposição ao token volátil.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:10px; align-items:flex-start;">
-                <span style="color:var(--amber); font-size:0.9rem;">&#9650;</span>
-                <div>
-                  <strong style="color:var(--tx);">Forced hedge (abaixo do range)</strong><br>
-                  <span style="color:var(--tx-dim);">Quando o preço cai e sua LP fica 100% no token volátil (abaixo do range), o bot aumenta o hedge ao máximo imediatamente.</span>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          <!-- ABAS DO DASHBOARD -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              ABAS DO DASHBOARD
-            </h2>
-            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.7;">
-
-              <div>
-                <strong style="color:var(--accent);">MONITOR</strong>
-                <span style="color:var(--tx-dim);"> — Visão em tempo real de todas as posições ativas: composição LP, status do hedge, P&L isolado (LP fees, realized, unrealized, funding), net delta e gráfico de série temporal.</span>
-              </div>
-
-              <div>
-                <strong style="color:var(--accent);">HISTORY</strong>
-                <span style="color:var(--tx-dim);"> — Histórico de posições encerradas e ativas, com resumo de P&L total, duração e rebalances realizados por posição.</span>
-              </div>
-
-              <div>
-                <strong style="color:var(--accent);">CALCULATOR</strong>
-                <span style="color:var(--tx-dim);"> — Simulador de cenários. Insira os parâmetros do pool (valor, preço, range, hedge %) e veja projeções de P&L em 9 cenários de preço. Modo AUTO calcula o hedge % ideal analiticamente.</span>
-              </div>
-
-              <div>
-                <strong style="color:var(--accent);">SETTINGS</strong>
-                <span style="color:var(--tx-dim);"> — Configuração das credenciais da Hyperliquid (wallet address + private key). Necessário para sair do modo dry-run e executar hedges reais.</span>
-              </div>
-
-              <div>
-                <strong style="color:var(--accent);">SCANNER</strong>
-                <span style="color:var(--tx-dim);"> — Busca posições LP em qualquer carteira. Escaneia NFTs on-chain e permite ativar proteção diretamente. Suporta busca por wallet ou por NFT ID específico.</span>
-              </div>
-
-            </div>
-          </div>
-
-          <!-- PNL TRACKING -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              P&L — DE ONDE VÊM OS NÚMEROS?
-            </h2>
-            <div style="font-size:0.82rem; line-height:1.7; color:var(--tx-dim);">
-              <p style="margin-bottom:10px;">
-                Todos os dados de P&L vêm diretamente da <strong style="color:var(--tx);">API da Hyperliquid</strong>, não são estimativas locais. O bot consulta:
-              </p>
-              <ul style="padding-left:20px; display:flex; flex-direction:column; gap:6px;">
-                <li><strong style="color:var(--tx);">Unrealized P&L</strong> — lucro/prejuízo da posição short ainda aberta</li>
-                <li><strong style="color:var(--tx);">Realized P&L</strong> — lucro/prejuízo de posições já fechadas (fills)</li>
-                <li><strong style="color:var(--tx);">Funding</strong> — pagamentos de funding rate (pode ser positivo ou negativo)</li>
-                <li><strong style="color:var(--tx);">HL Fees</strong> — taxas de trading pagas na Hyperliquid</li>
-                <li><strong style="color:var(--tx);">LP Fees</strong> — fees coletadas pela posição de liquidez on-chain</li>
-              </ul>
-              <p style="margin-top:10px;">
-                O <strong style="color:var(--tx);">P&L Total</strong> combina a variação do LP, fees coletadas e o resultado do hedge na HL.
-              </p>
-            </div>
-          </div>
-
-          <!-- CHAINS E DEXES -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              CHAINS E DEXES SUPORTADOS
-            </h2>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.82rem;">
-              <div>
-                <strong style="color:var(--tx); display:block; margin-bottom:6px;">EVM</strong>
-                <div style="color:var(--tx-dim); line-height:1.8;">
-                  Base — Uniswap V3/V4, Aerodrome CL<br>
-                  Ethereum — Uniswap V3/V4, PancakeSwap V3<br>
-                  BSC — PancakeSwap V3/V4<br>
-                  Arbitrum — Uniswap V3/V4, PancakeSwap V3<br>
-                  Polygon — Uniswap V3<br>
-                  Avalanche — Uniswap V3<br>
-                  HyperEVM — Uniswap V3
-                </div>
-              </div>
-              <div>
-                <strong style="color:var(--tx); display:block; margin-bottom:6px;">Solana</strong>
-                <div style="color:var(--tx-dim); line-height:1.8;">
-                  Orca (Whirlpool CLMM)<br>
-                  Raydium CLMM<br>
-                  Meteora DLMM
-                </div>
-                <strong style="color:var(--tx); display:block; margin-top:14px; margin-bottom:6px;">Hedge Exchange</strong>
-                <div style="color:var(--tx-dim); line-height:1.8;">
-                  Hyperliquid — perpétuos<br>
-                  DEXes: crypto, xyz (stocks), cash
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- FLUXO RÁPIDO -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              COMEÇANDO EM 4 PASSOS
-            </h2>
-            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.7;">
-
-              <div style="display:flex; gap:12px;">
-                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">1</span>
-                <div>
-                  <strong style="color:var(--tx);">Configure credenciais</strong><br>
-                  <span style="color:var(--tx-dim);">Vá em SETTINGS e insira sua wallet address e private key da Hyperliquid. Sem isso, o bot opera em dry-run.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px;">
-                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">2</span>
-                <div>
-                  <strong style="color:var(--tx);">Escaneie sua carteira</strong><br>
-                  <span style="color:var(--tx-dim);">Na aba SCANNER, insira o endereço da sua carteira, selecione chain e DEX, e clique SCAN. O bot encontrará todas as suas posições LP ativas.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px;">
-                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">3</span>
-                <div>
-                  <strong style="color:var(--tx);">Ative a proteção</strong><br>
-                  <span style="color:var(--tx-dim);">Clique PROTECT na posição desejada. Configure o hedge token (qual token você quer proteger), hedge ratio e parâmetros de estratégia. O bot executará o hedge inicial.</span>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:12px;">
-                <span style="background:var(--accent); color:var(--bg); font-family:var(--disp); font-size:0.7rem; font-weight:900; min-width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:4px;">4</span>
-                <div>
-                  <strong style="color:var(--tx);">Monitore</strong><br>
-                  <span style="color:var(--tx-dim);">Vá em MONITOR para acompanhar em tempo real. O bot rebalanceia automaticamente conforme o preço muda. Você pode ajustar a estratégia a qualquer momento.</span>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          <!-- CONCEITOS -->
-          <div class="card" style="margin-bottom:16px; padding:20px 24px;">
-            <h2 style="font-family:var(--disp); font-size:0.85rem; letter-spacing:3px; color:var(--accent); margin-bottom:14px;">
-              GLOSSÁRIO
-            </h2>
-            <div style="font-size:0.82rem; line-height:1.7; color:var(--tx-dim);">
-              <table style="width:100%; border-collapse:collapse;">
-                <tr style="border-bottom:1px solid var(--bd);">
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Delta</strong></td>
-                  <td style="padding:8px 0;">Exposição direcional ao preço do token. Delta = 0 significa que você não ganha nem perde com a variação do preço (neutro).</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--bd);">
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Hedge Ratio</strong></td>
-                  <td style="padding:8px 0;">Percentual da exposição volátil que é coberta pelo short. 100% = totalmente protegido. Valores menores deixam exposição direcional residual.</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--bd);">
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Impermanent Loss (IL)</strong></td>
-                  <td style="padding:8px 0;">Perda temporária que ocorre quando o preço se move em relação ao ponto de entrada da LP. O hedge do bot visa compensar essa perda.</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--bd);">
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Funding Rate</strong></td>
-                  <td style="padding:8px 0;">Pagamento periódico entre longs e shorts em perpétuos. Quando positivo, shorts recebem; quando negativo, shorts pagam. Pode ser uma fonte de renda ou custo adicional.</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--bd);">
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Range (ticks)</strong></td>
-                  <td style="padding:8px 0;">Faixa de preço onde sua liquidez está ativa. Fora do range, você para de ganhar fees e fica 100% em um dos tokens.</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--bd);">
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Perpétuo (Perp)</strong></td>
-                  <td style="padding:8px 0;">Contrato futuro sem data de vencimento. Usado para abrir shorts que protegem contra queda do token volátil.</td>
-                </tr>
-                <tr>
-                  <td style="padding:8px 12px 8px 0; color:var(--tx); white-space:nowrap; vertical-align:top;"><strong>Dry-Run</strong></td>
-                  <td style="padding:8px 0;">Modo de simulação onde o bot calcula tudo mas não executa ordens reais. Útil para testar antes de ir live.</td>
-                </tr>
-              </table>
-            </div>
-          </div>
-
-        </div>
-      </div><!-- end #page-guide -->
-
       <!-- Modal de Proteção -->
       <div id="protect-modal-overlay" class="modal-overlay" style="display:none" onclick="closeProtectModal()">
         <div class="modal-box" onclick="event.stopPropagation()">
@@ -2059,7 +2059,7 @@
 
     function logout() { window.location.href = '/auth/logout'; }
 
-    var currentPage = 'monitor';
+    var currentPage = 'guide';
 
     // ===== SCANNER STATE =====
     var scannerNetwork = 'evm';
