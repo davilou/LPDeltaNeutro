@@ -323,9 +323,13 @@ export class Rebalancer {
     // Calculate target hedge (uses global config for hedgeToken/hedgeFloor, we override below)
     const target: HedgeTarget = calculateHedge(position, fundingRate, hedgeToken);
 
-    // Apply per-position hedgeRatio override
-    target.size *= hedgeRatio;
-    target.notionalUsd *= hedgeRatio;
+    // Apply per-position hedgeRatio override — only when in-range.
+    // When LP is out of range (forced hedge = 100% volatile, forced close = 0%),
+    // the full exposure must be protected regardless of the hedgeRatio setting.
+    if (position.rangeStatus === 'in-range') {
+      target.size *= hedgeRatio;
+      target.notionalUsd *= hedgeRatio;
+    }
 
     // Get current hedge position for this symbol
     const currentHedge = await exchange.getPosition(hedgeSymbol);
