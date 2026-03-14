@@ -197,6 +197,14 @@ export class HyperliquidExchange implements IHedgeExchange {
     return rate;
   }
 
+  async getMarkPrice(coin: string): Promise<number> {
+    try {
+      return await this.getMidPrice(coin);
+    } catch {
+      return 0;
+    }
+  }
+
   /** Get current mid price for a coin (supports HIP-3 dex-prefixed symbols) */
   private async getMidPrice(coin: string): Promise<number> {
     const meta = this.assetMetaCache.get(coin);

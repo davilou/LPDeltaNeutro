@@ -83,6 +83,10 @@ export class MockExchange implements IHedgeExchange {
     return symbol;
   }
 
+  async getMarkPrice(_symbol: string): Promise<number> {
+    return 0; // unavailable in mock — validation is skipped when 0
+  }
+
   setMockFundingRate(rate: number): void {
     this.mockFundingRate = rate;
     logger.info(`[MOCK] Funding rate updated to ${(rate * 100).toFixed(2)}%`);

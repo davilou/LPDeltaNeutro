@@ -108,6 +108,36 @@ Variáveis relevantes: `REBALANCE_INTERVAL_MIN` (default 720), `EMERGENCY_PRICE_
 
 Cooldown por posição pode ser sobrescrito via dashboard (campo **Cooldown (m)**) — persiste em `ActivePositionConfig.cooldownSeconds`.
 
+## Proteções contra Dados de Preço Inválidos
+
+Três camadas impedem que glitches de API ou dados on-chain corrompidos disparem hedges com tamanho errado (incidente 2026-03-14: DexScreener retornou preço errado para pool Orca SOL/USDC, causando hedge de $15k desnecessário).
+
+### Camada 1 — Debounce no price poller (`src/index.ts`)
+- `emergencyPollCount: Map<tokenId, number>` — contador de polls consecutivos com movimento extremo (declarado fora do `setInterval`, persiste entre polls).
+- Antes de atualizar `poolPriceCache`, salva o valor anterior (`prevCacheEntry`).
+- Comparação de emergência usa **preço DexScreener anterior** (`prevCacheEntry.price`) como referência, não `lastRebalancePrice` (que vem do on-chain e pode estar em unidades diferentes — ex: pool Orca USDC/SOL retorna `position.price` em SOL/USDC invertido).
+- Exige **2 polls consecutivos** (≥60s) com movimento acima do threshold para disparar emergency trigger. Um glitch único é loggado como `price.emergency_pending` e ignorado.
+- Ao retornar ao normal, `emergencyPollCount` é resetado.
+
+### Camada 2 — Cross-validate LP vs HL mark price (`src/engine/rebalancer.ts`)
+- No início de `cycle()`, após computar `volatilePriceUsd`, chama `this.exchange.getMarkPrice(hedgeSymbol)` para obter o mid price atual na HL.
+- Se `|volatilePriceUsd − hlMarkPrice| / hlMarkPrice > LP_HL_MAX_PRICE_DIVERGENCE` (default **5%**), aborta o ciclo com log `cycle.lp_hl_price_divergence` e zera `ps.lastRebalancePrice = 0` (recalibra baseline para o próximo ciclo).
+- `MockExchange.getMarkPrice()` retorna `0` → validação é pulada em dry-run.
+- Erro na API da HL → log `cycle.mark_price_unavailable` + ciclo continua (não aborta por indisponibilidade temporária).
+
+### Camada 3 — Preço insano absoluto (existente)
+- `volatilePriceUsd < 0.001` → aborta com `cycle.insane_price`.
+
+### Variáveis de ambiente
+```env
+LP_HL_MAX_PRICE_DIVERGENCE=0.05   # divergência máxima LP vs HL (default: 5%)
+```
+
+### `IHedgeExchange.getMarkPrice(coin)`
+Método adicionado à interface em `src/hedge/types.ts`. Implementações:
+- `HyperliquidExchange`: wrapper público de `getMidPrice()` (suporta HIP-3 via `assetMetaCache`). Retorna `0` em caso de erro.
+- `MockExchange`: retorna `0` (skip da validação).
+
 ## PnL Tracking
 PnL é calculado com dados **reais da HL API**, filtrados por coin e por `initialTimestamp` da posição. Não há virtual accounting local.
 
@@ -367,6 +397,8 @@ Provedores de referência (sem API key):
 - **Aerodrome CL pool slot0 tem 6 campos**: retorna `(sqrtPriceX96, tick, observationIndex, observationCardinality, observationCardinalityNext, unlocked)` — sem `feeProtocol`. `POOL_CL_ABI` em `abis/index.ts` e local no scanner cobrem esse caso. `scanV3` no scanner já tem fallback para decodificação parcial via `AbiCoder.decode(['uint160','int24'], data)`.
 - **`exchange` pode ser `null` em `UserEngineContext`**: se o usuário não configurou credenciais HL, `createExchangeForUser()` retorna `null`. Nunca cai para `MockExchange` (exceto `DRY_RUN=true` para user `default`). Checar `ctx.exchange` antes de qualquer operação HL. Na ativação, tenta recarregar credenciais automaticamente antes de falhar.
 - **Ativação hedge-before-confirm**: `rebalancer.cycle()` roda ANTES de notificar sucesso ao dashboard. Se o hedge falha na HL, a ativação é revertida (`deactivatePosition`) e o erro propagado ao UI via `notifyActivationResult({ success: false })`. Dashboard mostra badge "⏳ ATIVANDO..." durante o processo.
+- **`lastRebalancePrice` e `poolPriceCache` têm unidades diferentes**: `lastRebalancePrice` em `PositionState` vem de `position.price` (on-chain, ex: Orca USDC/SOL retorna SOL/USDC = ~0.0088). `poolPriceCache` vem do DexScreener (`fetchPoolPrice`) que pode retornar USD do token volátil ou ratio invertido. Nunca comparar os dois diretamente para detecção de emergência — usar apenas `poolPriceCache` anterior vs atual (mesma fonte, mesma unidade).
+- **`emergencyPollCount` deve ser declarado fora do `setInterval`**: é um `Map` que rastreia polls consecutivos de emergência por tokenId. Se declarado dentro do callback, é recriado a cada poll e perde o estado de debounce.
 
 ## Limitações conhecidas (multi-chain)
 - `EvmScanner.scanV3()` usa Multicall3 — ≤5 RPC round trips independente do número de NFTs

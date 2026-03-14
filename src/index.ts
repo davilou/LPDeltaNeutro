@@ -881,6 +881,8 @@ async function main() {
   setInterval(runCycleForAllUsers, cycleIntervalMs);
 
   // Price poller
+  // Conta polls consecutivos com movimentação extrema por tokenId — exige 2+ para confirmar emergência
+  const emergencyPollCount = new Map<string | number, number>();
   let pricePollRunning = false;
   setInterval(async () => {
     if (pricePollRunning || !running) return;
@@ -936,6 +938,7 @@ async function main() {
           }
 
           for (const { cfg, ctx, userId } of entries) {
+            const prevCacheEntry = poolPriceCache.get(cfg.tokenId); // salvar antes de sobrescrever
             poolPriceCache.set(cfg.tokenId, { price, updatedAt: Date.now() });
 
             // Convert Uniswap ratio (token1/token0) to USD price of the hedged token for display
@@ -977,15 +980,31 @@ async function main() {
               }
             }
 
-            // Emergency price movement check
+            // Emergency price movement check.
+            // Usa preço DexScreener anterior (mesma unidade) como referência — evita comparação
+            // entre DexScreener e position.price que podem ter formatos diferentes (ex: Orca USDC/SOL
+            // retorna SOL/USDC invertido). Exige 2 polls consecutivos com movimentação extrema
+            // para confirmar antes de disparar (debounce contra glitches transientes de API).
             if (!triggerReason) {
               const ps = ctx.rebalancer.fullState.positions[cfg.tokenId];
-              const lastRebalancePrice = ps.lastRebalancePrice ?? 0;
               const emergThreshold = cfg.emergencyPriceMovementThreshold ?? config.emergencyPriceMovementThreshold;
-              if (lastRebalancePrice > 0) {
-                const movement = Math.abs(price - lastRebalancePrice) / lastRebalancePrice;
+              // Referência: preço DexScreener anterior (mesma unidade). Fallback: lastRebalancePrice.
+              const prevDexPrice = prevCacheEntry?.price ?? 0;
+              const refPrice = prevDexPrice > 0 ? prevDexPrice : (ps.lastRebalancePrice ?? 0);
+              if (refPrice > 0) {
+                const movement = Math.abs(price - refPrice) / refPrice;
                 if (movement > emergThreshold) {
-                  triggerReason = `emergency: price moved ${(movement * 100).toFixed(2)}% from $${lastRebalancePrice.toFixed(4)}`;
+                  const consecutive = (emergencyPollCount.get(cfg.tokenId) ?? 0) + 1;
+                  emergencyPollCount.set(cfg.tokenId, consecutive);
+                  if (consecutive >= 2) {
+                    triggerReason = `emergency: price moved ${(movement * 100).toFixed(2)}% ($${refPrice.toFixed(4)} → $${price.toFixed(4)})`;
+                    emergencyPollCount.delete(cfg.tokenId);
+                  } else {
+                    logger.warn({ message: 'price.emergency_pending', user: u(ctx, userId), nft_id: String(cfg.tokenId),
+                      price, ref_price: refPrice, movement_pct: +(movement * 100).toFixed(2), consecutive });
+                  }
+                } else {
+                  emergencyPollCount.delete(cfg.tokenId); // reset no polling normal
                 }
               }
             }

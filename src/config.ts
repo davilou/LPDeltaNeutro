@@ -90,6 +90,8 @@ export const config = {
   // Gatilho por movimento de preço: dispara rebalance quando o preço se move X% desde o último rebalance
   // Emergency: movimento de preço maior, bypassa cooldown
   emergencyPriceMovementThreshold: numEnv('EMERGENCY_PRICE_MOVEMENT_THRESHOLD', 0.15),
+  /** Divergência máxima entre preço LP e mark price da HL antes de abortar o hedge (default: 20%). */
+  lpHlMaxPriceDivergence: numEnv('LP_HL_MAX_PRICE_DIVERGENCE', 0.05),
   /** Intervalo do ciclo pesado (minutos). Default: 30. */
   cycleIntervalMin: numEnv('CYCLE_INTERVAL_MIN', 30),
   positionCacheTtlMs: numEnv('POSITION_CACHE_TTL_MS', 30 * 60 * 1_000),

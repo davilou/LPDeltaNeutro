@@ -420,6 +420,31 @@ export class Rebalancer {
       return;
     }
 
+    // Cross-validate LP price against HL mark price — detecta mismatches de unidade, glitches de API
+    // ou dados on-chain obsoletos antes de executar qualquer hedge. Threshold: 50% de divergência.
+    if (this.exchange) {
+      try {
+        const hlMarkPrice = await this.exchange.getMarkPrice(hedgeSymbol);
+        if (hlMarkPrice > 0) {
+          const priceDivergence = Math.abs(volatilePriceUsd - hlMarkPrice) / hlMarkPrice;
+          if (priceDivergence > config.lpHlMaxPriceDivergence) {
+            logger.error({ message: 'cycle.lp_hl_price_divergence', user: this.u, nft_id: String(tokenId),
+              lp_price_usd: +volatilePriceUsd.toFixed(4), hl_mark_price: +hlMarkPrice.toFixed(4),
+              divergence_pct: +(priceDivergence * 100).toFixed(2), coin: hedgeSymbol });
+            // Zera lastRebalancePrice para que o trigger de emergência recalibre no próximo ciclo válido
+            ps.lastRebalancePrice = 0;
+            this.saveState();
+            return;
+          }
+          logger.debug({ message: 'cycle.price_validated', nft_id: String(tokenId),
+            lp_price_usd: +volatilePriceUsd.toFixed(4), hl_mark_price: +hlMarkPrice.toFixed(4) });
+        }
+      } catch (err) {
+        logger.warn({ message: 'cycle.mark_price_unavailable', user: this.u, nft_id: String(tokenId), coin: hedgeSymbol, error: String(err) });
+        // Não abortar — HL API pode estar temporariamente indisponível
+      }
+    }
+
     // Detect liquidity change (add/remove LP) and adjust P&L baseline accordingly.
     // Uses old liquidity at current price to isolate the liquidity effect from price movement.
     const currLiqStr = position.liquidity.toString();
