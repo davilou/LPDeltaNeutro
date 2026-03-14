@@ -2095,6 +2095,7 @@
 
       function fmt(n, d) { return n == null ? '--' : n.toFixed(d); }
       function fmtUsd(n) { return n == null ? '--' : '$' + n.toFixed(2); }
+      function fmtApr(v) { return v == null ? '--' : v.toFixed(1) + '%'; }
       function fmtTime(ts) { return new Date(ts).toLocaleTimeString(); }
       function timeAgo(ts) {
         if (!ts) return 'never';
@@ -2148,6 +2149,16 @@
           '<div class="dr"><span class="dr-lbl">current usd</span><span class="dr-val" id="' + tid + '-totalUsd">--</span></div>' +
           '<div class="dr"><span class="dr-lbl">initial usd</span><span class="dr-val" id="' + tid + '-initialLpUsd" style="color:var(--tx-dim);">--</span></div>' +
           '<div class="dr"><span class="dr-lbl">range</span><span class="dr-val" id="' + tid + '-rangeStatus">--</span></div>' +
+          '</div></div>' +
+          // Pool APR
+          '<div class="mc"><div class="mc-label">Pool APR</div><div class="drows">' +
+          '<div class="dr"><span class="dr-lbl">All-time</span><span class="dr-val" id="' + tid + '-aprAllTime">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">7d</span><span class="dr-val" id="' + tid + '-apr7d">--</span></div>' +
+          '<div class="dr"><span class="dr-lbl">24h</span><span class="dr-val" id="' + tid + '-apr24h">--</span></div>' +
+          '</div>' +
+          '<div style="margin-top:8px;font-size:11px;color:var(--tx-muted)">' +
+          '<span id="' + tid + '-aprDailyFees" style="color:var(--green)">--</span>' +
+          '<span style="color:var(--tx-muted)"> / dia (est. all-time)</span>' +
           '</div></div>' +
           // Hedge
           '<div class="mc"><div class="mc-label">Hedge · HL Perp</div><div class="drows">' +
@@ -2301,6 +2312,15 @@
 
         var lpFeesEl = get('lpFeesUsd');
         if (lpFeesEl) lpFeesEl.textContent = d.lpFeesUsd != null ? '+' + fmtUsd(d.lpFeesUsd) : '--';
+
+        var aprAllTimeEl = get('aprAllTime');
+        if (aprAllTimeEl) { aprAllTimeEl.textContent = fmtApr(d.aprAllTime); aprAllTimeEl.style.color = d.aprAllTime != null ? 'var(--green)' : ''; }
+        var apr7dEl = get('apr7d');
+        if (apr7dEl) { apr7dEl.textContent = fmtApr(d.apr7d); apr7dEl.style.color = d.apr7d != null ? 'var(--green)' : ''; }
+        var apr24hEl = get('apr24h');
+        if (apr24hEl) { apr24hEl.textContent = fmtApr(d.apr24h); apr24hEl.style.color = d.apr24h != null ? 'var(--green)' : ''; }
+        var aprDailyEl = get('aprDailyFees');
+        if (aprDailyEl) aprDailyEl.textContent = d.aprDailyFeesUsd != null ? '\u2248 ' + fmtUsd(d.aprDailyFeesUsd) : '--';
 
         if (d.unrealizedPnlUsd != null) {
           var s = d.unrealizedPnlUsd >= 0 ? '+' : '';
