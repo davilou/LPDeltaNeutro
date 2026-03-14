@@ -1,5 +1,6 @@
 import type { ChainId, DexId, PositionId } from './lp/types';
 export type { ChainId, DexId, PositionId };
+import type { FeeHistory } from './engine/feeHistory';
 
 export interface TokenInfo {
   address: string;
@@ -157,6 +158,7 @@ export interface PositionState {
   rebalances?: any[]; // Store history in state
   lastLiquidity?: string; // serialized bigint — detect add/remove liquidity events
   preExitHedge?: HedgeState; // hedge salvo antes da saída do range — restaurado ao re-entrar
+  feeHistory?: FeeHistory;
 }
 
 export interface BotState {

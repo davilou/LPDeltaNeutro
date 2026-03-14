@@ -39,6 +39,10 @@ export interface DashboardData {
   fee?: number;
   priceLower?: number;
   priceUpper?: number;
+  aprAllTime?: number | null;
+  apr7d?: number | null;
+  apr24h?: number | null;
+  aprDailyFeesUsd?: number | null;
 }
 
 export interface RebalanceEvent {
