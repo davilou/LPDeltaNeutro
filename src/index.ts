@@ -18,6 +18,7 @@ import { fetchPoolPrice, poolPriceCache, getCachedPrice, isChainPriceSupported, 
 import { IHedgeExchange, HlIsolatedPnl } from './hedge/types';
 import { withContext } from './utils/correlation';
 import { activePositionsCount, lpReadDuration } from './utils/metrics';
+import { computeApr } from './engine/feeHistory';
 import './auth/types';
 
 const PRICE_POLL_INTERVAL_MS = 30_000; // 30s — keep below API rate limits
@@ -436,6 +437,7 @@ function setupUserEventHandlers(userId: string, ctx: UserEngineContext): void {
   store.on('resetPnl', ({ tokenId, initialLpUsd, initialHlUsd }: { tokenId: PositionId; initialLpUsd: number; initialHlUsd: number }) => {
     const tracker = ctx.rebalancer.getPnlTracker(tokenId);
     tracker.reinitialize(initialLpUsd, initialHlUsd);
+    ctx.rebalancer.clearFeeHistory(tokenId);
     ctx.rebalancer.saveState();
     logger.info({ message: 'pnl.reset', user: u(ctx, userId), nft_id: String(tokenId), lp_usd: +initialLpUsd.toFixed(2), hl_usd: +initialHlUsd.toFixed(2) });
   });
@@ -743,6 +745,18 @@ async function main() {
       : position.tokensOwed0 + position.tokensOwed1 * volatilePriceUsd;
     const netLpFees = Math.max(0, rawFeesUsd - (ps.pnl?.initialLpFeesUsd ?? 0));
 
+    // Fee history — snapshot a cada ciclo LP para cálculo de APR
+    ctx.rebalancer.pushFeeSnapshot(tokenId, rawFeesUsd);
+    const psForApr = ctx.rebalancer.fullState.positions[String(tokenId)];
+    const aprMetrics = psForApr?.pnl?.initialLpUsd && psForApr.pnl.initialLpUsd > 0
+      ? computeApr(
+          psForApr.feeHistory ?? { snapshots: [], buckets: [] },
+          psForApr.pnl.initialLpUsd,
+          psForApr.pnl.initialTimestamp,
+          rawFeesUsd,
+        )
+      : { aprAllTime: null, apr7d: null, apr24h: null, dailyFeesUsd: null };
+
     const totalLpUsd = token0Usd + token1Usd;
 
     if (cfg.hedgeSymbol && ctx.exchange) {
@@ -782,6 +796,10 @@ async function main() {
         cumulativeHlFeesUsd: pnl.cumulativeHlFeesUsd,
         initialTotalUsd: pnl.initialTotalUsd,
         currentTotalUsd: pnl.currentTotalUsd,
+        aprAllTime: aprMetrics.aprAllTime,
+        apr7d: aprMetrics.apr7d,
+        apr24h: aprMetrics.apr24h,
+        aprDailyFeesUsd: aprMetrics.dailyFeesUsd,
       });
 
       const lpPnlNet = pnl.lpPnlUsd;
@@ -808,6 +826,10 @@ async function main() {
         rangeStatus: position.rangeStatus,
         price: volatilePriceUsd,
         lpFeesUsd: netLpFees,
+        aprAllTime: aprMetrics.aprAllTime,
+        apr7d: aprMetrics.apr7d,
+        apr24h: aprMetrics.apr24h,
+        aprDailyFeesUsd: aprMetrics.dailyFeesUsd,
       });
 
       const status = position.rangeStatus !== 'in-range' ? 'OUT_OF_RANGE' : 'HEALTHY';
