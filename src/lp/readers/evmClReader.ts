@@ -102,9 +102,18 @@ export class EvmClReader implements ILPReader {
         });
       } else {
         cached.feesCycleCount++;
-        liquidity = cached.liquidity;
         tickLower = cached.tickLower;
         tickUpper = cached.tickUpper;
+
+        // Always re-read liquidity from contract (cheap single RPC call)
+        // — liquidity can change at any time (position closed/decreased)
+        try {
+          const pos = await pm.positions(tokenId);
+          liquidity = BigInt(pos.liquidity);
+          cached.liquidity = liquidity;
+        } catch {
+          liquidity = cached.liquidity;
+        }
 
         [token0Info, token1Info] = await Promise.all([
           this.getTokenInfo(provider, cached.token0Address),

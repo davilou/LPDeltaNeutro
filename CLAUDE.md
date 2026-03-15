@@ -399,6 +399,7 @@ Provedores de referência (sem API key):
 - **Ativação hedge-before-confirm**: `rebalancer.cycle()` roda ANTES de notificar sucesso ao dashboard. Se o hedge falha na HL, a ativação é revertida (`deactivatePosition`) e o erro propagado ao UI via `notifyActivationResult({ success: false })`. Dashboard mostra badge "⏳ ATIVANDO..." durante o processo.
 - **`lastRebalancePrice` e `poolPriceCache` têm unidades diferentes**: `lastRebalancePrice` em `PositionState` vem de `position.price` (on-chain, ex: Orca USDC/SOL retorna SOL/USDC = ~0.0088). `poolPriceCache` vem do DexScreener (`fetchPoolPrice`) que pode retornar USD do token volátil ou ratio invertido. Nunca comparar os dois diretamente para detecção de emergência — usar apenas `poolPriceCache` anterior vs atual (mesma fonte, mesma unidade).
 - **`emergencyPollCount` deve ser declarado fora do `setInterval`**: é um `Map` que rastreia polls consecutivos de emergência por tokenId. Se declarado dentro do callback, é recriado a cada poll e perde o estado de debounce.
+- **EVM readers sempre re-leem `liquidity` do contrato**: mesmo no branch de cache (TTL 30 min), `EvmClReader` chama `pm.positions(tokenId)` e `EvmV4Reader` chama `pm.getPositionLiquidity(tokenId)` a cada ciclo LP. Sem isso, posições fechadas (liquidity=0) não são detectadas até o cache expirar (até 30 min de atraso). O cache continua útil para token metadata (symbol, decimals, addresses) e ticks.
 
 ## Limitações conhecidas (multi-chain)
 - `EvmScanner.scanV3()` usa Multicall3 — ≤5 RPC round trips independente do número de NFTs
